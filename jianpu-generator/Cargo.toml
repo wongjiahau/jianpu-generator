@@ -1,0 +1,15 @@
+[package]
+name = "jianpu-generator"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "jianpu"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+thiserror = "2"
+svg2pdf = "0.12"
+
+[dev-dependencies]
