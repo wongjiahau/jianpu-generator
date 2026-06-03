@@ -72,8 +72,9 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                     let dot_radius = cell * 0.08;
                     let dot_spacing = dot_radius * 3.0;
                     for i in 0..*count {
-                        // y is base_y + cell (VerticalAlignment::Bottom); dots go upward from there
-                        let dot_y = y - dot_radius - (i as f32) * dot_spacing;
+                        // Start from the top of the underline row (base_y) and stack downward,
+                        // so dot 0 is closest to the note and dot 1 is below it.
+                        let dot_y = base_y + dot_radius + (i as f32) * dot_spacing;
                         elements.push_str(&format!(
                             r#"<circle cx="{:.1}" cy="{:.1}" r="{:.1}" fill="black"/>"#,
                             x, dot_y, dot_radius

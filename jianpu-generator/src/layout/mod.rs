@@ -56,7 +56,8 @@ fn compute_underline_levels(buffer: &[BeamBufferEntry]) -> Vec<UnderlineSpan> {
     if let Some(start) = run_start {
         levels.push(UnderlineSpan { from_column: start, to_column: run_end });
     }
-    levels.dedup();
+    // Identical level-1 and level-2 spans are intentional: they mean "draw this span twice"
+    // (e.g. a lone sixteenth note or a pure-sixteenth beat group must render two underlines).
     levels
 }
 
@@ -482,6 +483,38 @@ mod tests {
         assert_eq!(groups[0][0].to_column, 4);
         assert_eq!(groups[0][1].from_column, 2);
         assert_eq!(groups[0][1].to_column, 4);
+    }
+
+    #[test]
+    fn lone_sixteenth_note_has_two_underlines() {
+        // =1(1qb) then 15 quarter-beats of rest to fill 4/4 (15 = not valid as quarter notes...)
+        // Use =1 then rests: =1(1qb) + 0(4qb)*3 + rest to fill. Actually 1+4+4+4+3 doesn't work.
+        // Fill with: =1 0 0 0 and pad the score to 4/4 = 16qb: =1(1) + 0(4)+0(4)+0(4) = 13, need 3 more.
+        // Use: =1 =0 0 0 0 0 = 1+1+4+4+4+... let's just use a full measure with rests.
+        // =1(1qb) and fill with quarter rests: need 15 more qb but rests are 4qb each = can't hit 16.
+        // Use: =1 =0 =0 =0 0 0 0 = 1+1+1+1+4+4+4 = 16qb ✓
+        // Only =1 is a note (pitch); =0 are sixteenth rests → flush before each rest.
+        // So =1 is a lone sixteenth in the buffer → produces level-1 and level-2 spans both {0,1}.
+        let score = make_score("=1 =0 =0 =0 0 0 0", "a");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let groups = collect_underline_levels(&pages);
+        assert_eq!(groups.len(), 1, "expected one beam group for the lone sixteenth");
+        assert_eq!(groups[0].len(), 2, "lone sixteenth must produce two underline levels");
+        assert_eq!(groups[0][0], UnderlineSpan { from_column: 0, to_column: 1 });
+        assert_eq!(groups[0][1], UnderlineSpan { from_column: 0, to_column: 1 });
+    }
+
+    #[test]
+    fn pure_sixteenth_beat_group_has_two_underlines() {
+        // =1 =2 =3 =4 fills one beat exactly (4×1qb = 4qb); 0 0 0 fills 12 more qb = 16 total ✓
+        // All four notes are sixteenth (underline_count=2): level-1 spans 0–4, level-2 also 0–4.
+        let score = make_score("=1 =2 =3 =4 0 0 0", "a b c d");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let groups = collect_underline_levels(&pages);
+        assert_eq!(groups.len(), 1, "expected one beam group spanning the beat");
+        assert_eq!(groups[0].len(), 2, "pure-sixteenth group must produce two underline levels");
+        assert_eq!(groups[0][0], UnderlineSpan { from_column: 0, to_column: 4 });
+        assert_eq!(groups[0][1], UnderlineSpan { from_column: 0, to_column: 4 });
     }
 
     #[test]
