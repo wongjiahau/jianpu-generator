@@ -14,9 +14,7 @@ pub enum SectionKind {
     Lyrics,
 }
 
-pub fn split_sections(
-    input: &str,
-) -> Result<Vec<RawSection>, JianPuError> {
+pub fn split_sections(input: &str) -> Result<Vec<RawSection>, JianPuError> {
     let mut sections: Vec<RawSection> = Vec::new();
     let mut current_kind: Option<SectionKind> = None;
     let mut current_content = String::new();
@@ -66,7 +64,6 @@ pub fn split_sections(
 
     Ok(sections)
 }
-
 
 #[cfg(test)]
 mod tests {

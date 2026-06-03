@@ -29,12 +29,19 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let mut pending_chain: Vec<(u32, JianPuPitch)> = Vec::new();
     let mut chain_row: u32 = 0;
 
+    // Lyric consumption: a note skips its syllable only when the previous note
+    // tied to it with the same pitch (a tie, not a slur). Slurred notes (different
+    // pitches connected by ~) each get their own syllable.
+    let mut prev_tie: bool = false;
+    let mut prev_pitch: Option<JianPuPitch> = None;
+
     for measure in &score.measures {
         // Check if this measure fits in the current row-group
         let measure_width = measure_column_width(measure);
         if current_col + measure_width > columns_per_page {
             // Abandon any cross-row-group chain (cannot draw arc across rows)
             pending_chain.clear();
+            prev_tie = false;
             // Start a new row-group
             if !current_elements.is_empty() {
                 current_page_row_groups.push(RowGroup {
@@ -84,26 +91,34 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         });
                     }
 
-                    // Lyric (row 3)
-                    if let Some(syllable) = lyrics_iter.next() {
-                        if syllable.text != "-" {
-                            let is_cjk = syllable.text.chars().next().map(|c| is_cjk_char(c)).unwrap_or(false);
-                            current_elements.push(GridElement {
-                                position: GridPosition { column: current_col, row: current_row_offset + 3 },
-                                horizontal_alignment: HorizontalAlignment::Center,
-                                vertical_alignment: VerticalAlignment::Top,
-                                content: GridContent::Lyric { text: syllable.text.clone(), is_cjk },
-                            });
-                        }
-                    }
-
-                    // Chain tracking for tie/slur arcs
+                    // Chain tracking for tie/slur arcs.
                     if pending_chain.is_empty() {
                         chain_row = current_row_offset + 1;
                     }
                     pending_chain.push((current_col, note.pitch.clone()));
 
-                    current_col += note.duration; // each quarter-beat = 1 column
+                    // Lyric (row 3).
+                    // A note is a tie continuation (same pitch as the note that ties into it)
+                    // and should skip the syllable. A slur continuation (different pitch) still
+                    // gets its own syllable.
+                    let is_tie_continuation = prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
+                    if !is_tie_continuation {
+                        if let Some(syllable) = lyrics_iter.next() {
+                            if syllable.text != "-" {
+                                let is_cjk = syllable.text.chars().next().map(|c| is_cjk_char(c)).unwrap_or(false);
+                                current_elements.push(GridElement {
+                                    position: GridPosition { column: current_col, row: current_row_offset + 3 },
+                                    horizontal_alignment: HorizontalAlignment::Center,
+                                    vertical_alignment: VerticalAlignment::Top,
+                                    content: GridContent::Lyric { text: syllable.text.clone(), is_cjk },
+                                });
+                            }
+                        }
+                    }
+                    prev_tie = note.tie;
+                    prev_pitch = Some(note.pitch.clone());
+
+                    current_col += note.duration;
 
                     if !note.tie {
                         flush_chain(&pending_chain, chain_row, &mut current_elements);
@@ -305,6 +320,43 @@ mod tests {
                 _ => None,
             })
             .collect()
+    }
+
+    fn collect_lyric_positions(pages: &[Page]) -> Vec<(u32, String)> {
+        pages.iter()
+            .flat_map(|p| p.row_groups.iter())
+            .flat_map(|rg| rg.elements.iter())
+            .filter_map(|e| match &e.content {
+                GridContent::Lyric { text, .. } => Some((e.position.column, text.clone())),
+                _ => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn tied_notes_share_one_lyric_syllable() {
+        // 3~3 is a tie (same pitch): both notes share one syllable.
+        // 3~3 1 2 with lyrics "a b c":
+        //   3 (col 0) → "a",  second 3 (col 4) → no lyric,  1 (col 8) → "b",  2 (col 12) → "c"
+        let score = make_score("3~3 1 2", "a b c");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        assert_eq!(
+            collect_lyric_positions(&pages),
+            vec![(0, "a".to_string()), (8, "b".to_string()), (12, "c".to_string())],
+        );
+    }
+
+    #[test]
+    fn slurred_notes_each_get_a_lyric_syllable() {
+        // 4~3~3: 4→3 is a slur (different pitch, each gets a syllable),
+        //        3→3 is a tie (same pitch, second 3 shares the syllable of first 3).
+        // So "4~3~3 2" with lyrics "a b c" assigns: 4→"a", first 3→"b", second 3→no lyric, 2→"c"
+        let score = make_score("4~3~3 2", "a b c");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        assert_eq!(
+            collect_lyric_positions(&pages),
+            vec![(0, "a".to_string()), (4, "b".to_string()), (12, "c".to_string())],
+        );
     }
 
     #[test]

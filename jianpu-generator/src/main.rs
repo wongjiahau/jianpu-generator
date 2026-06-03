@@ -16,15 +16,20 @@ struct Args {
     /// Path to the .jianpu input file
     input: PathBuf,
 
-    /// Path for the output PDF (default: input filename with .pdf extension)
+    /// Path for the output file (default: input filename with .pdf or .svg extension)
     #[arg(short, long)]
     output: Option<PathBuf>,
+
+    /// Output SVG instead of PDF (writes one .svg file per page)
+    #[arg(long)]
+    svg: bool,
 }
 
 fn main() {
     let args = Args::parse();
 
-    let output_path = args.output.unwrap_or_else(|| args.input.with_extension("pdf"));
+    let default_ext = if args.svg { "svg" } else { "pdf" };
+    let output_path = args.output.unwrap_or_else(|| args.input.with_extension(default_ext));
 
     let input = match std::fs::read_to_string(&args.input) {
         Ok(content) => content,
@@ -42,12 +47,28 @@ fn main() {
         let cell_size = score.metadata.cell_size;
         let pages = layout::layout(&score, 595.0, 842.0);
         let svgs = renderer::render(&pages, cell_size);
-        let pdf_bytes = pdf::write_pdf(&svgs)?;
-        std::fs::write(&output_path, &pdf_bytes).map_err(|e| error::JianPuError::new(
-            error::Span::new(0, 0),
-            format!("could not write output PDF: {}", e),
-        ))?;
-        println!("written to {:?}", output_path);
+
+        if args.svg {
+            for (i, svg) in svgs.iter().enumerate() {
+                let path = if svgs.len() == 1 {
+                    output_path.clone()
+                } else {
+                    output_path.with_extension(format!("{}.svg", i + 1))
+                };
+                std::fs::write(&path, svg).map_err(|e| error::JianPuError::new(
+                    error::Span::new(0, 0),
+                    format!("could not write SVG: {}", e),
+                ))?;
+                println!("written to {:?}", path);
+            }
+        } else {
+            let pdf_bytes = pdf::write_pdf(&svgs)?;
+            std::fs::write(&output_path, &pdf_bytes).map_err(|e| error::JianPuError::new(
+                error::Span::new(0, 0),
+                format!("could not write output PDF: {}", e),
+            ))?;
+            println!("written to {:?}", output_path);
+        }
         Ok(())
     })();
 
