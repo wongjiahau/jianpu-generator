@@ -13,7 +13,15 @@ pub fn write_pdf(svgs: &[String]) -> Result<Vec<u8>, JianPuError> {
     }
 
     let svg = &svgs[0];
-    let options = svg2pdf::usvg::Options::default();
+    let mut options = svg2pdf::usvg::Options::default();
+    {
+        let db = options.fontdb_mut();
+        db.load_font_data(include_bytes!("../fonts/SourceHanSansSC-Regular.otf").to_vec());
+        db.load_font_data(include_bytes!("../fonts/SourceHanSansTC-Regular.otf").to_vec());
+        db.load_font_data(include_bytes!("../fonts/NotoSansMono-Regular.ttf").to_vec());
+        db.set_sans_serif_family("Source Han Sans SC");
+        db.set_monospace_family("Noto Sans Mono");
+    }
     let tree = svg2pdf::usvg::Tree::from_str(svg, &options).map_err(|e| {
         JianPuError::new(Span::new(0, 0), format!("SVG parse error: {}", e))
     })?;
