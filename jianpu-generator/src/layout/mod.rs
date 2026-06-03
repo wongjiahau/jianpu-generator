@@ -5,6 +5,60 @@ use crate::utils::is_cjk_char;
 
 pub mod types;
 
+struct BeamBufferEntry {
+    column: u32,
+    underline_count: u32,
+    duration: u32,
+}
+
+fn flush_beam_buffer(
+    buffer: &mut Vec<BeamBufferEntry>,
+    row_offset: u32,
+    elements: &mut Vec<GridElement>,
+) {
+    if buffer.is_empty() {
+        return;
+    }
+    let levels = compute_underline_levels(buffer);
+    elements.push(GridElement {
+        position: GridPosition {
+            column: buffer[0].column,
+            row: row_offset + 2,
+        },
+        horizontal_alignment: HorizontalAlignment::Left,
+        vertical_alignment: VerticalAlignment::Top,
+        content: GridContent::DurationUnderlines { levels },
+    });
+    buffer.clear();
+}
+
+fn compute_underline_levels(buffer: &[BeamBufferEntry]) -> Vec<UnderlineSpan> {
+    let first = &buffer[0];
+    let last = &buffer[buffer.len() - 1];
+    // Level 1: spans all notes in the group
+    let mut levels = vec![UnderlineSpan {
+        from_column: first.column,
+        to_column: last.column + last.duration,
+    }];
+    // Level 2+: one span per maximal contiguous sub-run with underline_count >= 2
+    let mut run_start: Option<u32> = None;
+    let mut run_end: u32 = 0;
+    for entry in buffer {
+        if entry.underline_count >= 2 {
+            if run_start.is_none() {
+                run_start = Some(entry.column);
+            }
+            run_end = entry.column + entry.duration;
+        } else if let Some(start) = run_start.take() {
+            levels.push(UnderlineSpan { from_column: start, to_column: run_end });
+        }
+    }
+    if let Some(start) = run_start {
+        levels.push(UnderlineSpan { from_column: start, to_column: run_end });
+    }
+    levels
+}
+
 /// A4 in points: 595 × 842.
 /// Column width = cell_size, row height = cell_size.
 pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Page> {
@@ -35,14 +89,14 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let mut prev_tie: bool = false;
     let mut prev_pitch: Option<JianPuPitch> = None;
 
+    let mut beam_buffer: Vec<BeamBufferEntry> = Vec::new();
+
     for measure in &score.measures {
-        // Check if this measure fits in the current row-group
         let measure_width = measure_column_width(measure);
         if current_col + measure_width > columns_per_page {
-            // Abandon any cross-row-group chain (cannot draw arc across rows)
+            flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
             pending_chain.clear();
             prev_tie = false;
-            // Start a new row-group
             if !current_elements.is_empty() {
                 current_page_row_groups.push(RowGroup {
                     elements: std::mem::take(&mut current_elements),
@@ -62,6 +116,11 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             }
         }
 
+        // Flush any leftover buffer from the previous measure (partial-beat edge case)
+        flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
+
+        let measure_col_start = current_col;
+
         for note_event in &measure.notes {
             match note_event {
                 NoteEvent::Note(note) => {
@@ -76,26 +135,6 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         },
                     });
 
-                    // Duration underlines (row 2) — single-level per note; beam grouping added in a later task
-                    let underline_count = match note.duration {
-                        1 => 2, // sixteenth note (= prefix) — 2 underlines
-                        2 => 1, // eighth note (_ prefix) — 1 underline
-                        _ => 0, // quarter note or longer — no underlines
-                    };
-                    if underline_count > 0 {
-                        current_elements.push(GridElement {
-                            position: GridPosition { column: current_col, row: current_row_offset + 2 },
-                            horizontal_alignment: HorizontalAlignment::Left,
-                            vertical_alignment: VerticalAlignment::Top,
-                            content: GridContent::DurationUnderlines {
-                                levels: vec![UnderlineSpan {
-                                    from_column: current_col,
-                                    to_column: current_col + note.duration,
-                                }],
-                            },
-                        });
-                    }
-
                     // Lower octave dots (row 2, below any underlines)
                     if note.octave < 0 {
                         current_elements.push(GridElement {
@@ -106,7 +145,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         });
                     }
 
-                    // Extension dashes (row 1): one `-` per additional beat (every 4 quarter-beats).
+                    // Extension dashes (row 1)
                     if note.duration > 4 {
                         let extra_beats = (note.duration - 4) / 4;
                         for i in 0..extra_beats {
@@ -120,16 +159,25 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         }
                     }
 
-                    // Chain tracking for tie/slur arcs.
+                    // Beam buffer logic (row 2)
+                    let underline_count = match note.duration {
+                        1 => 2, // sixteenth note
+                        2 => 1, // eighth note
+                        _ => 0, // quarter or longer — flush any pending group first
+                    };
+
+                    if underline_count == 0 {
+                        // Trigger 2: quarter-or-longer note ends any open beam group
+                        flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
+                    }
+
+                    // Chain tracking for tie/slur arcs
                     if pending_chain.is_empty() {
                         chain_row = current_row_offset + 1;
                     }
                     pending_chain.push((current_col, note.pitch.clone()));
 
-                    // Lyric (row 3).
-                    // A note is a tie continuation (same pitch as the note that ties into it)
-                    // and should skip the syllable. A slur continuation (different pitch) still
-                    // gets its own syllable.
+                    // Lyric (row 3)
                     let is_tie_continuation = prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
                     if !is_tie_continuation {
                         if let Some(syllable) = lyrics_iter.next() {
@@ -145,7 +193,21 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                     prev_tie = note.tie;
                     prev_pitch = Some(note.pitch.clone());
 
+                    if underline_count > 0 {
+                        beam_buffer.push(BeamBufferEntry {
+                            column: current_col,
+                            underline_count,
+                            duration: note.duration,
+                        });
+                    }
+
                     current_col += note.duration;
+
+                    // Trigger 3: flush when new position lands on a beat boundary
+                    let beat_position = current_col - measure_col_start;
+                    if underline_count > 0 && beat_position % 4 == 0 {
+                        flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
+                    }
 
                     if !note.tie {
                         flush_chain(&pending_chain, chain_row, &mut current_elements);
@@ -153,6 +215,9 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                     }
                 }
                 NoteEvent::Rest(rest) => {
+                    // Trigger 1: any rest ends an open beam group
+                    flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
+
                     current_elements.push(GridElement {
                         position: GridPosition { column: current_col, row: current_row_offset + 1 },
                         horizontal_alignment: HorizontalAlignment::Center,
@@ -163,6 +228,9 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                 }
             }
         }
+
+        // Flush any beam group open at the end of the measure
+        flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
 
         // Bar line after measure
         current_elements.push(GridElement {
