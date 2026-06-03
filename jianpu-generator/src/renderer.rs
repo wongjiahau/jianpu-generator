@@ -157,10 +157,13 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                     ));
                 }
                 GridContent::BpmLabel { bpm } => {
-                    // Placeholder for BpmLabel rendering
+                    // The label occupies a 2-column slot; center relative to that slot.
+                    let slot_width = 2.0 * cell;
+                    let center_x = base_x + slot_width / 2.0;
+                    let small_font_size = base_font_size * 0.6;
                     elements.push_str(&format!(
-                        r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
-                        x, y, base_font_size, bpm
+                        r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">♩={}</text>"#,
+                        center_x, y, small_font_size, bpm
                     ));
                 }
             }
@@ -306,5 +309,17 @@ mod tests {
         let svg = &svgs[0];
         assert!(svg.contains(">2<"), "expected numerator 2 in SVG for 2/4 time signature");
         assert!(svg.contains(">4<"), "expected denominator 4 in SVG for 2/4 time signature");
+    }
+
+    #[test]
+    fn bpm_label_renders_beats_per_minute_text() {
+        // Use a non-default BPM (75) so the value is unambiguous in the SVG text.
+        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n4/4 bpm=75 1 2 3 4\n\n[lyrics]\na b c d\n";
+        let doc = crate::parser::parse(input, "test.jianpu").unwrap();
+        let score = crate::grouper::group(doc).unwrap();
+        let pages = crate::layout::layout(&score, A4_W, A4_H);
+        let svgs = render(&pages, score.metadata.cell_size);
+        let svg = &svgs[0];
+        assert!(svg.contains("♩=75"), "expected BPM label text '♩=75' in SVG output");
     }
 }
