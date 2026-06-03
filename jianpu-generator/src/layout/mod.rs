@@ -98,17 +98,6 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         vertical_alignment: VerticalAlignment::Center,
                         content: GridContent::Rest,
                     });
-                    if let Some(syllable) = lyrics_iter.next() {
-                        if syllable.text != "-" {
-                            let is_cjk = syllable.text.chars().next().map(|c| is_cjk_char(c)).unwrap_or(false);
-                            current_elements.push(GridElement {
-                                position: GridPosition { column: current_col, row: current_row_offset + 3 },
-                                horizontal_alignment: HorizontalAlignment::Center,
-                                vertical_alignment: VerticalAlignment::Top,
-                                content: GridContent::Lyric { text: syllable.text.clone(), is_cjk },
-                            });
-                        }
-                    }
                     current_col += rest.duration;
                 }
             }

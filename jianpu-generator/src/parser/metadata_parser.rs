@@ -30,12 +30,19 @@ pub fn parse_metadata(
             "title" => title = Some(value.to_string()),
             "author" => author = Some(value.to_string()),
             "cell_size" => {
-                cell_size = Some(value.parse::<u32>().map_err(|_| {
+                let parsed = value.parse::<u32>().map_err(|_| {
                     JianPuError::new(
                         line_span.clone(),
                         format!("cell_size must be a positive integer, got: {}", value),
                     )
-                })?);
+                })?;
+                if parsed == 0 {
+                    return Err(JianPuError::new(
+                        line_span.clone(),
+                        "cell_size must be greater than zero".to_string(),
+                    ));
+                }
+                cell_size = Some(parsed);
             }
             _ => {
                 return Err(JianPuError::new(

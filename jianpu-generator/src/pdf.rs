@@ -5,7 +5,13 @@ pub fn write_pdf(svgs: &[String]) -> Result<Vec<u8>, JianPuError> {
         return Ok(Vec::new());
     }
 
-    // For now convert the first SVG page (multi-page merging is a follow-up)
+    if svgs.len() > 1 {
+        eprintln!(
+            "warning: multi-page scores are not yet fully supported; outputting page 1 of {}",
+            svgs.len()
+        );
+    }
+
     let svg = &svgs[0];
     let options = svg2pdf::usvg::Options::default();
     let tree = svg2pdf::usvg::Tree::from_str(svg, &options).map_err(|e| {

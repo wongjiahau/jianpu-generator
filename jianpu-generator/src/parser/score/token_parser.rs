@@ -162,6 +162,9 @@ fn parse_time_signature(text: &str, span: Span) -> Result<ScoreEvent, JianPuErro
     let denominator = parts[1].parse::<u8>().map_err(|_| {
         JianPuError::new(span.clone(), format!("invalid time signature denominator: {}", parts[1]))
     })?;
+    if denominator == 0 {
+        return Err(JianPuError::new(span, "time signature denominator cannot be zero".to_string()));
+    }
     Ok(ScoreEvent::TimeSignatureChange { numerator, denominator })
 }
 
