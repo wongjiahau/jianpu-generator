@@ -78,18 +78,26 @@ fn compute_prefix_width(
     width
 }
 
+/// Margin on every edge of the page in points (~9 mm).
+/// Applied to all four sides: left/right for column fitting, top/bottom for row fitting.
+const PAGE_MARGIN: f32 = 25.0;
+
 /// A4 in points: 595 × 842.
 /// Column width = cell_size, row height = cell_size.
 pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Page> {
     let cell = score.metadata.cell_size as f32;
-    let columns_per_page = (page_width_pt / cell) as u32;
+    // Reserve space for left+right margins before fitting columns.
+    let usable_width = page_width_pt - 2.0 * PAGE_MARGIN;
+    let columns_per_page = (usable_width / cell) as u32;
     // Each row-group uses 4 rows (octave-up, note, octave-down+underline, lyric)
     let row_group_height: u32 = 4;
 
     let header_rows: u32 = if score.metadata.subtitle.is_some() { 3 } else { 2 };
     let footer_rows: u32 = 1;
     let reserved_rows = header_rows + footer_rows;
-    let row_groups_per_page = ((page_height_pt / cell) as u32 - reserved_rows) / row_group_height;
+    // Subtract top+bottom margins before counting how many rows fit vertically.
+    let usable_height = page_height_pt - 2.0 * PAGE_MARGIN;
+    let row_groups_per_page = ((usable_height / cell) as u32 - reserved_rows) / row_group_height;
 
     let make_header = || Header {
         title: score.metadata.title.clone(),
@@ -132,6 +140,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                 current_page_row_groups.push(RowGroup {
                     elements: std::mem::take(&mut current_elements),
                     height_in_rows: row_group_height,
+                    width_in_columns: current_col,
                 });
             }
             current_col = 0;
@@ -143,6 +152,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         header: make_header(),
                         footer: Footer { page: pages.len() as u32 + 1, total: 0 },
                         row_groups: std::mem::take(&mut current_page_row_groups),
+                        page_width_pt,
                     });
                 }
                 current_row_offset = header_rows;
@@ -312,6 +322,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         current_page_row_groups.push(RowGroup {
             elements: std::mem::take(&mut current_elements),
             height_in_rows: row_group_height,
+            width_in_columns: current_col,
         });
     }
     if !current_page_row_groups.is_empty() {
@@ -319,6 +330,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             header: make_header(),
             footer: Footer { page: pages.len() as u32 + 1, total: 0 },
             row_groups: std::mem::take(&mut current_page_row_groups),
+            page_width_pt,
         });
     }
 
@@ -327,6 +339,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             header: make_header(),
             footer: Footer { page: 1, total: 1 },
             row_groups: Vec::new(),
+            page_width_pt,
         });
     }
 

@@ -18,12 +18,17 @@ pub struct Page {
     pub header: Header,
     pub footer: Footer,
     pub row_groups: Vec<RowGroup>,
+    /// Page width in SVG/PDF points (same value passed to layout()).
+    pub page_width_pt: f32,
 }
 
 #[derive(Debug, Clone)]
 pub struct RowGroup {
     pub elements: Vec<GridElement>,
     pub height_in_rows: u32,
+    /// Number of grid columns actually used by this row group.
+    /// Used by the renderer to center each row individually.
+    pub width_in_columns: u32,
 }
 
 #[derive(Debug, Clone)]
