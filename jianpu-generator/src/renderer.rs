@@ -134,11 +134,34 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                         line_x, line_y1, line_x, line_y2
                     ));
                 }
-                GridContent::TimeSignatureLabel { .. } => {
-                    todo!("TimeSignatureLabel rendering not yet implemented")
+                GridContent::TimeSignatureLabel { numerator, denominator } => {
+                    // The label occupies a 2-column slot; center relative to that slot.
+                    let slot_width = 2.0 * cell;
+                    let center_x = base_x + slot_width / 2.0;
+                    let numerator_y = y - cell * 0.25;
+                    let rule_y = y;
+                    let denominator_y = y + cell * 0.25;
+                    let rule_x1 = base_x + slot_width * 0.2;
+                    let rule_x2 = base_x + slot_width * 0.8;
+                    elements.push_str(&format!(
+                        r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
+                        center_x, numerator_y, base_font_size, numerator
+                    ));
+                    elements.push_str(&format!(
+                        r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="1"/>"#,
+                        rule_x1, rule_y, rule_x2, rule_y
+                    ));
+                    elements.push_str(&format!(
+                        r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
+                        center_x, denominator_y, base_font_size, denominator
+                    ));
                 }
-                GridContent::BpmLabel { .. } => {
-                    todo!("BpmLabel rendering not yet implemented")
+                GridContent::BpmLabel { bpm } => {
+                    // Placeholder for BpmLabel rendering
+                    elements.push_str(&format!(
+                        r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
+                        x, y, base_font_size, bpm
+                    ));
                 }
             }
         }
@@ -269,5 +292,19 @@ mod tests {
     fn svg_contains_page_number() {
         let svgs = render_score("1 2 3 4", "a b c d");
         assert!(svgs[0].contains("1/1"), "expected page number '1/1' in SVG");
+    }
+
+    #[test]
+    fn time_signature_label_renders_numerator_and_denominator_text() {
+        // Use 2/4 with notes pitched 3 and 5 so that no note digit equals 2 or 4,
+        // making the text matches unambiguous.
+        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n2/4 3 5\n\n[lyrics]\na b\n";
+        let doc = crate::parser::parse(input, "test.jianpu").unwrap();
+        let score = crate::grouper::group(doc).unwrap();
+        let pages = crate::layout::layout(&score, A4_W, A4_H);
+        let svgs = render(&pages, score.metadata.cell_size);
+        let svg = &svgs[0];
+        assert!(svg.contains(">2<"), "expected numerator 2 in SVG for 2/4 time signature");
+        assert!(svg.contains(">4<"), "expected denominator 4 in SVG for 2/4 time signature");
     }
 }
