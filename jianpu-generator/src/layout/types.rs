@@ -5,11 +5,9 @@ pub struct Page {
     pub row_groups: Vec<RowGroup>,
 }
 
-/// A horizontal band of the score containing one or more measures.
 #[derive(Debug, Clone)]
 pub struct RowGroup {
     pub elements: Vec<GridElement>,
-    /// Total height in grid rows consumed by this row-group.
     pub height_in_rows: u32,
 }
 
@@ -41,18 +39,27 @@ pub struct GridElement {
     pub content: GridContent,
 }
 
+/// The column range covered by one underline level.
+#[derive(Debug, Clone, PartialEq)]
+pub struct UnderlineSpan {
+    pub from_column: u32,
+    pub to_column: u32,
+}
+
 #[derive(Debug, Clone)]
 pub enum GridContent {
     NoteHead { pitch: JianPuPitch, octave: i8 },
     Rest,
-    /// A lyric syllable. `is_cjk` drives font size (CJK = 120% of base).
     Lyric { text: String, is_cjk: bool },
-    /// Curved arc connecting two column positions (tie or slur).
     TieOrSlurCurve { from_column: u32, to_column: u32 },
-    /// Horizontal underlines below a note head for shorter durations.
-    /// count=1 → half beat, count=2 → quarter beat.
-    DurationUnderlines { count: u32 },
+    /// Horizontal underlines for a beam group.
+    /// `levels[0]` is the topmost line (closest to the note heads), spanning all notes.
+    /// Additional entries are drawn below it; each covers one maximal contiguous sub-run
+    /// of notes whose underline count is >= that level number.
+    DurationUnderlines { levels: Vec<UnderlineSpan> },
+    /// Dots indicating a note is one or more octaves below the default octave.
+    /// Placed in row 2 with VerticalAlignment::Bottom so they always appear below underlines.
+    LowerOctaveDots { count: u32 },
     BarLine,
-    /// A `-` dash drawn at each additional beat of a multi-beat note.
     Extension,
 }
