@@ -23,6 +23,9 @@ pub fn tokenize(content: &str, base_offset: usize) -> Vec<RawToken> {
             }
             end = j + nc.len_utf8();
             chars.next();
+            if nc == '~' {
+                break; // `~` ends the current token; the next char starts a new token
+            }
         }
         let text = content[start..end].to_string();
         if text == "|" {
@@ -70,6 +73,15 @@ mod tests {
         let tokens = tokenize("1 2", 100);
         assert_eq!(tokens[0].offset, 100);
         assert_eq!(tokens[1].offset, 102);
+    }
+
+    #[test]
+    fn splits_on_tilde() {
+        let tokens = tokenize("4~3~3", 0);
+        assert_eq!(tokens.len(), 3);
+        assert_eq!(tokens[0].text, "4~");
+        assert_eq!(tokens[1].text, "3~");
+        assert_eq!(tokens[2].text, "3");
     }
 
     #[test]

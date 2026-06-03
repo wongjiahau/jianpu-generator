@@ -1,4 +1,5 @@
 use crate::ast::grouped::{NoteEvent, Score};
+use crate::ast::parsed::JianPuPitch;
 use crate::layout::types::*;
 use crate::utils::is_cjk_char;
 
@@ -23,10 +24,17 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
 
     let mut lyrics_iter = score.lyrics.iter();
 
+    // Chain tracking: consecutive notes connected by `~`.
+    // Each entry is (column, pitch) of a note in the current chain.
+    let mut pending_chain: Vec<(u32, JianPuPitch)> = Vec::new();
+    let mut chain_row: u32 = 0;
+
     for measure in &score.measures {
         // Check if this measure fits in the current row-group
         let measure_width = measure_column_width(measure);
         if current_col + measure_width > columns_per_page {
+            // Abandon any cross-row-group chain (cannot draw arc across rows)
+            pending_chain.clear();
             // Start a new row-group
             if !current_elements.is_empty() {
                 current_page_row_groups.push(RowGroup {
@@ -89,7 +97,18 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         }
                     }
 
+                    // Chain tracking for tie/slur arcs
+                    if pending_chain.is_empty() {
+                        chain_row = current_row_offset + 1;
+                    }
+                    pending_chain.push((current_col, note.pitch.clone()));
+
                     current_col += note.duration; // each quarter-beat = 1 column
+
+                    if !note.tie {
+                        flush_chain(&pending_chain, chain_row, &mut current_elements);
+                        pending_chain.clear();
+                    }
                 }
                 NoteEvent::Rest(rest) => {
                     current_elements.push(GridElement {
@@ -131,6 +150,47 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     }
 
     pages
+}
+
+/// Emit tie/slur arcs for a completed chain of `~`-connected notes.
+///
+/// Rules:
+/// - If the chain contains any pitch change → one **slur** arc from first to last note.
+/// - For every consecutive same-pitch pair within the chain → one **tie** arc between them.
+fn flush_chain(chain: &[(u32, JianPuPitch)], chain_row: u32, elements: &mut Vec<GridElement>) {
+    if chain.len() <= 1 {
+        return;
+    }
+
+    let has_pitch_change = chain.windows(2).any(|w| w[0].1 != w[1].1);
+
+    if has_pitch_change {
+        // One slur spanning the entire chain
+        elements.push(GridElement {
+            position: GridPosition { column: chain[0].0, row: chain_row },
+            horizontal_alignment: HorizontalAlignment::Left,
+            vertical_alignment: VerticalAlignment::Top,
+            content: GridContent::TieOrSlurCurve {
+                from_column: chain[0].0,
+                to_column: chain.last().unwrap().0,
+            },
+        });
+    }
+
+    // Tie arc for each consecutive same-pitch pair
+    for w in chain.windows(2) {
+        if w[0].1 == w[1].1 {
+            elements.push(GridElement {
+                position: GridPosition { column: w[0].0, row: chain_row },
+                horizontal_alignment: HorizontalAlignment::Left,
+                vertical_alignment: VerticalAlignment::Top,
+                content: GridContent::TieOrSlurCurve {
+                    from_column: w[0].0,
+                    to_column: w[1].0,
+                },
+            });
+        }
+    }
 }
 
 fn measure_column_width(measure: &crate::ast::grouped::Measure) -> u32 {
@@ -190,6 +250,61 @@ mod tests {
             .filter(|e| matches!(e.content, GridContent::Lyric { .. }))
             .collect();
         assert_eq!(lyrics.len(), 4);
+    }
+
+    #[test]
+    fn two_different_notes_emit_one_slur() {
+        // 1~ 2: different pitches → one slur from col 0 to col 4
+        let score = make_score("1~ 2 3 4", "a b c d");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let curves = collect_curves(&pages);
+        assert_eq!(curves.len(), 1);
+        assert_eq!(curves[0], (0, 4));
+    }
+
+    #[test]
+    fn three_note_slur_emits_one_curve() {
+        // 3~2~1: all different pitches → one slur from col 0 to col 8
+        let score = make_score("3~2~1 4", "a b c d");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let curves = collect_curves(&pages);
+        assert_eq!(curves.len(), 1);
+        assert_eq!(curves[0], (0, 8));
+    }
+
+    #[test]
+    fn mixed_chain_emits_slur_and_tie() {
+        // 4~3~3 2: chain [4@0, 3@4, 3@8]
+        // → one slur from 0 to 8 (pitch change exists)
+        // → one tie from 4 to 8 (same-pitch pair 3~3)
+        let score = make_score("4~3~3 2", "a b c d");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let mut curves = collect_curves(&pages);
+        curves.sort();
+        assert_eq!(curves.len(), 2);
+        assert_eq!(curves[0], (0, 8)); // slur
+        assert_eq!(curves[1], (4, 8)); // tie
+    }
+
+    #[test]
+    fn same_pitch_chain_emits_only_tie() {
+        // 1~1 2 3: same pitches → one tie, no slur
+        let score = make_score("1~1 2 3", "a b c");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let curves = collect_curves(&pages);
+        assert_eq!(curves.len(), 1);
+        assert_eq!(curves[0], (0, 4));
+    }
+
+    fn collect_curves(pages: &[Page]) -> Vec<(u32, u32)> {
+        pages.iter()
+            .flat_map(|p| p.row_groups.iter())
+            .flat_map(|rg| rg.elements.iter())
+            .filter_map(|e| match &e.content {
+                GridContent::TieOrSlurCurve { from_column, to_column } => Some((*from_column, *to_column)),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
