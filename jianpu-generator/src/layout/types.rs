@@ -1,7 +1,22 @@
 use crate::ast::parsed::JianPuPitch;
 
 #[derive(Debug, Clone)]
+pub struct Header {
+    pub title: String,
+    pub subtitle: Option<String>,
+    pub author: String,
+}
+
+#[derive(Debug, Clone)]
+pub struct Footer {
+    pub page: u32,
+    pub total: u32,
+}
+
+#[derive(Debug, Clone)]
 pub struct Page {
+    pub header: Header,
+    pub footer: Footer,
     pub row_groups: Vec<RowGroup>,
 }
 

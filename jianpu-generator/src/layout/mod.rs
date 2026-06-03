@@ -68,7 +68,17 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let columns_per_page = (page_width_pt / cell) as u32;
     // Each row-group uses 4 rows (octave-up, note, octave-down+underline, lyric)
     let row_group_height: u32 = 4;
-    let row_groups_per_page = ((page_height_pt / cell) as u32) / row_group_height;
+
+    let header_rows: u32 = if score.metadata.subtitle.is_some() { 3 } else { 2 };
+    let footer_rows: u32 = 1;
+    let reserved_rows = header_rows + footer_rows;
+    let row_groups_per_page = ((page_height_pt / cell) as u32 - reserved_rows) / row_group_height;
+
+    let make_header = || Header {
+        title: score.metadata.title.clone(),
+        subtitle: score.metadata.subtitle.clone(),
+        author: score.metadata.author.clone(),
+    };
 
     let mut pages: Vec<Page> = Vec::new();
     let mut current_page_row_groups: Vec<RowGroup> = Vec::new();
@@ -76,7 +86,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let mut current_col: u32 = 0;
     // current_row_offset is the absolute grid row where the current row-group starts.
     // Row-group rows are: +0 (octave up, via NoteHead.octave), +1 (note head), +2 (duration underlines / octave down), +3 (lyrics)
-    let mut current_row_offset: u32 = 0;
+    let mut current_row_offset: u32 = header_rows;
 
     let mut lyrics_iter = score.lyrics.iter();
 
@@ -111,10 +121,12 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             if current_page_row_groups.len() >= row_groups_per_page as usize {
                 if !current_page_row_groups.is_empty() {
                     pages.push(Page {
+                        header: make_header(),
+                        footer: Footer { page: pages.len() as u32 + 1, total: 0 },
                         row_groups: std::mem::take(&mut current_page_row_groups),
                     });
                 }
-                current_row_offset = 0;
+                current_row_offset = header_rows;
             }
         }
 
@@ -253,12 +265,24 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     }
     if !current_page_row_groups.is_empty() {
         pages.push(Page {
+            header: make_header(),
+            footer: Footer { page: pages.len() as u32 + 1, total: 0 },
             row_groups: std::mem::take(&mut current_page_row_groups),
         });
     }
 
     if pages.is_empty() {
-        pages.push(Page { row_groups: Vec::new() });
+        pages.push(Page {
+            header: make_header(),
+            footer: Footer { page: 1, total: 1 },
+            row_groups: Vec::new(),
+        });
+    }
+
+    // Second pass: fill in total page count
+    let total = pages.len() as u32;
+    for page in &mut pages {
+        page.footer.total = total;
     }
 
     pages
@@ -330,6 +354,29 @@ mod tests {
 
     const A4_WIDTH: f32 = 595.0;  // points
     const A4_HEIGHT: f32 = 842.0; // points
+
+    #[test]
+    fn header_is_populated_on_every_page() {
+        let score = make_score("1 2 3 4", "a b c d");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        assert!(!pages.is_empty());
+        for page in &pages {
+            assert_eq!(page.header.title, "t");
+            assert_eq!(page.header.author, "a");
+            assert_eq!(page.header.subtitle, None);
+        }
+    }
+
+    #[test]
+    fn footer_page_numbers_are_correct() {
+        let score = make_score("1 2 3 4", "a b c d");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+        let total = pages.len() as u32;
+        for (i, page) in pages.iter().enumerate() {
+            assert_eq!(page.footer.page, i as u32 + 1);
+            assert_eq!(page.footer.total, total);
+        }
+    }
 
     #[test]
     fn produces_at_least_one_page() {
@@ -582,7 +629,8 @@ mod tests {
         if let GridContent::LowerOctaveDots { count } = &lower_dots[0].content {
             assert_eq!(*count, 1);
         }
-        assert_eq!(lower_dots[0].position.row, 2, "LowerOctaveDots must be in row 2 (underline row)");
+        // First row-group starts at row offset = header_rows (2), so underline sub-row (+2) → absolute row 4
+        assert_eq!(lower_dots[0].position.row, 4, "LowerOctaveDots must be in absolute row 4 (header_rows + underline sub-row)");
         assert_eq!(lower_dots[0].vertical_alignment, VerticalAlignment::Bottom);
     }
 }
