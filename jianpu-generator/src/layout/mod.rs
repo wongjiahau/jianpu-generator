@@ -160,7 +160,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         {
             current_elements.push(GridElement {
                 position: GridPosition { column: current_col, row: current_row_offset + 1 },
-                horizontal_alignment: HorizontalAlignment::Left,
+                horizontal_alignment: HorizontalAlignment::Center,
                 vertical_alignment: VerticalAlignment::Center,
                 content: GridContent::TimeSignatureLabel {
                     numerator: measure.time_signature.numerator,
@@ -178,7 +178,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         if previous_bpm != Some(measure.bpm) {
             current_elements.push(GridElement {
                 position: GridPosition { column: current_col, row: current_row_offset + 1 },
-                horizontal_alignment: HorizontalAlignment::Left,
+                horizontal_alignment: HorizontalAlignment::Center,
                 vertical_alignment: VerticalAlignment::Center,
                 content: GridContent::BpmLabel { bpm: measure.bpm },
             });
@@ -821,9 +821,10 @@ mod tests {
         // Every row group that starts a new line should have a label.
         // With two measures and a narrow page, each measure starts on its own row group,
         // so there should be a TimeSignatureLabel in each row group (2 total).
-        assert!(
-            all_time_sig_labels.len() >= 2,
-            "expected time signature labels on each wrapped line, got {}",
+        assert_eq!(
+            all_time_sig_labels.len(),
+            2,
+            "expected one time signature label per wrapped line, got {}",
             all_time_sig_labels.len()
         );
     }
