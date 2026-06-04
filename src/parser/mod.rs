@@ -24,13 +24,13 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
                 }
                 raw_metadata = Some((section.content, section.content_offset));
             }
-            SectionKind::Score => {
+            SectionKind::Score { name: _ } => {
                 if raw_score.is_some() {
                     return Err(JianPuError::new(Span::new(0, input.len()), "duplicate [score] section"));
                 }
                 raw_score = Some((section.content, section.content_offset));
             }
-            SectionKind::Lyrics => {
+            SectionKind::Lyrics { name: _ } => {
                 if raw_lyrics.is_some() {
                     return Err(JianPuError::new(Span::new(0, input.len()), "duplicate [lyrics] section"));
                 }
