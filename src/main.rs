@@ -1,4 +1,5 @@
 mod ast;
+mod combiner;
 mod error;
 mod grouper;
 mod layout;

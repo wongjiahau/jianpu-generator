@@ -61,18 +61,12 @@ fn compute_underline_levels(buffer: &[BeamBufferEntry]) -> Vec<UnderlineSpan> {
     levels
 }
 
-fn compute_prefix_width(
-    measure: &crate::ast::grouped::Measure,
-    previous_time_signature: Option<(u8, u8)>,
-    previous_bpm: Option<u32>,
-) -> u32 {
+fn compute_prefix_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 {
     let mut width = 0;
-    if previous_time_signature
-        != Some((measure.time_signature.numerator, measure.time_signature.denominator))
-    {
+    if measure.time_signature.is_some() {
         width += 2;
     }
-    if previous_bpm != Some(measure.bpm) {
+    if measure.bpm.is_some() {
         width += 2;
     }
     width
@@ -113,8 +107,6 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     // Row-group rows are: +0 (octave up, via NoteHead.octave), +1 (note head), +2 (duration underlines / octave down), +3 (lyrics)
     let mut current_row_offset: u32 = header_rows;
 
-    let mut lyrics_iter = score.lyrics.iter();
-
     // Chain tracking: consecutive notes connected by `~`.
     // Each entry is (column, pitch) of a note in the current chain.
     let mut pending_chain: Vec<(u32, JianPuPitch)> = Vec::new();
@@ -127,12 +119,10 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let mut prev_pitch: Option<JianPuPitch> = None;
 
     let mut beam_buffer: Vec<BeamBufferEntry> = Vec::new();
-    let mut previous_time_signature: Option<(u8, u8)> = None;
-    let mut previous_bpm: Option<u32> = None;
 
     for measure in &score.measures {
         let measure_width = measure_column_width(measure);
-        if current_col + compute_prefix_width(measure, previous_time_signature, previous_bpm) + measure_width > columns_per_page {
+        if current_col + compute_prefix_width(measure) + measure_width > columns_per_page {
             flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
             pending_chain.clear();
             prev_tie = false;
@@ -162,41 +152,38 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         // Flush any leftover buffer from the previous measure (partial-beat edge case)
         flush_beam_buffer(&mut beam_buffer, current_row_offset, &mut current_elements);
 
-        // Emit time signature label if new or changed
-        if previous_time_signature
-            != Some((measure.time_signature.numerator, measure.time_signature.denominator))
-        {
+        // Emit time signature label if Some (grouper sets it only when new/changed)
+        if let Some(ts) = &measure.time_signature {
             current_elements.push(GridElement {
                 position: GridPosition { column: current_col, row: current_row_offset + 1 },
                 horizontal_alignment: HorizontalAlignment::Center,
                 vertical_alignment: VerticalAlignment::Center,
                 content: GridContent::TimeSignatureLabel {
-                    numerator: measure.time_signature.numerator,
-                    denominator: measure.time_signature.denominator,
+                    numerator: ts.numerator,
+                    denominator: ts.denominator,
                 },
             });
             current_col += 2;
-            previous_time_signature = Some((
-                measure.time_signature.numerator,
-                measure.time_signature.denominator,
-            ));
         }
 
-        // Emit BPM label if new or changed
-        if previous_bpm != Some(measure.bpm) {
+        // Emit BPM label if Some (grouper sets it only when new/changed)
+        if let Some(bpm) = measure.bpm {
             current_elements.push(GridElement {
                 position: GridPosition { column: current_col, row: current_row_offset + 1 },
                 horizontal_alignment: HorizontalAlignment::Center,
                 vertical_alignment: VerticalAlignment::Center,
-                content: GridContent::BpmLabel { bpm: measure.bpm },
+                content: GridContent::BpmLabel { bpm },
             });
             current_col += 2;
-            previous_bpm = Some(measure.bpm);
         }
 
         let measure_col_start = current_col;
 
-        for note_event in &measure.notes {
+        // Get lyrics for this measure from the first part
+        let part = &measure.parts[0];
+        let mut lyrics_iter = part.lyrics.as_ref().map(|l| l.syllables.iter());
+
+        for note_event in &part.notes.events {
             match note_event {
                 NoteEvent::Note(note) => {
                     // Row 1: note head
@@ -255,14 +242,16 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                     // Lyric (row 3)
                     let is_tie_continuation = prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
                     if !is_tie_continuation {
-                        if let Some(syllable) = lyrics_iter.next() {
-                            let is_cjk = syllable.text.chars().next().map(|c| is_cjk_char(c)).unwrap_or(false);
-                            current_elements.push(GridElement {
-                                position: GridPosition { column: current_col, row: current_row_offset + 3 },
-                                horizontal_alignment: HorizontalAlignment::Center,
-                                vertical_alignment: VerticalAlignment::Top,
-                                content: GridContent::Lyric { text: syllable.text.clone(), is_cjk },
-                            });
+                        if let Some(ref mut iter) = lyrics_iter {
+                            if let Some(syllable) = iter.next() {
+                                let is_cjk = syllable.text.chars().next().map(|c| is_cjk_char(c)).unwrap_or(false);
+                                current_elements.push(GridElement {
+                                    position: GridPosition { column: current_col, row: current_row_offset + 3 },
+                                    horizontal_alignment: HorizontalAlignment::Center,
+                                    vertical_alignment: VerticalAlignment::Top,
+                                    content: GridContent::Lyric { text: syllable.text.clone(), is_cjk },
+                                });
+                            }
                         }
                     }
                     prev_tie = note.tie;
@@ -393,8 +382,8 @@ fn flush_chain(chain: &[(u32, JianPuPitch)], chain_row: u32, elements: &mut Vec<
     }
 }
 
-fn measure_column_width(measure: &crate::ast::grouped::Measure) -> u32 {
-    let notes_width: u32 = measure.notes.iter().map(|n| match n {
+fn measure_column_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 {
+    let notes_width: u32 = measure.parts[0].notes.events.iter().map(|n| match n {
         NoteEvent::Note(note) => note.duration,
         NoteEvent::Rest(rest) => rest.duration,
     }).sum();
@@ -701,10 +690,6 @@ mod tests {
 
     #[test]
     fn lone_sixteenth_note_has_two_underlines() {
-        // =1(1qb) then 15 quarter-beats of rest to fill 4/4 (15 = not valid as quarter notes...)
-        // Use =1 then rests: =1(1qb) + 0(4qb)*3 + rest to fill. Actually 1+4+4+4+3 doesn't work.
-        // Fill with: =1 0 0 0 and pad the score to 4/4 = 16qb: =1(1) + 0(4)+0(4)+0(4) = 13, need 3 more.
-        // Use: =1 =0 0 0 0 0 = 1+1+4+4+4+... let's just use a full measure with rests.
         // =1(1qb) and fill with quarter rests: need 15 more qb but rests are 4qb each = can't hit 16.
         // Use: =1 =0 =0 =0 0 0 0 = 1+1+1+1+4+4+4 = 16qb ✓
         // Only =1 is a note (pitch); =0 are sixteenth rests → flush before each rest.
