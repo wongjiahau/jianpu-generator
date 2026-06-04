@@ -33,6 +33,7 @@ Plain `[score]` / `[lyrics]` (no name) remain valid — treated as a single unna
 - A `[lyrics:X]` with no matching `[score:X]` → **error: orphan lyrics section**.
 - A `[score:X]` with no `[lyrics:X]` is valid (lyrics are optional per part).
 - Duplicate `[score:X]` for the same name → error.
+- Duplicate `[lyrics:X]` for the same name → error.
 
 ### Directives
 
