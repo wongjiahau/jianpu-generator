@@ -45,9 +45,9 @@ fn main() {
     let result = (|| -> Result<(), error::JianPuError> {
         let doc = parser::parse(&input, &filename)?;
         let score = grouper::group(doc)?;
-        let cell_size = score.metadata.cell_size;
+        let row_height = score.metadata.row_height;
         let pages = layout::layout(&score, 595.0, 842.0);
-        let svgs = renderer::render(&pages, cell_size);
+        let svgs = renderer::render(&pages, row_height);
 
         if args.svg {
             for (i, svg) in svgs.iter().enumerate() {

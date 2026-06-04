@@ -16,7 +16,8 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
             title: doc.metadata.title,
             subtitle: doc.metadata.subtitle,
             author: doc.metadata.author,
-            cell_size: doc.metadata.cell_size.unwrap_or(24),
+            row_height: doc.metadata.row_height.unwrap_or(24),
+            max_columns: doc.metadata.max_columns.unwrap_or(28),
             label_width: doc.metadata.label_width.unwrap_or(40),
         },
         measures,
@@ -274,11 +275,11 @@ mod tests {
     }
 
     #[test]
-    fn cell_size_defaults_to_24() {
+    fn row_height_defaults_to_24() {
         let score = parse_and_group(
             "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n4/4 1 2 3 4\n\n[lyrics]\na b c d\n",
         );
-        assert_eq!(score.metadata.cell_size, 24);
+        assert_eq!(score.metadata.row_height, 24);
     }
 
     #[test]

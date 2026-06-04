@@ -240,7 +240,7 @@ mod tests {
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();
         let pages = layout::layout(&score, A4_W, A4_H);
-        render(&pages, score.metadata.cell_size)
+        render(&pages, score.metadata.row_height)
     }
 
     #[test]
@@ -323,7 +323,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.cell_size);
+        let svgs = render(&pages, score.metadata.row_height);
         let svg = &svgs[0];
         assert!(svg.contains(">2<"), "expected numerator 2 in SVG for 2/4 time signature");
         assert!(svg.contains(">4<"), "expected denominator 4 in SVG for 2/4 time signature");
@@ -336,7 +336,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.cell_size);
+        let svgs = render(&pages, score.metadata.row_height);
         let svg = &svgs[0];
         assert!(svg.contains("♩=75"), "expected BPM label text '♩=75' in SVG output");
     }
@@ -353,7 +353,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.cell_size);
+        let svgs = render(&pages, score.metadata.row_height);
         assert!(svgs[0].contains("Soprano"), "expected 'Soprano' label in SVG");
         assert!(svgs[0].contains("Alto"), "expected 'Alto' label in SVG");
     }

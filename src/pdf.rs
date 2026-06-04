@@ -91,9 +91,9 @@ mod tests {
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();
-        let cell_size = score.metadata.cell_size;
+        let row_height = score.metadata.row_height;
         let pages = layout::layout(&score, 595.0, 842.0);
-        let svgs = renderer::render(&pages, cell_size);
+        let svgs = renderer::render(&pages, row_height);
         write_pdf(&svgs).unwrap()
     }
 

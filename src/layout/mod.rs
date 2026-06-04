@@ -77,9 +77,9 @@ fn compute_prefix_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 
 const PAGE_MARGIN: f32 = 25.0;
 
 /// A4 in points: 595 × 842.
-/// Column width = cell_size, row height = cell_size.
+/// Column width = row_height, row height = row_height.
 pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Page> {
-    let cell = score.metadata.cell_size as f32;
+    let cell = score.metadata.row_height as f32;
     let usable_width = page_width_pt - 2.0 * PAGE_MARGIN;
     let columns_per_page = (usable_width / cell) as u32;
 

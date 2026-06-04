@@ -24,7 +24,8 @@ pub fn parse_metadata(
     let mut title: Option<String> = None;
     let mut subtitle: Option<String> = None;
     let mut author: Option<String> = None;
-    let mut cell_size: Option<u32> = None;
+    let mut row_height: Option<u32> = None;
+    let mut max_columns: Option<u32> = None;
     let mut label_width: Option<u32> = None;
     let mut byte_offset = base_offset;
 
@@ -48,8 +49,11 @@ pub fn parse_metadata(
             "title" => title = Some(value.to_string()),
             "subtitle" => subtitle = Some(value.to_string()),
             "author" => author = Some(value.to_string()),
-            "cell size" => {
-                cell_size = Some(parse_positive_u32("cell size", value, &line_span)?);
+            "row height" => {
+                row_height = Some(parse_positive_u32("row height", value, &line_span)?);
+            }
+            "max columns" => {
+                max_columns = Some(parse_positive_u32("max columns", value, &line_span)?);
             }
             "label width" => {
                 label_width = Some(parse_positive_u32("label width", value, &line_span)?);
@@ -73,7 +77,8 @@ pub fn parse_metadata(
         subtitle,
         author: author
             .ok_or_else(|| JianPuError::new(zero_span, "missing required field: author"))?,
-        cell_size,
+        row_height,
+        max_columns,
         label_width,
     })
 }
@@ -88,15 +93,23 @@ mod tests {
         let meta = parse_metadata(content, 0).unwrap();
         assert_eq!(meta.title, "hello world");
         assert_eq!(meta.author, "foo");
-        assert_eq!(meta.cell_size, None);
+        assert_eq!(meta.row_height, None);
+        assert_eq!(meta.max_columns, None);
         assert_eq!(meta.label_width, None);
     }
 
     #[test]
-    fn parses_optional_cell_size() {
-        let content = "title = \"t\"\nauthor = \"a\"\ncell size = 16\n";
+    fn parses_optional_row_height() {
+        let content = "title = \"t\"\nauthor = \"a\"\nrow height = 16\n";
         let meta = parse_metadata(content, 0).unwrap();
-        assert_eq!(meta.cell_size, Some(16));
+        assert_eq!(meta.row_height, Some(16));
+    }
+
+    #[test]
+    fn parses_optional_max_columns() {
+        let content = "title = \"t\"\nauthor = \"a\"\nmax columns = 32\n";
+        let meta = parse_metadata(content, 0).unwrap();
+        assert_eq!(meta.max_columns, Some(32));
     }
 
     #[test]
@@ -118,8 +131,14 @@ mod tests {
     }
 
     #[test]
-    fn rejects_invalid_cell_size() {
-        let content = "title = \"t\"\nauthor = \"a\"\ncell size = abc\n";
+    fn rejects_invalid_row_height() {
+        let content = "title = \"t\"\nauthor = \"a\"\nrow height = abc\n";
+        assert!(parse_metadata(content, 0).is_err());
+    }
+
+    #[test]
+    fn rejects_invalid_max_columns() {
+        let content = "title = \"t\"\nauthor = \"a\"\nmax columns = 0\n";
         assert!(parse_metadata(content, 0).is_err());
     }
 
@@ -138,15 +157,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_cell_size_with_space_case() {
-        let content = "title = \"t\"\nauthor = \"a\"\ncell size = 20\n";
-        let meta = parse_metadata(content, 0).unwrap();
-        assert_eq!(meta.cell_size, Some(20));
-    }
-
-    #[test]
-    fn rejects_cell_size_with_underscore() {
-        let content = "title = \"t\"\nauthor = \"a\"\ncell_size = 20\n";
+    fn rejects_row_height_with_underscore() {
+        let content = "title = \"t\"\nauthor = \"a\"\nrow_height = 20\n";
         assert!(parse_metadata(content, 0).is_err());
     }
 
