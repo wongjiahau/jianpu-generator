@@ -60,12 +60,27 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
             }
         }
 
-        if data_lines.len() != parts.len() {
+        // Allow fewer lines than parts only when trailing columns are all Lyrics columns;
+        // missing lyrics lines are treated as empty (no syllables).
+        // Too many lines or too few notes lines are always errors.
+        let notes_cols_count = parts.iter().filter(|p| matches!(p, PartColumn::Notes { .. })).count();
+        if data_lines.len() < notes_cols_count {
             return Err(JianPuError::at_bar(bar, 0, format!(
                 "expected {} lines (one per parts column), got {}",
                 parts.len(), data_lines.len()
             )));
         }
+        if data_lines.len() > parts.len() {
+            return Err(JianPuError::at_bar(bar, 0, format!(
+                "expected {} lines (one per parts column), got {}",
+                parts.len(), data_lines.len()
+            )));
+        }
+
+        // Pad with empty strings for missing trailing lyrics lines
+        let padded_data: Vec<String> = (0..parts.len())
+            .map(|i| data_lines.get(i).cloned().unwrap_or_default())
+            .collect();
 
         if !directive_events.is_empty() {
             events_acc[0].extend(directive_events);
@@ -73,7 +88,7 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
 
         let beats_expected = beats_per_measure(time_num, time_den);
 
-        for (i, line) in data_lines.iter().enumerate() {
+        for (i, line) in padded_data.iter().enumerate() {
             match col_actions[i] {
                 ColAction::Notes(idx) => {
                     let tokens = tokenizer::tokenize(line, 0);
@@ -299,11 +314,26 @@ mod tests {
     }
 
     #[test]
-    fn rejects_wrong_line_count_in_group() {
-        let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\n";
+    fn rejects_too_many_lines_in_group() {
+        // 3 lines for 2-column parts declaration → error
+        let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\nextra line\n";
         let parts = vec![notes_col(""), lyrics_col("")];
         let err = parse(content, &parts).unwrap_err();
         assert!(matches!(err.location, crate::error::Location::Bar { bar: 1, .. }));
+    }
+
+    #[test]
+    fn allows_missing_trailing_lyrics_line_in_subsequent_bars() {
+        // Bar 2 has no lyrics line — it should be padded with empty.
+        let content = concat!(
+            "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n",
+            "\n",
+            "5 6 7 1\n",
+        );
+        let parts = vec![notes_col(""), lyrics_col("")];
+        let result = parse(content, &parts).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
     }
 
     #[test]

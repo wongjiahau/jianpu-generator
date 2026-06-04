@@ -102,7 +102,7 @@ mod tests {
 
     fn make_two_part_score(soprano: &str, alto: &str) -> Vec<MultiPartMeasure> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n[score:Soprano]\n4/4 {}\n[score:Alto]\n{}\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{}\n{}\n",
             soprano, alto
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
@@ -125,12 +125,15 @@ mod tests {
 
     #[test]
     fn rejects_parts_with_different_measure_counts() {
+        // Both parts in one group must have the same beat count.
+        // Alto row has too many beats — interleaved parser rejects it.
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n",
-            "[score:Soprano]\n4/4 1 2 3 4\n",
-            "[score:Alto]\n5 6 7 1 5 6 7 1\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "5 6 7 1 5\n",
         );
-        let doc = parser::parse(input, "test.jianpu").unwrap();
-        assert!(grouper::group(doc).is_err());
+        assert!(parser::parse(input, "test.jianpu").is_err());
     }
 }

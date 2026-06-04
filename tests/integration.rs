@@ -6,11 +6,11 @@ fn full_pipeline_produces_pdf() {
     let input = r#"[metadata]
 title = "test score"
 author = "tester"
+parts = notes: lyrics:
 
 [score]
-bpm=120 1=C4 4/4 1 2 3 4
-
-[lyrics]
+(time=4/4 key=C4 bpm=120)
+1 2 3 4
 do re mi fa
 "#;
 

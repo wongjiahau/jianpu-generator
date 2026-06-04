@@ -519,19 +519,41 @@ mod tests {
     use crate::parser;
     use crate::grouper;
 
+    /// Build a single-part score with lyrics from bar-separated notes (use `|` to separate bars).
+    /// All lyrics syllables are placed in the first bar's lyrics row; the grouper distributes them
+    /// across measures. Subsequent bars omit the lyrics line (parser pads with empty).
     fn make_score(score_str: &str, lyrics_str: &str) -> Score {
+        let bars: Vec<&str> = score_str.split('|').map(str::trim).filter(|s| !s.is_empty()).collect();
+        let mut score_content = String::new();
+        score_content.push_str("(time=4/4 key=C4 bpm=120)\n");
+        for (i, bar) in bars.iter().enumerate() {
+            score_content.push_str(bar);
+            score_content.push('\n');
+            if i == 0 {
+                // Place all lyrics in first bar; grouper distributes across measures
+                score_content.push_str(lyrics_str);
+                score_content.push('\n');
+            }
+            // Subsequent bars omit the lyrics line; interleaved parser pads with empty string
+            score_content.push('\n'); // blank line separating bar groups
+        }
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n4/4 {}\n\n[lyrics]\n{}\n",
-            score_str, lyrics_str
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{}",
+            score_content
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
     }
 
+    /// Build a score from a pre-formatted score_content string (new interleaved format).
+    /// score_section must be the full content after `[score]\n` in new interleaved syntax.
     fn make_score_raw(score_section: &str, lyrics_str: &str) -> Score {
+        // score_section is already in new interleaved format passed by callers.
+        // lyrics_str is ignored here as it's embedded in score_section.
+        let _ = lyrics_str; // lyrics are inline in score_section
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n{}\n\n[lyrics]\n{}\n",
-            score_section, lyrics_str
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{}",
+            score_section
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -585,7 +607,7 @@ mod tests {
 
     #[test]
     fn unchanged_time_signature_emits_no_second_label() {
-        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let score = make_score("1 2 3 4 | 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let labels: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -597,7 +619,7 @@ mod tests {
 
     #[test]
     fn unchanged_bpm_emits_no_second_label() {
-        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let score = make_score("1 2 3 4 | 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let labels: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -609,7 +631,11 @@ mod tests {
 
     #[test]
     fn time_signature_change_emits_second_label() {
-        let score = make_score_raw("4/4 1 2 3 4 3/4 1 2 3", "a b c d e f g");
+        // Two bars: first 4/4 (4 quarter notes), second 3/4 (3 quarter notes), each with lyrics.
+        let score = make_score_raw(
+            "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n\n(time=3/4)\n1 2 3\ne f g\n",
+            "",
+        );
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let labels: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -621,7 +647,11 @@ mod tests {
 
     #[test]
     fn bpm_change_emits_second_label() {
-        let score = make_score_raw("4/4 bpm=120 1 2 3 4 bpm=90 5 6 7 1", "a b c d e f g h");
+        // Two bars: first at bpm=120, second at bpm=90, each with lyrics.
+        let score = make_score_raw(
+            "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n\n(bpm=90)\n5 6 7 1\ne f g h\n",
+            "",
+        );
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let labels: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -878,7 +908,9 @@ mod tests {
 
     #[test]
     fn half_beat_note_has_duration_underline() {
-        let score = make_score("_1 2 3 _4", "a b c d");
+        // Full 4/4 bar: 2 eighth notes separated by 3 quarter notes = 2+4+4+4+2 = 16 quarter-beats.
+        // _1 and _4 are each flushed as separate beam groups → 2 DurationUnderlines elements.
+        let score = make_score("_1 3 3 3 _4", "a b c d e");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let all_elements: Vec<_> = pages[0].row_groups.iter()
             .flat_map(|rg| rg.elements.iter())
@@ -886,7 +918,7 @@ mod tests {
         let underlines: Vec<_> = all_elements.iter()
             .filter(|e| matches!(&e.content, GridContent::DurationUnderlines { levels } if levels.len() == 1))
             .collect();
-        assert_eq!(underlines.len(), 2); // _1 and _4
+        assert_eq!(underlines.len(), 2); // one for _1, one for _4
     }
 
     #[test]
@@ -916,7 +948,7 @@ mod tests {
         // Second measure: 0 + 16 + 1 = 17 cols — 21 + 17 = 38 > 28 → wraps after first measure.
         // Same time sig and BPM on second measure → no repeat labels.
         // Total TimeSignatureLabel count across the whole score should be exactly 1.
-        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let score = make_score("1 2 3 4 | 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, 300.0, A4_HEIGHT);
         let time_sig_labels: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -939,7 +971,7 @@ mod tests {
 
     fn make_two_part_score(s_notes: &str, a_notes: &str) -> Score {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n[score:Soprano]\n4/4 {}\n[score:Alto]\n{}\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{}\n{}\n",
             s_notes, a_notes
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
@@ -1017,7 +1049,7 @@ mod tests {
     fn left_bar_line_emitted_for_each_system_line_on_wrap() {
         // First measure: 4 (directives) + 16 (notes) + 1 (bar) = 21 cols
         // Second measure: 0 + 16 + 1 = 17 cols; 21+17=38 > 28 → wraps → 2 system lines
-        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let score = make_score("1 2 3 4 | 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, 300.0, A4_HEIGHT);
         let left_bars: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -1050,7 +1082,7 @@ mod tests {
 
     #[test]
     fn bottom_bar_emitted_for_each_system_line_on_wrap() {
-        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let score = make_score("1 2 3 4 | 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, 300.0, A4_HEIGHT);
         let bottom_bars: Vec<_> = pages.iter()
             .flat_map(|p| p.row_groups.iter())
@@ -1101,7 +1133,7 @@ mod tests {
     fn bar_number_emitted_at_start_of_each_row_group() {
         // First measure: 4 (directives) + 16 (notes) + 1 (bar) = 21 cols, fits in max_columns=28.
         // Second measure: 0 + 16 + 1 = 17 cols; 21+17=38 > 28 → wraps → two row groups.
-        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let score = make_score("1 2 3 4 | 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
 
         let bar_numbers: Vec<_> = pages.iter()

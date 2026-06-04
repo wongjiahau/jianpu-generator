@@ -248,7 +248,7 @@ mod tests {
 
     fn render_score(score_str: &str, lyrics_str: &str) -> Vec<String> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n4/4 {}\n\n[lyrics]\n{}\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{}\n{}\n",
             score_str, lyrics_str
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
@@ -289,7 +289,7 @@ mod tests {
 
     #[test]
     fn cjk_lyric_has_larger_font() {
-        let svgs = render_score("1 2", "你 a");
+        let svgs = render_score("1 2 3 4", "你 a b c");
         let svg = &svgs[0];
         // Extract all font-size values from the SVG
         // CJK font = base * 1.2, non-CJK = base
@@ -333,7 +333,10 @@ mod tests {
     fn time_signature_label_renders_numerator_and_denominator_text() {
         // Use 2/4 with notes pitched 3 and 5 so that no note digit equals 2 or 4,
         // making the text matches unambiguous.
-        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n2/4 3 5\n\n[lyrics]\na b\n";
+        let input = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[score]\n(time=2/4 key=C4 bpm=120)\n3 5\na b\n",
+        );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
@@ -346,7 +349,10 @@ mod tests {
     #[test]
     fn bpm_label_renders_beats_per_minute_text() {
         // Use a non-default BPM (75) so the value is unambiguous in the SVG text.
-        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[score]\n4/4 bpm=75 1 2 3 4\n\n[lyrics]\na b c d\n";
+        let input = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=75)\n1 2 3 4\na b c d\n",
+        );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
@@ -358,11 +364,8 @@ mod tests {
     #[test]
     fn multi_part_svg_contains_both_part_labels() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n",
-            "[score:Soprano]\n4/4 1 2 3 4\n",
-            "[lyrics:Soprano]\na b c d\n",
-            "[score:Alto]\n5 6 7 1\n",
-            "[lyrics:Alto]\ne f g h\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano lyrics:Soprano notes:Alto lyrics:Alto\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n5 6 7 1\ne f g h\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
@@ -407,9 +410,8 @@ mod tests {
         // Two measures force a row wrap → two row groups → two bar numbers in SVG.
         // row_height=24, base_font_size=24*0.6=14.4, bar_number_font=14.4*0.6=8.6 (rounded to 1dp)
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n",
-            "[score]\n4/4 1 2 3 4 5 6 7 1\n\n",
-            "[lyrics]\na b c d e f g h\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n\n5 6 7 1\ne f g h\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
