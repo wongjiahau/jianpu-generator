@@ -47,7 +47,9 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
             }
         };
 
-    for spanned in doc.score_events {
+    let first_part = doc.parts.into_iter().next().unwrap();
+    let doc_lyrics = first_part.lyrics.map(|l| l.syllables).unwrap_or_default();
+    for spanned in first_part.score.events {
         match spanned.value {
             ScoreEvent::BpmChange(bpm) => {
                 flush_measure(
@@ -209,7 +211,7 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
             cell_size: doc.metadata.cell_size.unwrap_or(24),
         },
         measures,
-        lyrics: doc.lyrics,
+        lyrics: doc_lyrics,
     })
 }
 

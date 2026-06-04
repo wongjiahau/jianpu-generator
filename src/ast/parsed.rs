@@ -1,12 +1,30 @@
 use crate::error::Spanned;
 
+#[derive(Debug)]
+pub struct ParsedScore {
+    pub events: Vec<Spanned<ScoreEvent>>,
+}
+
+#[derive(Debug)]
+pub struct ParsedLyrics {
+    pub syllables: Vec<Syllable>,
+}
+
+#[derive(Debug)]
+pub struct ParsedPart {
+    pub name: Option<String>,
+    pub score: ParsedScore,
+    pub lyrics: Option<ParsedLyrics>,
+}
+
+#[derive(Debug)]
 pub struct ParsedDocument {
     pub filename: String,
     pub metadata: ParsedMetadata,
-    pub score_events: Vec<Spanned<ScoreEvent>>,
-    pub lyrics: Vec<Syllable>,
+    pub parts: Vec<ParsedPart>,
 }
 
+#[derive(Debug)]
 pub struct ParsedMetadata {
     pub title: String,
     pub subtitle: Option<String>,
@@ -15,6 +33,7 @@ pub struct ParsedMetadata {
     pub label_width: Option<u32>,
 }
 
+#[derive(Debug)]
 pub enum ScoreEvent {
     Note(ParsedNote),
     Rest(ParsedRest),
@@ -25,6 +44,7 @@ pub enum ScoreEvent {
     Extension,
 }
 
+#[derive(Debug)]
 pub struct ParsedNote {
     pub pitch: JianPuPitch,
     /// Octave offset from the default octave. 0 = default, positive = up, negative = down.
@@ -35,6 +55,7 @@ pub struct ParsedNote {
     pub tie: bool,
 }
 
+#[derive(Debug)]
 pub struct ParsedRest {
     /// Duration in quarter-beats. Token parser produces only 1, 2, or 4.
     pub duration: u32,
@@ -51,12 +72,12 @@ pub enum JianPuPitch {
     Seven,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct KeyChange {
     pub note: Note,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Note {
     pub name: NoteName,
     pub octave: u8,
