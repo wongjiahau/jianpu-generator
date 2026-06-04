@@ -1,7 +1,7 @@
 [metadata]
 title = "Feature Demo"
 author = "Jianpu Generator"
-cell size = 20
+row height = 20
 
 [score]
 bpm=100 1=C4 4/4
