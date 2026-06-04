@@ -49,7 +49,7 @@ pub fn combine(parts: Vec<GroupedPart>) -> Result<Vec<MultiPartMeasure>, JianPuE
                 };
                 PartSlice {
                     name: part.name.clone(),
-                    notes: Notes { events: measure.notes.events.iter().map(clone_note_event).collect() },
+                    notes: Notes { events: measure.notes.events.clone() },
                     lyrics,
                 }
             })
@@ -64,18 +64,6 @@ pub fn combine(parts: Vec<GroupedPart>) -> Result<Vec<MultiPartMeasure>, JianPuE
     }
 
     Ok(combined)
-}
-
-fn clone_note_event(event: &NoteEvent) -> NoteEvent {
-    match event {
-        NoteEvent::Note(n) => NoteEvent::Note(GroupedNote {
-            pitch: n.pitch.clone(),
-            octave: n.octave,
-            duration: n.duration,
-            tie: n.tie,
-        }),
-        NoteEvent::Rest(r) => NoteEvent::Rest(GroupedRest { duration: r.duration }),
-    }
 }
 
 fn distribute_lyrics(measures: &[GroupedMeasure], lyrics: &[Syllable]) -> Vec<Vec<Syllable>> {

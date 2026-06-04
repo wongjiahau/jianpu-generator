@@ -62,18 +62,24 @@ pub struct TimeSignature {
     pub denominator: u8,
 }
 
+#[derive(Clone)]
 pub enum NoteEvent {
     Note(GroupedNote),
     Rest(GroupedRest),
 }
 
+#[derive(Clone)]
 pub struct GroupedNote {
     pub pitch: JianPuPitch,
     pub octave: i8,
+    /// Duration in quarter-beats, including any beats added by `-` extensions.
     pub duration: u32,
+    /// True if this note is tied/slurred to the next note.
     pub tie: bool,
 }
 
+#[derive(Clone)]
 pub struct GroupedRest {
+    /// Duration in quarter-beats, including any beats added by `-` extensions.
     pub duration: u32,
 }
