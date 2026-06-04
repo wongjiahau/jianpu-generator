@@ -77,11 +77,10 @@ fn compute_prefix_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 
 const PAGE_MARGIN: f32 = 25.0;
 
 /// A4 in points: 595 × 842.
-/// Column width = row_height, row height = row_height.
+/// Row height in points = score.metadata.row_height. Column width varies per row (justified).
 pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Page> {
-    let cell = score.metadata.row_height as f32;
-    let usable_width = page_width_pt - 2.0 * PAGE_MARGIN;
-    let columns_per_page = (usable_width / cell) as u32;
+    let row_height = score.metadata.row_height as f32;
+    let columns_per_row = score.metadata.max_columns;
 
     let num_parts = score.measures.first().map(|m| m.parts.len()).unwrap_or(1).max(1) as u32;
     let row_group_height: u32 = 4 * num_parts;
@@ -90,7 +89,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         .map(|m| m.parts.iter().any(|p| p.name.is_some()))
         .unwrap_or(false);
     let label_cols: u32 = if has_named_parts {
-        ((score.metadata.label_width as f32 / cell).ceil()) as u32
+        ((score.metadata.label_width as f32 / row_height).ceil()) as u32
     } else {
         0
     };
@@ -99,7 +98,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let footer_rows: u32 = 1;
     let reserved_rows = header_rows + footer_rows;
     let usable_height = page_height_pt - 2.0 * PAGE_MARGIN;
-    let row_groups_per_page = ((usable_height / cell) as u32 - reserved_rows) / row_group_height;
+    let row_groups_per_page = ((usable_height / row_height) as u32 - reserved_rows) / row_group_height;
 
     let make_header = || Header {
         title: score.metadata.title.clone(),
@@ -132,7 +131,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         let prefix_width = compute_prefix_width(measure);
         let measure_width = measure_column_width(measure);
 
-        if current_col + prefix_width + measure_width > columns_per_page {
+        if current_col + prefix_width + measure_width > columns_per_row {
             // Flush open beam buffers for all parts
             for (part_idx, beam_buf) in per_part_beam_buffer.iter_mut().enumerate() {
                 let part_row = current_row_offset + part_idx as u32 * 4;
@@ -839,11 +838,10 @@ mod tests {
 
     #[test]
     fn unchanged_labels_do_not_repeat_after_line_wrap() {
-        // Use a narrow page so measures wrap across multiple row groups.
-        // With cell_size=24 and page_width=300: columns_per_page = 12.
-        // First measure: 2+2+16+1 = 21 > 12 → wraps before placing notes.
-        // After wrap the first measure is placed (still same time sig, same BPM).
-        // Second measure: same time sig, same BPM → no prefix labels.
+        // Wrapping is controlled by max_columns (default 28), not page width.
+        // First measure: 4 (directives) + 16 (notes) + 1 (bar) = 21 cols — fits in 28.
+        // Second measure: 0 + 16 + 1 = 17 cols — 21 + 17 = 38 > 28 → wraps after first measure.
+        // Same time sig and BPM on second measure → no repeat labels.
         // Total TimeSignatureLabel count across the whole score should be exactly 1.
         let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
         let pages = layout(&score, 300.0, A4_HEIGHT);
