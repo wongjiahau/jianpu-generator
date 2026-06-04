@@ -119,6 +119,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let mut current_col: u32 = label_cols;
     let mut current_row_offset: u32 = header_rows;
     let mut is_line_start = true;
+    let mut bar_number: u32 = 1;
 
     // Per-part state that persists across measure boundaries
     let mut per_part_prev_tie: Vec<bool> = vec![false; num_parts as usize];
@@ -183,6 +184,12 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                 horizontal_alignment: HorizontalAlignment::Left,
                 vertical_alignment: VerticalAlignment::Center,
                 content: GridContent::BarLine { height_in_rows: bar_height },
+            });
+            current_elements.push(GridElement {
+                position: GridPosition { column: label_cols, row: current_row_offset },
+                horizontal_alignment: HorizontalAlignment::Left,
+                vertical_alignment: VerticalAlignment::Bottom,
+                content: GridContent::BarNumber { number: bar_number },
             });
         }
         // Emit part labels at start of each system line
@@ -370,6 +377,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             content: GridContent::BarLine { height_in_rows: bar_height },
         });
         current_col = bar_col + 1;
+        bar_number += 1;
     }
 
     // Bottom system bar for the last row group
@@ -1048,5 +1056,38 @@ mod tests {
         } else {
             panic!("expected BarLine");
         }
+    }
+
+    #[test]
+    fn bar_number_emitted_at_start_of_each_row_group() {
+        // First measure: 4 (directives) + 16 (notes) + 1 (bar) = 21 cols, fits in max_columns=28.
+        // Second measure: 0 + 16 + 1 = 17 cols; 21+17=38 > 28 → wraps → two row groups.
+        let score = make_score("1 2 3 4 5 6 7 1", "a b c d e f g h");
+        let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
+
+        let bar_numbers: Vec<_> = pages.iter()
+            .flat_map(|p| p.row_groups.iter())
+            .flat_map(|rg| rg.elements.iter())
+            .filter(|e| matches!(e.content, GridContent::BarNumber { .. }))
+            .collect();
+
+        // One BarNumber per row group (2 row groups total)
+        assert_eq!(bar_numbers.len(), 2, "expected one BarNumber per row group");
+
+        // First row group: bar 1, at column 0 (label_cols=0), row = header_rows = 2
+        if let GridContent::BarNumber { number } = bar_numbers[0].content {
+            assert_eq!(number, 1, "first row group must start at bar 1");
+        }
+        assert_eq!(bar_numbers[0].position.column, 0);
+        assert_eq!(bar_numbers[0].position.row, 2, "row = header_rows = 2");
+        assert_eq!(bar_numbers[0].horizontal_alignment, HorizontalAlignment::Left);
+        assert_eq!(bar_numbers[0].vertical_alignment, VerticalAlignment::Bottom);
+
+        // Second row group: bar 2, at column 0, row = header_rows + row_group_height = 2 + 4 = 6
+        if let GridContent::BarNumber { number } = bar_numbers[1].content {
+            assert_eq!(number, 2, "second row group must start at bar 2");
+        }
+        assert_eq!(bar_numbers[1].position.column, 0);
+        assert_eq!(bar_numbers[1].position.row, 6, "row = 2 + 4 = 6");
     }
 }
