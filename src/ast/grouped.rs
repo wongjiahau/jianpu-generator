@@ -6,8 +6,10 @@ pub struct Metadata {
     pub title: String,
     pub subtitle: Option<String>,
     pub author: String,
-    /// Grid cell size in points. Default: 24.
-    pub cell_size: u32,
+    /// Row height in points. Controls font sizes, dot radii, and all vertical spacing. Default: 24.
+    pub row_height: u32,
+    /// Maximum logical columns per row before wrapping. Default: 28.
+    pub max_columns: u32,
     /// Left margin reserved for part labels in points. Default: 40.
     pub label_width: u32,
 }

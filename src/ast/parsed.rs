@@ -29,7 +29,8 @@ pub struct ParsedMetadata {
     pub title: String,
     pub subtitle: Option<String>,
     pub author: String,
-    pub cell_size: Option<u32>,
+    pub row_height: Option<u32>,
+    pub max_columns: Option<u32>,
     pub label_width: Option<u32>,
 }
 
