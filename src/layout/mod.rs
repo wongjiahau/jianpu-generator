@@ -144,9 +144,9 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             // Drop any open chains on wrap — cross-line tie arcs are not supported.
             for chain in per_part_pending_chain.iter_mut() { chain.clear(); }
 
-            if !current_elements.is_empty() {
+            if let Some(elements) = nonempty::NonEmpty::from_vec(std::mem::take(&mut current_elements)) {
                 current_page_row_groups.push(RowGroup {
-                    elements: std::mem::take(&mut current_elements),
+                    elements,
                     height_in_rows: row_group_height,
                     width_in_columns: current_col,
                 });
@@ -357,9 +357,9 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     }
 
     // Flush remaining elements
-    if !current_elements.is_empty() {
+    if let Some(elements) = nonempty::NonEmpty::from_vec(std::mem::take(&mut current_elements)) {
         current_page_row_groups.push(RowGroup {
-            elements: std::mem::take(&mut current_elements),
+            elements,
             height_in_rows: row_group_height,
             width_in_columns: current_col,
         });

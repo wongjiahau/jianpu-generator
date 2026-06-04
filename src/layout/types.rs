@@ -1,4 +1,5 @@
 use crate::ast::parsed::JianPuPitch;
+use nonempty::NonEmpty;
 
 #[derive(Debug, Clone)]
 pub struct Header {
@@ -24,10 +25,9 @@ pub struct Page {
 
 #[derive(Debug, Clone)]
 pub struct RowGroup {
-    pub elements: Vec<GridElement>,
+    pub elements: NonEmpty<GridElement>,
     pub height_in_rows: u32,
     /// Number of grid columns actually used by this row group.
-    /// Used by the renderer to center each row individually.
     pub width_in_columns: u32,
 }
 
