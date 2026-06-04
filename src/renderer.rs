@@ -3,30 +3,31 @@ use crate::layout::types::{GridContent, HorizontalAlignment, Page, VerticalAlign
 /// Must match PAGE_MARGIN in layout/mod.rs — padding applied on every edge.
 const PAGE_MARGIN: f32 = 25.0;
 
-pub fn render(pages: &[Page], cell_size: u32) -> Vec<String> {
-    pages.iter().map(|page| render_page(page, cell_size)).collect()
+pub fn render(pages: &[Page], row_height: u32) -> Vec<String> {
+    pages.iter().map(|page| render_page(page, row_height)).collect()
 }
 
-fn render_page(page: &Page, cell_size: u32) -> String {
-    let cell = cell_size as f32;
-    let base_font_size = cell * 0.6;
+fn render_page(page: &Page, row_height: u32) -> String {
+    let row_height = row_height as f32;
+    let base_font_size = row_height * 0.6;
     let cjk_font_size = base_font_size * 1.2;
     let page_width = page.page_width_pt;
     let page_height = 842.0_f32; // A4 height in points (matches SVG viewBox)
+    let usable_width = page_width - 2.0 * PAGE_MARGIN;
 
     let mut elements = String::new();
 
     // --- Header ---
-    let title_y = PAGE_MARGIN + cell * 0.75;
+    let title_y = PAGE_MARGIN + row_height * 0.75;
     elements.push_str(&format!(
         r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
         page_width / 2.0,
         title_y,
-        cell * 1.5,
+        row_height * 1.5,
         escape_xml(&page.header.title)
     ));
 
-    let subtitle_author_y = PAGE_MARGIN + cell * 1.5;
+    let subtitle_author_y = PAGE_MARGIN + row_height * 1.5;
     if let Some(subtitle) = &page.header.subtitle {
         elements.push_str(&format!(
             r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
@@ -46,25 +47,24 @@ fn render_page(page: &Page, cell_size: u32) -> String {
 
     // --- Row groups ---
     for row_group in &page.row_groups {
-        // Centre each row individually based on its actual content width.
-        let margin_x = (page.page_width_pt - row_group.width_in_columns as f32 * cell) / 2.0;
+        let column_width = usable_width / row_group.width_in_columns as f32;
 
-        for element in &row_group.elements {
+        for element in row_group.elements.iter() {
             let col = element.position.column as f32;
             let row = element.position.row as f32;
 
-            let base_x = col * cell + margin_x;
-            let base_y = PAGE_MARGIN + row * cell;
+            let base_x = col * column_width + PAGE_MARGIN;
+            let base_y = PAGE_MARGIN + row * row_height;
 
             let x = match element.horizontal_alignment {
                 HorizontalAlignment::Left => base_x,
-                HorizontalAlignment::Center => base_x + cell / 2.0,
-                HorizontalAlignment::Right => base_x + cell,
+                HorizontalAlignment::Center => base_x + column_width / 2.0,
+                HorizontalAlignment::Right => base_x + column_width,
             };
             let y = match element.vertical_alignment {
                 VerticalAlignment::Top => base_y,
-                VerticalAlignment::Center => base_y + cell / 2.0,
-                VerticalAlignment::Bottom => base_y + cell,
+                VerticalAlignment::Center => base_y + row_height / 2.0,
+                VerticalAlignment::Bottom => base_y + row_height,
             };
 
             match &element.content {
@@ -74,7 +74,7 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                         r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="monospace">{}</text>"#,
                         x, y, base_font_size, digit
                     ));
-                    let dot_radius = cell * 0.08;
+                    let dot_radius = row_height * 0.08;
                     let dot_spacing = dot_radius * 3.0;
                     for i in 0..*octave {
                         let dot_y = base_y - dot_radius - (i as f32) * dot_spacing;
@@ -93,9 +93,9 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                 GridContent::DurationUnderlines { levels } => {
                     let _ = x;
                     for (i, span) in levels.iter().enumerate() {
-                        let line_x1 = span.from_column as f32 * cell + cell * 0.1 + margin_x;
-                        let line_x2 = span.to_column as f32 * cell - cell * 0.1 + margin_x;
-                        let line_y = base_y + cell * 0.1 + (i as f32) * (cell * 0.15);
+                        let line_x1 = span.from_column as f32 * column_width + column_width * 0.1 + PAGE_MARGIN;
+                        let line_x2 = span.to_column as f32 * column_width - column_width * 0.1 + PAGE_MARGIN;
+                        let line_y = base_y + row_height * 0.1 + (i as f32) * (row_height * 0.15);
                         elements.push_str(&format!(
                             r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="1"/>"#,
                             line_x1, line_y, line_x2, line_y
@@ -103,7 +103,7 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                     }
                 }
                 GridContent::LowerOctaveDots { count } => {
-                    let dot_radius = cell * 0.08;
+                    let dot_radius = row_height * 0.08;
                     let dot_spacing = dot_radius * 3.0;
                     for i in 0..*count {
                         let dot_y = base_y + dot_radius + (i as f32) * dot_spacing;
@@ -122,9 +122,9 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                 }
                 GridContent::TieOrSlurCurve { from_column, to_column } => {
                     let _ = x;
-                    let x1 = (*from_column as f32 + 0.5) * cell + margin_x;
-                    let x2 = (*to_column as f32 + 0.5) * cell + margin_x;
-                    let cy = base_y - cell * 0.3;
+                    let x1 = (*from_column as f32 + 0.5) * column_width + PAGE_MARGIN;
+                    let x2 = (*to_column as f32 + 0.5) * column_width + PAGE_MARGIN;
+                    let cy = base_y - row_height * 0.3;
                     elements.push_str(&format!(
                         r#"<path d="M {:.1} {:.1} Q {:.1} {:.1} {:.1} {:.1}" fill="none" stroke="black" stroke-width="1"/>"#,
                         x1, y, (x1 + x2) / 2.0, cy, x2, y
@@ -139,19 +139,18 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                 GridContent::BarLine { height_in_rows } => {
                     let line_x = base_x;
                     let line_y1 = base_y;
-                    let line_y2 = base_y + *height_in_rows as f32 * cell;
+                    let line_y2 = base_y + *height_in_rows as f32 * row_height;
                     elements.push_str(&format!(
                         r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="1.5"/>"#,
                         line_x, line_y1, line_x, line_y2
                     ));
                 }
                 GridContent::TimeSignatureLabel { numerator, denominator } => {
-                    // The label occupies a 2-column slot; center relative to that slot.
-                    let slot_width = 2.0 * cell;
+                    let slot_width = 2.0 * column_width;
                     let center_x = base_x + slot_width / 2.0;
-                    let numerator_y = y - cell * 0.25;
+                    let numerator_y = y - row_height * 0.25;
                     let rule_y = y;
-                    let denominator_y = y + cell * 0.25;
+                    let denominator_y = y + row_height * 0.25;
                     let rule_x1 = base_x + slot_width * 0.2;
                     let rule_x2 = base_x + slot_width * 0.8;
                     elements.push_str(&format!(
@@ -168,8 +167,7 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                     ));
                 }
                 GridContent::BpmLabel { bpm } => {
-                    // The label occupies a 2-column slot; center relative to that slot.
-                    let slot_width = 2.0 * cell;
+                    let slot_width = 2.0 * column_width;
                     let center_x = base_x + slot_width / 2.0;
                     let small_font_size = base_font_size * 0.6;
                     elements.push_str(&format!(
@@ -188,12 +186,12 @@ fn render_page(page: &Page, cell_size: u32) -> String {
     }
 
     // --- Footer ---
-    let footer_y = page_height - PAGE_MARGIN - cell * 0.5;
+    let footer_y = page_height - PAGE_MARGIN - row_height * 0.5;
     elements.push_str(&format!(
         r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}/{}</text>"#,
         page_width / 2.0,
         footer_y,
-        cell * 0.75,
+        row_height * 0.75,
         page.footer.page,
         page.footer.total
     ));
@@ -279,7 +277,7 @@ mod tests {
         let svg = &svgs[0];
         // Extract all font-size values from the SVG
         // CJK font = base * 1.2, non-CJK = base
-        // With default cell_size=24: base = 24*0.6 = 14.4, cjk = 14.4*1.2 = 17.3
+        // With default row_height=24: base = 24*0.6 = 14.4, cjk = 14.4*1.2 = 17.3
         // Just verify two different font-size values appear
         let font_size_14 = svg.contains("font-size=\"14.4\"");
         let font_size_17 = svg.contains("font-size=\"17.3\"");
