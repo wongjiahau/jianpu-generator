@@ -6,6 +6,10 @@ pub mod metadata_parser;
 pub mod score;
 pub mod section_splitter;
 
+fn section_label(kind: &str, name: &Option<String>) -> String {
+    format!("[{}{}]", kind, name.as_deref().map(|n| format!(":{}", n)).unwrap_or_default())
+}
+
 pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError> {
     use section_splitter::{split_sections, SectionKind};
 
@@ -29,8 +33,7 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
                 if raw_scores.iter().any(|(n, _, _)| n == &name) {
                     return Err(JianPuError::new(
                         doc_span.clone(),
-                        format!("duplicate [score{}] section",
-                            name.as_deref().map(|n| format!(":{}", n)).unwrap_or_default()),
+                        format!("duplicate {} section", section_label("score", &name)),
                     ));
                 }
                 raw_scores.push((name, section.content, section.content_offset));
@@ -39,8 +42,7 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
                 if raw_lyrics.iter().any(|(n, _)| n == &name) {
                     return Err(JianPuError::new(
                         doc_span.clone(),
-                        format!("duplicate [lyrics{}] section",
-                            name.as_deref().map(|n| format!(":{}", n)).unwrap_or_default()),
+                        format!("duplicate {} section", section_label("lyrics", &name)),
                     ));
                 }
                 // Orphan check: lyrics name must match a score name
@@ -48,9 +50,9 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
                     return Err(JianPuError::new(
                         doc_span.clone(),
                         format!(
-                            "orphan [lyrics{}] section: no matching [score{}] found",
-                            name.as_deref().map(|n| format!(":{}", n)).unwrap_or_default(),
-                            name.as_deref().map(|n| format!(":{}", n)).unwrap_or_default(),
+                            "orphan {} section: no matching {} found",
+                            section_label("lyrics", &name),
+                            section_label("score", &name),
                         ),
                     ));
                 }
