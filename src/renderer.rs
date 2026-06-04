@@ -340,4 +340,21 @@ mod tests {
         let svg = &svgs[0];
         assert!(svg.contains("♩=75"), "expected BPM label text '♩=75' in SVG output");
     }
+
+    #[test]
+    fn multi_part_svg_contains_both_part_labels() {
+        let input = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n",
+            "[score:Soprano]\n4/4 1 2 3 4\n",
+            "[lyrics:Soprano]\na b c d\n",
+            "[score:Alto]\n5 6 7 1\n",
+            "[lyrics:Alto]\ne f g h\n",
+        );
+        let doc = crate::parser::parse(input, "test.jianpu").unwrap();
+        let score = crate::grouper::group(doc).unwrap();
+        let pages = crate::layout::layout(&score, A4_W, A4_H);
+        let svgs = render(&pages, score.metadata.cell_size);
+        assert!(svgs[0].contains("Soprano"), "expected 'Soprano' label in SVG");
+        assert!(svgs[0].contains("Alto"), "expected 'Alto' label in SVG");
+    }
 }
