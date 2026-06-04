@@ -136,10 +136,10 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                         x, y, base_font_size
                     ));
                 }
-                GridContent::BarLine => {
+                GridContent::BarLine { height_in_rows } => {
                     let line_x = base_x;
                     let line_y1 = base_y;
-                    let line_y2 = base_y + cell;
+                    let line_y2 = base_y + *height_in_rows as f32 * cell;
                     elements.push_str(&format!(
                         r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="1.5"/>"#,
                         line_x, line_y1, line_x, line_y2
@@ -175,6 +175,12 @@ fn render_page(page: &Page, cell_size: u32) -> String {
                     elements.push_str(&format!(
                         r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">♩={}</text>"#,
                         center_x, y, small_font_size, bpm
+                    ));
+                }
+                GridContent::PartLabel { text } => {
+                    elements.push_str(&format!(
+                        r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="start" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
+                        x, y, base_font_size * 0.8, escape_xml(text)
                     ));
                 }
             }

@@ -301,7 +301,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             position: GridPosition { column: current_col, row: current_row_offset + 1 },
             horizontal_alignment: HorizontalAlignment::Left,
             vertical_alignment: VerticalAlignment::Center,
-            content: GridContent::BarLine,
+            content: GridContent::BarLine { height_in_rows: 1 },
         });
         current_col += 1;
     }
@@ -807,5 +807,11 @@ mod tests {
             "time signature label must not repeat on wrapped lines, got {}",
             time_sig_labels.len()
         );
+    }
+
+    #[test]
+    fn part_label_and_barline_variants_exist() {
+        let _ = GridContent::PartLabel { text: "Soprano".to_string() };
+        let _ = GridContent::BarLine { height_in_rows: 1 };
     }
 }

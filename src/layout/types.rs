@@ -80,8 +80,9 @@ pub enum GridContent {
     /// Dots indicating a note is one or more octaves below the default octave.
     /// Placed in row 2 with VerticalAlignment::Bottom so they always appear below underlines.
     LowerOctaveDots { count: u32 },
-    BarLine,
+    BarLine { height_in_rows: u32 },
     Extension,
     TimeSignatureLabel { numerator: u8, denominator: u8 },
     BpmLabel { bpm: u32 },
+    PartLabel { text: String },
 }
