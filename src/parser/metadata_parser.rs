@@ -1,6 +1,22 @@
 use crate::ast::parsed::ParsedMetadata;
 use crate::error::{JianPuError, Span};
 
+fn parse_positive_u32(key: &str, value: &str, line_span: &Span) -> Result<u32, JianPuError> {
+    let parsed = value.parse::<u32>().map_err(|_| {
+        JianPuError::new(
+            line_span.clone(),
+            format!("{} must be a positive integer, got: {}", key, value),
+        )
+    })?;
+    if parsed == 0 {
+        return Err(JianPuError::new(
+            line_span.clone(),
+            format!("{} must be greater than zero", key),
+        ));
+    }
+    Ok(parsed)
+}
+
 pub fn parse_metadata(
     content: &str,
     base_offset: usize,
@@ -33,34 +49,10 @@ pub fn parse_metadata(
             "subtitle" => subtitle = Some(value.to_string()),
             "author" => author = Some(value.to_string()),
             "cell size" => {
-                let parsed = value.parse::<u32>().map_err(|_| {
-                    JianPuError::new(
-                        line_span.clone(),
-                        format!("cell size must be a positive integer, got: {}", value),
-                    )
-                })?;
-                if parsed == 0 {
-                    return Err(JianPuError::new(
-                        line_span.clone(),
-                        "cell size must be greater than zero".to_string(),
-                    ));
-                }
-                cell_size = Some(parsed);
+                cell_size = Some(parse_positive_u32("cell size", value, &line_span)?);
             }
             "label width" => {
-                let parsed = value.parse::<u32>().map_err(|_| {
-                    JianPuError::new(
-                        line_span.clone(),
-                        format!("label width must be a positive integer, got: {}", value),
-                    )
-                })?;
-                if parsed == 0 {
-                    return Err(JianPuError::new(
-                        line_span.clone(),
-                        "label width must be greater than zero".to_string(),
-                    ));
-                }
-                label_width = Some(parsed);
+                label_width = Some(parse_positive_u32("label width", value, &line_span)?);
             }
             _ => {
                 return Err(JianPuError::new(
