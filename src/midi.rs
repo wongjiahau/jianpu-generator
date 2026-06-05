@@ -1,9 +1,152 @@
-use crate::ast::grouped::Score;
+use midly::{
+    Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind,
+};
+use midly::num::{u15, u24, u28, u4, u7};
+
+use crate::ast::grouped::{NoteEvent, Score};
 use crate::ast::parsed::{Accidental, JianPuPitch, KeyChange, NoteName};
 
-pub fn write_midi(_score: &Score) -> Vec<u8> {
-    // stub — returns valid MIDI header bytes so the binary links and integration test passes
-    b"MThd\x00\x00\x00\x06\x00\x00\x00\x01\x00\x01".to_vec()
+const TPQ: u16 = 1;       // 1 tick per quarter note
+const VELOCITY: u8 = 80;
+const CHANNEL: u8 = 0;
+const PIANO: u8 = 0;
+
+struct RawEvent {
+    tick: u32,
+    kind: RawKind,
+}
+
+enum RawKind {
+    Tempo(u32),
+    NoteOn(u8),
+    NoteOff(u8),
+    ProgramChange(u8),
+}
+
+pub fn write_midi(score: &Score) -> Vec<u8> {
+    let mut raw: Vec<RawEvent> = Vec::new();
+
+    raw.push(RawEvent { tick: 0, kind: RawKind::ProgramChange(PIANO) });
+
+    let mut current_tick: u32 = 0;
+
+    // Track active key across measures; grouper guarantees first measure always has Some(key)
+    let mut active_key = KeyChange {
+        note: crate::ast::parsed::Note {
+            name: NoteName::C,
+            octave: 4,
+            accidental: Accidental::Natural,
+        },
+    };
+
+    for measure in &score.measures {
+        if let Some(bpm) = measure.bpm {
+            let micros = 60_000_000 / bpm;
+            raw.push(RawEvent { tick: current_tick, kind: RawKind::Tempo(micros) });
+        }
+
+        if let Some(key) = &measure.key {
+            active_key = key.clone();
+        }
+
+        let mut measure_duration: u32 = 0;
+
+        for part in &measure.parts {
+            let mut part_tick = current_tick;
+
+            for event in &part.notes.events {
+                match event {
+                    NoteEvent::Note(note) => {
+                        let ticks = duration_to_ticks(note.duration);
+                        let midi_note = resolve_midi_note(&note.pitch, note.octave, &active_key);
+                        raw.push(RawEvent { tick: part_tick, kind: RawKind::NoteOn(midi_note) });
+                        raw.push(RawEvent { tick: part_tick + ticks, kind: RawKind::NoteOff(midi_note) });
+                        part_tick += ticks;
+                    }
+                    NoteEvent::Rest(rest) => {
+                        part_tick += duration_to_ticks(rest.duration);
+                    }
+                }
+            }
+
+            let part_duration = part_tick - current_tick;
+            if part_duration > measure_duration {
+                measure_duration = part_duration;
+            }
+        }
+
+        current_tick += measure_duration;
+    }
+
+    // Sort by tick; NoteOff before NoteOn at the same tick to avoid clicks
+    raw.sort_by_key(|e| {
+        let priority: u8 = match e.kind {
+            RawKind::Tempo(_) | RawKind::ProgramChange(_) => 0,
+            RawKind::NoteOff(_) => 1,
+            RawKind::NoteOn(_) => 2,
+        };
+        (e.tick, priority)
+    });
+
+    let mut track: Vec<TrackEvent> = Vec::new();
+    let mut last_tick: u32 = 0;
+
+    for event in &raw {
+        let delta = event.tick - last_tick;
+        last_tick = event.tick;
+
+        let track_event = match &event.kind {
+            RawKind::Tempo(micros) => TrackEvent {
+                delta: u28::from(delta),
+                kind: TrackEventKind::Meta(MetaMessage::Tempo(u24::from(*micros))),
+            },
+            RawKind::ProgramChange(program) => TrackEvent {
+                delta: u28::from(delta),
+                kind: TrackEventKind::Midi {
+                    channel: u4::from(CHANNEL),
+                    message: MidiMessage::ProgramChange { program: u7::from(*program) },
+                },
+            },
+            RawKind::NoteOn(note) => TrackEvent {
+                delta: u28::from(delta),
+                kind: TrackEventKind::Midi {
+                    channel: u4::from(CHANNEL),
+                    message: MidiMessage::NoteOn {
+                        key: u7::from(*note),
+                        vel: u7::from(VELOCITY),
+                    },
+                },
+            },
+            RawKind::NoteOff(note) => TrackEvent {
+                delta: u28::from(delta),
+                kind: TrackEventKind::Midi {
+                    channel: u4::from(CHANNEL),
+                    message: MidiMessage::NoteOff {
+                        key: u7::from(*note),
+                        vel: u7::from(0u8),
+                    },
+                },
+            },
+        };
+        track.push(track_event);
+    }
+
+    track.push(TrackEvent {
+        delta: u28::from(0u32),
+        kind: TrackEventKind::Meta(MetaMessage::EndOfTrack),
+    });
+
+    let smf = Smf {
+        header: Header {
+            format: Format::SingleTrack,
+            timing: Timing::Metrical(u15::from(TPQ)),
+        },
+        tracks: vec![track],
+    };
+
+    let mut buf = Vec::new();
+    smf.write_std(&mut buf).expect("MIDI write failed");
+    buf
 }
 
 fn note_name_to_semitone(name: &NoteName) -> i32 {
