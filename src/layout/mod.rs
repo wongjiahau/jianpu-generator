@@ -397,6 +397,24 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                             vertical_alignment: VerticalAlignment::Center,
                             content: GridContent::Rest,
                         });
+                        let rest_underline_count = match rest.duration {
+                            1 => 2,
+                            2 => 1,
+                            _ => 0,
+                        };
+                        if rest_underline_count > 0 {
+                            let span = UnderlineSpan { from_column: col, to_column: col + rest.duration };
+                            let mut levels = vec![span.clone()];
+                            if rest_underline_count >= 2 {
+                                levels.push(span);
+                            }
+                            current_elements.push(GridElement {
+                                position: GridPosition { column: col, row: part_row + 2 },
+                                horizontal_alignment: HorizontalAlignment::Left,
+                                vertical_alignment: VerticalAlignment::Top,
+                                content: GridContent::DurationUnderlines { levels },
+                            });
+                        }
                         col += rest.duration;
                         *prev_tie = false;
                         *cross_line_tie = None;
@@ -815,14 +833,22 @@ mod tests {
         // 0(4qb) _0(2qb) _2(2qb) _2(2qb) _0(2qb) 0(4qb) = 16qb ✓
         // First _2 starts at qb 6 (mid-beat-2), ends at qb 8 (beat boundary) → flushed alone
         // Second _2 starts at qb 8, ends at qb 10 → flushed alone when _0 rest arrives
+        // The two _0 rests also produce their own underlines (groups[0] and groups[3]).
         let score = make_score("0 _0 _2 _2 _0 0", "a b");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let groups = collect_underline_levels(&pages);
-        assert_eq!(groups.len(), 2, "expected two separate underline groups");
-        assert_eq!(groups[0][0].from_column, 10);
-        assert_eq!(groups[0][0].to_column, 12);
-        assert_eq!(groups[1][0].from_column, 12);
-        assert_eq!(groups[1][0].to_column, 14);
+        assert_eq!(groups.len(), 4, "expected four underline groups (2 rests + 2 notes)");
+        // groups[0]: first _0 rest underline
+        assert_eq!(groups[0][0].from_column, 8);
+        assert_eq!(groups[0][0].to_column, 10);
+        // groups[1] and groups[2]: note underlines
+        assert_eq!(groups[1][0].from_column, 10);
+        assert_eq!(groups[1][0].to_column, 12);
+        assert_eq!(groups[2][0].from_column, 12);
+        assert_eq!(groups[2][0].to_column, 14);
+        // groups[3]: second _0 rest underline
+        assert_eq!(groups[3][0].from_column, 14);
+        assert_eq!(groups[3][0].to_column, 16);
     }
 
     #[test]
@@ -847,13 +873,20 @@ mod tests {
         // Use: =1 =0 =0 =0 0 0 0 = 1+1+1+1+4+4+4 = 16qb ✓
         // Only =1 is a note (pitch); =0 are sixteenth rests → flush before each rest.
         // So =1 is a lone sixteenth in the buffer → produces level-1 and level-2 spans both {0,1}.
+        // Each =0 rest also produces its own two-level underline.
         let score = make_score("=1 =0 =0 =0 0 0 0", "a");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let groups = collect_underline_levels(&pages);
-        assert_eq!(groups.len(), 1, "expected one beam group for the lone sixteenth");
+        assert_eq!(groups.len(), 4, "expected four underline groups (1 note + 3 sixteenth rests)");
+        // groups[0]: lone =1 note — two levels at same span
         assert_eq!(groups[0].len(), 2, "lone sixteenth must produce two underline levels");
         assert_eq!(groups[0][0], UnderlineSpan { from_column: 4, to_column: 5 });
         assert_eq!(groups[0][1], UnderlineSpan { from_column: 4, to_column: 5 });
+        // groups[1..3]: =0 rests — each two levels at their own span
+        assert_eq!(groups[1][0], UnderlineSpan { from_column: 5, to_column: 6 });
+        assert_eq!(groups[1][1], UnderlineSpan { from_column: 5, to_column: 6 });
+        assert_eq!(groups[2][0], UnderlineSpan { from_column: 6, to_column: 7 });
+        assert_eq!(groups[3][0], UnderlineSpan { from_column: 7, to_column: 8 });
     }
 
     #[test]
