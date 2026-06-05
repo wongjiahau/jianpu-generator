@@ -8,6 +8,7 @@ name = "jianpu"
 path = "src/main.rs"
 
 [dependencies]
+ariadne = "0.6"
 clap = { version = "4", features = ["derive"] }
 svg2pdf = "0.12"
 pdf-writer = "0.12"
