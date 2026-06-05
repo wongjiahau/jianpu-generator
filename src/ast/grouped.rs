@@ -12,6 +12,8 @@ pub struct Metadata {
     pub max_columns: u32,
     /// Left margin reserved for part labels in points. Default: 40.
     pub label_width: u32,
+    /// Estimated rendered width of a single digit note number (0–9) in points. Default: 8.
+    pub note_number_width: u32,
 }
 
 pub struct Notes {

@@ -69,8 +69,9 @@ fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
             let mut score = parse_and_group(&input)?;
             filter_tracks(&mut score, &tracks);
             let row_height = score.metadata.row_height;
+            let note_number_width = score.metadata.note_number_width;
             let pages = layout::layout(&score, 595.0, 842.0);
-            let svgs = renderer::render(&pages, row_height);
+            let svgs = renderer::render(&pages, row_height, note_number_width);
             let pdf_bytes = pdf::write_pdf(&svgs)?;
             write_file(&output_path, &pdf_bytes)?;
             println!("written to {:?}", output_path);
@@ -81,8 +82,9 @@ fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
             let mut score = parse_and_group(&input)?;
             filter_tracks(&mut score, &tracks);
             let row_height = score.metadata.row_height;
+            let note_number_width = score.metadata.note_number_width;
             let pages = layout::layout(&score, 595.0, 842.0);
-            let svgs = renderer::render(&pages, row_height);
+            let svgs = renderer::render(&pages, row_height, note_number_width);
             for (i, svg) in svgs.iter().enumerate() {
                 let path = if svgs.len() == 1 {
                     output_path.clone()

@@ -63,7 +63,10 @@ pub struct GridElement {
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnderlineSpan {
     pub from_column: u32,
+    /// Exclusive end (last note head column + last note duration). Used for the left endpoint.
     pub to_column: u32,
+    /// Column of the last note head in this span. Used for the right endpoint of the underline.
+    pub last_head_column: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]

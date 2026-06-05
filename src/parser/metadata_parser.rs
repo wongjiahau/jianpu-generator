@@ -47,6 +47,7 @@ pub fn parse_metadata(
     let mut row_height: Option<u32> = None;
     let mut max_columns: Option<u32> = None;
     let mut label_width: Option<u32> = None;
+    let mut note_number_width: Option<u32> = None;
     let mut parts: Option<Vec<PartColumn>> = None;
     let mut byte_offset = base_offset;
 
@@ -79,6 +80,9 @@ pub fn parse_metadata(
             "label width" => {
                 label_width = Some(parse_positive_u32("label width", value, &line_span)?);
             }
+            "note number width" => {
+                note_number_width = Some(parse_positive_u32("note number width", value, &line_span)?);
+            }
             "parts" => {
                 parts = Some(parse_parts(value, &line_span)?);
             }
@@ -109,6 +113,7 @@ pub fn parse_metadata(
         row_height,
         max_columns,
         label_width,
+        note_number_width,
         parts,
     })
 }

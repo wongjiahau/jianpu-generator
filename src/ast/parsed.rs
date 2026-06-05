@@ -38,6 +38,7 @@ pub struct ParsedMetadata {
     pub row_height: Option<u32>,
     pub max_columns: Option<u32>,
     pub label_width: Option<u32>,
+    pub note_number_width: Option<u32>,
     pub parts: Vec<PartColumn>,
 }
 

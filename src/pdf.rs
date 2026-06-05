@@ -92,8 +92,9 @@ mod tests {
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();
         let row_height = score.metadata.row_height;
+        let note_number_width = score.metadata.note_number_width;
         let pages = layout::layout(&score, 595.0, 842.0);
-        let svgs = renderer::render(&pages, row_height);
+        let svgs = renderer::render(&pages, row_height, note_number_width);
         write_pdf(&svgs).unwrap()
     }
 

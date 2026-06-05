@@ -3,12 +3,13 @@ use crate::layout::types::{GridContent, HorizontalAlignment, Page, VerticalAlign
 /// Must match PAGE_MARGIN in layout/mod.rs — padding applied on every edge.
 const PAGE_MARGIN: f32 = 25.0;
 
-pub fn render(pages: &[Page], row_height: u32) -> Vec<String> {
-    pages.iter().map(|page| render_page(page, row_height)).collect()
+pub fn render(pages: &[Page], row_height: u32, note_number_width: u32) -> Vec<String> {
+    pages.iter().map(|page| render_page(page, row_height, note_number_width)).collect()
 }
 
-fn render_page(page: &Page, row_height: u32) -> String {
+fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
     let row_height = row_height as f32;
+    let note_number_width = note_number_width as f32;
     let base_font_size = row_height * 0.6;
     let cjk_font_size = base_font_size * 1.2;
     let page_width = page.page_width_pt;
@@ -94,7 +95,7 @@ fn render_page(page: &Page, row_height: u32) -> String {
                     let _ = x;
                     for (i, span) in levels.iter().enumerate() {
                         let line_x1 = span.from_column as f32 * column_width + column_width * 0.1 + PAGE_MARGIN;
-                        let line_x2 = span.to_column as f32 * column_width - column_width * 0.1 + PAGE_MARGIN;
+                        let line_x2 = span.last_head_column as f32 * column_width + column_width * 0.5 + note_number_width * 0.5 + PAGE_MARGIN;
                         let line_y = base_y + row_height * 0.1 + (i as f32) * (row_height * 0.15);
                         elements.push_str(&format!(
                             r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="1"/>"#,
@@ -260,7 +261,7 @@ mod tests {
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();
         let pages = layout::layout(&score, A4_W, A4_H);
-        render(&pages, score.metadata.row_height)
+        render(&pages, score.metadata.row_height, score.metadata.note_number_width)
     }
 
     #[test]
@@ -272,7 +273,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height);
+        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
         assert!(svgs[0].contains("Verse 1"), "expected section label 'Verse 1' in SVG");
         assert!(svgs[0].contains("font-style=\"italic\""), "expected italic style on section label");
     }
@@ -360,7 +361,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height);
+        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
         let svg = &svgs[0];
         assert!(svg.contains(">2<"), "expected numerator 2 in SVG for 2/4 time signature");
         assert!(svg.contains(">4<"), "expected denominator 4 in SVG for 2/4 time signature");
@@ -376,7 +377,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height);
+        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
         let svg = &svgs[0];
         assert!(svg.contains("♩=75"), "expected BPM label text '♩=75' in SVG output");
     }
@@ -390,7 +391,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height);
+        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
         assert!(svgs[0].contains("Soprano"), "expected 'Soprano' label in SVG");
         assert!(svgs[0].contains("Alto"), "expected 'Alto' label in SVG");
     }
@@ -414,7 +415,7 @@ mod tests {
                 }],
             }],
         };
-        let svgs = render(&[page], 24);
+        let svgs = render(&[page], 24, 8);
         // column_width = (595 - 2*25) / 16 = 34.0625
         // x1 = 0*34.0625 + 25 = 25.0, x2 = 16*34.0625 + 25 = 570.0
         // y = PAGE_MARGIN + row*row_height = 25 + 6*24 = 169.0 (VerticalAlignment::Top → y = base_y)
@@ -434,7 +435,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height);
+        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
         assert!(svgs[0].contains("A&amp;B"), "expected XML-escaped label in SVG");
         assert!(!svgs[0].contains("A&B\""), "expected raw & to be escaped");
     }
@@ -450,7 +451,7 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height);
+        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
         let svg = &svgs[0];
         // Bar 1 appears in the SVG
         assert!(svg.contains(">1<") || svg.contains(">1 <"),

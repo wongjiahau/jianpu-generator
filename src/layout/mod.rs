@@ -39,22 +39,25 @@ fn compute_underline_levels(buffer: &[BeamBufferEntry]) -> Vec<UnderlineSpan> {
     let mut levels = vec![UnderlineSpan {
         from_column: first.column,
         to_column: last.column + last.duration,
+        last_head_column: last.column,
     }];
     // Level 2+: one span per maximal contiguous sub-run with underline_count >= 2
     let mut run_start: Option<u32> = None;
     let mut run_end: u32 = 0;
+    let mut run_last_head: u32 = 0;
     for entry in buffer {
         if entry.underline_count >= 2 {
             if run_start.is_none() {
                 run_start = Some(entry.column);
             }
             run_end = entry.column + entry.duration;
+            run_last_head = entry.column;
         } else if let Some(start) = run_start.take() {
-            levels.push(UnderlineSpan { from_column: start, to_column: run_end });
+            levels.push(UnderlineSpan { from_column: start, to_column: run_end, last_head_column: run_last_head });
         }
     }
     if let Some(start) = run_start {
-        levels.push(UnderlineSpan { from_column: start, to_column: run_end });
+        levels.push(UnderlineSpan { from_column: start, to_column: run_end, last_head_column: run_last_head });
     }
     // Identical level-1 and level-2 spans are intentional: they mean "draw this span twice"
     // (e.g. a lone sixteenth note or a pure-sixteenth beat group must render two underlines).
@@ -416,7 +419,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                             _ => 0,
                         };
                         if rest_underline_count > 0 {
-                            let span = UnderlineSpan { from_column: col, to_column: col + rest.duration };
+                            let span = UnderlineSpan { from_column: col, to_column: col + rest.duration, last_head_column: col };
                             let mut levels = vec![span.clone()];
                             if rest_underline_count >= 2 {
                                 levels.push(span);
@@ -893,13 +896,13 @@ mod tests {
         assert_eq!(groups.len(), 4, "expected four underline groups (1 note + 3 sixteenth rests)");
         // groups[0]: lone =1 note — two levels at same span
         assert_eq!(groups[0].len(), 2, "lone sixteenth must produce two underline levels");
-        assert_eq!(groups[0][0], UnderlineSpan { from_column: 4, to_column: 5 });
-        assert_eq!(groups[0][1], UnderlineSpan { from_column: 4, to_column: 5 });
+        assert_eq!(groups[0][0], UnderlineSpan { from_column: 4, to_column: 5, last_head_column: 4 });
+        assert_eq!(groups[0][1], UnderlineSpan { from_column: 4, to_column: 5, last_head_column: 4 });
         // groups[1..3]: =0 rests — each two levels at their own span
-        assert_eq!(groups[1][0], UnderlineSpan { from_column: 5, to_column: 6 });
-        assert_eq!(groups[1][1], UnderlineSpan { from_column: 5, to_column: 6 });
-        assert_eq!(groups[2][0], UnderlineSpan { from_column: 6, to_column: 7 });
-        assert_eq!(groups[3][0], UnderlineSpan { from_column: 7, to_column: 8 });
+        assert_eq!(groups[1][0], UnderlineSpan { from_column: 5, to_column: 6, last_head_column: 5 });
+        assert_eq!(groups[1][1], UnderlineSpan { from_column: 5, to_column: 6, last_head_column: 5 });
+        assert_eq!(groups[2][0], UnderlineSpan { from_column: 6, to_column: 7, last_head_column: 6 });
+        assert_eq!(groups[3][0], UnderlineSpan { from_column: 7, to_column: 8, last_head_column: 7 });
     }
 
     #[test]
@@ -911,8 +914,8 @@ mod tests {
         let groups = collect_underline_levels(&pages);
         assert_eq!(groups.len(), 1, "expected one beam group spanning the beat");
         assert_eq!(groups[0].len(), 2, "pure-sixteenth group must produce two underline levels");
-        assert_eq!(groups[0][0], UnderlineSpan { from_column: 4, to_column: 8 });
-        assert_eq!(groups[0][1], UnderlineSpan { from_column: 4, to_column: 8 });
+        assert_eq!(groups[0][0], UnderlineSpan { from_column: 4, to_column: 8, last_head_column: 7 });
+        assert_eq!(groups[0][1], UnderlineSpan { from_column: 4, to_column: 8, last_head_column: 7 });
     }
 
     #[test]

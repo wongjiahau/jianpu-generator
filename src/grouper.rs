@@ -19,6 +19,7 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
             row_height: doc.metadata.row_height.unwrap_or(24),
             max_columns: doc.metadata.max_columns.unwrap_or(28),
             label_width: doc.metadata.label_width.unwrap_or(40),
+            note_number_width: doc.metadata.note_number_width.unwrap_or(8),
         },
         measures,
     })
