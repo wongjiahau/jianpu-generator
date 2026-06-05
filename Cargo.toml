@@ -15,5 +15,7 @@ pdf-writer = "0.12"
 itertools = "0.13"
 nonempty = "0.10"
 midly = "0.5"
+oxisynth = "0.0.5"
+hound = "3"
 
 [dev-dependencies]
