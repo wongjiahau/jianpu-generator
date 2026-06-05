@@ -414,6 +414,16 @@ mod tests {
     }
 
     #[test]
+    fn label_on_second_measure_not_first() {
+        let score = parse_and_group(concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n1 2 3 4\n\n(label=\"Chorus\")\n5 6 7 1\n",
+        ));
+        assert_eq!(score.measures[0].label, None);
+        assert_eq!(score.measures[1].label, Some("Chorus".to_string()));
+    }
+
+    #[test]
     fn lyrics_distributed_per_measure() {
         let input = concat!(
             "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
