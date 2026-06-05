@@ -3,78 +3,131 @@ mod combiner;
 mod error;
 mod grouper;
 mod layout;
+mod midi;
 mod parser;
 mod pdf;
 mod renderer;
 mod utils;
 
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 #[derive(Parser)]
-#[command(name = "jianpu", about = "Generate JianPu notation PDFs")]
+#[command(name = "jianpu", about = "Generate JianPu notation files")]
 struct Args {
-    /// Path to the .jianpu input file
-    input: PathBuf,
+    #[command(subcommand)]
+    command: Commands,
+}
 
-    /// Path for the output file (default: input filename with .pdf or .svg extension)
-    #[arg(short, long)]
-    output: Option<PathBuf>,
+#[derive(Subcommand)]
+enum Commands {
+    Generate {
+        #[command(subcommand)]
+        format: GenerateFormat,
+    },
+}
 
-    /// Output SVG instead of PDF (writes one .svg file per page)
-    #[arg(long)]
-    svg: bool,
+#[derive(Subcommand)]
+enum GenerateFormat {
+    Pdf {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        tracks: Vec<String>,
+    },
+    Svg {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        tracks: Vec<String>,
+    },
+    Midi {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        tracks: Vec<String>,
+    },
 }
 
 fn main() {
     let args = Args::parse();
 
-    let default_ext = if args.svg { "svg" } else { "pdf" };
-    let output_path = args.output.unwrap_or_else(|| args.input.with_extension(default_ext));
-
-    let input = match std::fs::read_to_string(&args.input) {
-        Ok(content) => content,
-        Err(e) => {
-            eprintln!("error: could not read {:?}: {}", args.input, e);
-            std::process::exit(1);
-        }
+    let result = match args.command {
+        Commands::Generate { format } => run_generate(format),
     };
 
-    let filename = args.input.to_string_lossy().to_string();
+    if let Err(e) = result {
+        eprintln!("error: {}", e);
+        std::process::exit(1);
+    }
+}
 
-    let result = (|| -> Result<(), error::JianPuError> {
-        let doc = parser::parse(&input, &filename)?;
-        let score = grouper::group(doc)?;
-        let row_height = score.metadata.row_height;
-        let pages = layout::layout(&score, 595.0, 842.0);
-        let svgs = renderer::render(&pages, row_height);
-
-        if args.svg {
+fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
+    match format {
+        GenerateFormat::Pdf { input, output, tracks } => {
+            let output_path = output.unwrap_or_else(|| input.with_extension("pdf"));
+            let mut score = parse_and_group(&input)?;
+            filter_tracks(&mut score, &tracks);
+            let row_height = score.metadata.row_height;
+            let pages = layout::layout(&score, 595.0, 842.0);
+            let svgs = renderer::render(&pages, row_height);
+            let pdf_bytes = pdf::write_pdf(&svgs)?;
+            write_file(&output_path, &pdf_bytes)?;
+            println!("written to {:?}", output_path);
+            Ok(())
+        }
+        GenerateFormat::Svg { input, output, tracks } => {
+            let output_path = output.unwrap_or_else(|| input.with_extension("svg"));
+            let mut score = parse_and_group(&input)?;
+            filter_tracks(&mut score, &tracks);
+            let row_height = score.metadata.row_height;
+            let pages = layout::layout(&score, 595.0, 842.0);
+            let svgs = renderer::render(&pages, row_height);
             for (i, svg) in svgs.iter().enumerate() {
                 let path = if svgs.len() == 1 {
                     output_path.clone()
                 } else {
                     output_path.with_extension(format!("{}.svg", i + 1))
                 };
-                std::fs::write(&path, svg).map_err(|e| error::JianPuError::new(
-                    error::Span::new(0, 0),
-                    format!("could not write SVG: {}", e),
-                ))?;
+                write_file(&path, svg.as_bytes())?;
                 println!("written to {:?}", path);
             }
-        } else {
-            let pdf_bytes = pdf::write_pdf(&svgs)?;
-            std::fs::write(&output_path, &pdf_bytes).map_err(|e| error::JianPuError::new(
-                error::Span::new(0, 0),
-                format!("could not write output PDF: {}", e),
-            ))?;
-            println!("written to {:?}", output_path);
+            Ok(())
         }
-        Ok(())
-    })();
-
-    if let Err(e) = result {
-        eprintln!("error: {}", e);
-        std::process::exit(1);
+        GenerateFormat::Midi { input, output, tracks } => {
+            let output_path = output.unwrap_or_else(|| input.with_extension("mid"));
+            let mut score = parse_and_group(&input)?;
+            filter_tracks(&mut score, &tracks);
+            let midi_bytes = midi::write_midi(&score);
+            write_file(&output_path, &midi_bytes)?;
+            println!("written to {:?}", output_path);
+            Ok(())
+        }
     }
+}
+
+fn parse_and_group(input: &PathBuf) -> Result<ast::grouped::Score, error::JianPuError> {
+    let content = std::fs::read_to_string(input).map_err(|e| {
+        error::JianPuError::new(error::Span::new(0, 0), format!("could not read {:?}: {}", input, e))
+    })?;
+    let filename = input.to_string_lossy().to_string();
+    let doc = parser::parse(&content, &filename)?;
+    grouper::group(doc)
+}
+
+fn filter_tracks(score: &mut ast::grouped::Score, tracks: &[String]) {
+    if tracks.is_empty() {
+        return;
+    }
+    for measure in &mut score.measures {
+        measure.parts.retain(|part| {
+            part.name.as_ref().map_or(false, |name| tracks.contains(name))
+        });
+    }
+}
+
+fn write_file(path: &PathBuf, data: &[u8]) -> Result<(), error::JianPuError> {
+    std::fs::write(path, data).map_err(|e| {
+        error::JianPuError::new(error::Span::new(0, 0), format!("could not write {:?}: {}", path, e))
+    })
 }
