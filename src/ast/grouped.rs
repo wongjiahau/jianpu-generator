@@ -2,6 +2,7 @@ use crate::ast::parsed::{JianPuPitch, KeyChange, Syllable};
 
 // ── Public final types ────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 pub struct Metadata {
     pub title: String,
     pub subtitle: Option<String>,
@@ -16,20 +17,24 @@ pub struct Metadata {
     pub note_number_width: u32,
 }
 
+#[derive(Clone)]
 pub struct Notes {
     pub events: Vec<NoteEvent>,
 }
 
+#[derive(Clone)]
 pub struct Lyrics {
     pub syllables: Vec<Syllable>,
 }
 
+#[derive(Clone)]
 pub struct PartSlice {
     pub name: Option<String>,
     pub notes: Notes,
     pub lyrics: Option<Lyrics>,
 }
 
+#[derive(Clone)]
 pub struct MultiPartMeasure {
     pub time_signature: Option<TimeSignature>,
     pub bpm: Option<u32>,
@@ -39,6 +44,7 @@ pub struct MultiPartMeasure {
     pub parts: Vec<PartSlice>,
 }
 
+#[derive(Clone)]
 pub struct Score {
     pub metadata: Metadata,
     pub measures: Vec<MultiPartMeasure>,
