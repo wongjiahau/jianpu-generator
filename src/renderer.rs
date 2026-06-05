@@ -103,7 +103,7 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                         ));
                     }
                 }
-                GridContent::LowerOctaveDots { count } => {
+                GridContent::LowerOctaveDots { count, underline_count } => {
                     let dot_radius = row_height * 0.08;
                     let dot_spacing = dot_radius * 3.0;
                     for i in 0..*count {
@@ -113,6 +113,7 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                             x, dot_y, dot_radius
                         ));
                     }
+                    let _ = underline_count; // silenced until Task 3
                 }
                 GridContent::Lyric { text, is_cjk } => {
                     let font_size = if *is_cjk { cjk_font_size } else { base_font_size };

@@ -321,7 +321,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                                 position: GridPosition { column: col, row: part_row + 2 },
                                 horizontal_alignment: HorizontalAlignment::Center,
                                 vertical_alignment: VerticalAlignment::Bottom,
-                                content: GridContent::LowerOctaveDots { count: (-note.octave) as u32 },
+                                content: GridContent::LowerOctaveDots { count: (-note.octave) as u32, underline_count: 0 },
                             });
                         }
 
@@ -982,8 +982,9 @@ mod tests {
             .filter(|e| matches!(e.content, GridContent::LowerOctaveDots { .. }))
             .collect();
         assert_eq!(lower_dots.len(), 1, "expected one LowerOctaveDots element");
-        if let GridContent::LowerOctaveDots { count } = &lower_dots[0].content {
+        if let GridContent::LowerOctaveDots { count, underline_count } = &lower_dots[0].content {
             assert_eq!(*count, 1);
+            let _ = underline_count; // checked in Task 2
         }
         // First row-group starts at row offset = header_rows (2), so underline sub-row (+2) → absolute row 4
         assert_eq!(lower_dots[0].position.row, 4, "LowerOctaveDots must be in absolute row 4 (header_rows + underline sub-row)");
