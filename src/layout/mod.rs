@@ -247,7 +247,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                     column: label_cols,
                     row: current_row_offset + 1,
                 },
-                horizontal_alignment: HorizontalAlignment::Left,
+                horizontal_alignment: HorizontalAlignment::Center,
                 vertical_alignment: VerticalAlignment::Center,
                 content: GridContent::BarLine {
                     height_in_rows: bar_height,
@@ -265,6 +265,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                     content: GridContent::BarNumber { number: bar_number },
                 });
             }
+            current_col = label_cols + 1;
         }
         // Emit part labels at start of each system line
         if is_line_start && has_named_parts {
@@ -563,7 +564,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                 column: bar_col,
                 row: current_row_offset + 1,
             },
-            horizontal_alignment: HorizontalAlignment::Left,
+            horizontal_alignment: HorizontalAlignment::Center,
             vertical_alignment: VerticalAlignment::Center,
             content: GridContent::BarLine {
                 height_in_rows: bar_height,
@@ -752,7 +753,7 @@ mod tests {
             .filter(|e| matches!(e.content, GridContent::TimeSignatureLabel { .. }))
             .collect();
         assert_eq!(labels.len(), 1);
-        assert_eq!(labels[0].position.column, 0);
+        assert_eq!(labels[0].position.column, 1);
         if let GridContent::TimeSignatureLabel {
             numerator,
             denominator,
@@ -776,7 +777,7 @@ mod tests {
             .filter(|e| matches!(e.content, GridContent::BpmLabel { .. }))
             .collect();
         assert_eq!(labels.len(), 1);
-        assert_eq!(labels[0].position.column, 2);
+        assert_eq!(labels[0].position.column, 3);
         if let GridContent::BpmLabel { bpm } = &labels[0].content {
             assert_eq!(*bpm, 120);
         } else {
@@ -794,7 +795,7 @@ mod tests {
             .flat_map(|rg| rg.elements.iter())
             .filter(|e| matches!(e.content, GridContent::NoteHead { .. }))
             .collect();
-        assert_eq!(note_heads[0].position.column, 4);
+        assert_eq!(note_heads[0].position.column, 5);
     }
 
     #[test]
@@ -936,36 +937,36 @@ mod tests {
 
     #[test]
     fn two_different_notes_emit_one_slur() {
-        // 1~ 2: different pitches → one slur from col 0 to col 4
+        // 1~ 2: different pitches → one slur from col 5 to col 9
         let score = make_score("1~ 2 3 4", "a b c d");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert_eq!(curves.len(), 1);
-        assert_eq!(curves[0], (4, 8));
+        assert_eq!(curves[0], (5, 9));
     }
 
     #[test]
     fn three_note_slur_emits_one_curve() {
-        // 3~2~1: all different pitches → one slur from col 0 to col 8
+        // 3~2~1: all different pitches → one slur from col 5 to col 13
         let score = make_score("3~2~1 4", "a b c d");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert_eq!(curves.len(), 1);
-        assert_eq!(curves[0], (4, 12));
+        assert_eq!(curves[0], (5, 13));
     }
 
     #[test]
     fn mixed_chain_emits_slur_and_tie() {
-        // 4~3~3 2: chain [4@0, 3@4, 3@8]
-        // → one slur from 0 to 8 (pitch change exists)
-        // → one tie from 4 to 8 (same-pitch pair 3~3)
+        // 4~3~3 2: chain [4@5, 3@9, 3@13]
+        // → one slur from 5 to 13 (pitch change exists)
+        // → one tie from 9 to 13 (same-pitch pair 3~3)
         let score = make_score("4~3~3 2", "a b c d");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let mut curves = collect_curves(&pages);
         curves.sort();
         assert_eq!(curves.len(), 2);
-        assert_eq!(curves[0], (4, 12)); // slur
-        assert_eq!(curves[1], (8, 12)); // tie
+        assert_eq!(curves[0], (5, 13)); // slur
+        assert_eq!(curves[1], (9, 13)); // tie
     }
 
     #[test]
@@ -975,7 +976,7 @@ mod tests {
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert_eq!(curves.len(), 1);
-        assert_eq!(curves[0], (4, 8));
+        assert_eq!(curves[0], (5, 9));
     }
 
     fn collect_curves(pages: &[Page]) -> Vec<(u32, u32)> {
@@ -1026,8 +1027,8 @@ mod tests {
         let groups = collect_underline_levels(&pages);
         assert_eq!(groups.len(), 1, "expected one beam group");
         assert_eq!(groups[0].len(), 1, "expected one underline level");
-        assert_eq!(groups[0][0].from_column, 4);
-        assert_eq!(groups[0][0].to_column, 8);
+        assert_eq!(groups[0][0].from_column, 5);
+        assert_eq!(groups[0][0].to_column, 9);
     }
 
     #[test]
@@ -1044,27 +1045,27 @@ mod tests {
             "expected two underline groups (one per beat)"
         );
         // group[0]: beat 2 — _0 rest + _2 note
-        assert_eq!(groups[0][0].from_column, 8);
-        assert_eq!(groups[0][0].to_column, 12);
+        assert_eq!(groups[0][0].from_column, 9);
+        assert_eq!(groups[0][0].to_column, 13);
         // group[1]: beat 3 — _2 note + _0 rest
-        assert_eq!(groups[1][0].from_column, 12);
-        assert_eq!(groups[1][0].to_column, 16);
+        assert_eq!(groups[1][0].from_column, 13);
+        assert_eq!(groups[1][0].to_column, 17);
     }
 
     #[test]
     fn mixed_eighth_and_sixteenth_notes_produce_two_underline_levels() {
         // _1(2qb) =2(1qb) =3(1qb) fills beat 1 exactly; 0 0 0 fill 12 more qb = 16 total ✓
-        // Level 1: spans all three notes (col 0–4)
-        // Level 2: spans only the sixteenth sub-run =2,=3 (col 2–4)
+        // Level 1: spans all three notes (col 5–9)
+        // Level 2: spans only the sixteenth sub-run =2,=3 (col 7–9)
         let score = make_score("_1 =2 =3 0 0 0", "a b c");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let groups = collect_underline_levels(&pages);
         assert_eq!(groups.len(), 1, "expected one beam group");
         assert_eq!(groups[0].len(), 2, "expected two underline levels");
-        assert_eq!(groups[0][0].from_column, 4);
-        assert_eq!(groups[0][0].to_column, 8);
-        assert_eq!(groups[0][1].from_column, 6);
-        assert_eq!(groups[0][1].to_column, 8);
+        assert_eq!(groups[0][0].from_column, 5);
+        assert_eq!(groups[0][0].to_column, 9);
+        assert_eq!(groups[0][1].from_column, 7);
+        assert_eq!(groups[0][1].to_column, 9);
     }
 
     #[test]
@@ -1080,21 +1081,21 @@ mod tests {
             "expected one beam group (note + rests share a beat)"
         );
         assert_eq!(groups[0].len(), 2, "expected two underline levels");
-        // Level 1 and level 2 both span the whole beat (cols 4–8)
+        // Level 1 and level 2 both span the whole beat (cols 5–9)
         assert_eq!(
             groups[0][0],
             UnderlineSpan {
-                from_column: 4,
-                to_column: 8,
-                last_head_column: 7
+                from_column: 5,
+                to_column: 9,
+                last_head_column: 8
             }
         );
         assert_eq!(
             groups[0][1],
             UnderlineSpan {
-                from_column: 4,
-                to_column: 8,
-                last_head_column: 7
+                from_column: 5,
+                to_column: 9,
+                last_head_column: 8
             }
         );
     }
@@ -1108,18 +1109,18 @@ mod tests {
         let groups = collect_underline_levels(&pages);
         assert_eq!(groups.len(), 1, "expected one beam group spanning the beat");
         assert_eq!(groups[0].len(), 2, "expected two underline levels");
-        // Level 1 spans all three (col 4–8)
-        assert_eq!(groups[0][0].from_column, 4);
-        assert_eq!(groups[0][0].to_column, 8);
-        // Level 2 spans only =1 and =2 (col 6–8)
-        assert_eq!(groups[0][1].from_column, 6);
-        assert_eq!(groups[0][1].to_column, 8);
+        // Level 1 spans all three (col 5–9)
+        assert_eq!(groups[0][0].from_column, 5);
+        assert_eq!(groups[0][0].to_column, 9);
+        // Level 2 spans only =1 and =2 (col 7–9)
+        assert_eq!(groups[0][1].from_column, 7);
+        assert_eq!(groups[0][1].to_column, 9);
     }
 
     #[test]
     fn pure_sixteenth_beat_group_has_two_underlines() {
         // =1 =2 =3 =4 fills one beat exactly (4×1qb = 4qb); 0 0 0 fills 12 more qb = 16 total ✓
-        // All four notes are sixteenth (underline_count=2): level-1 spans 0–4, level-2 also 0–4.
+        // All four notes are sixteenth (underline_count=2): level-1 spans 5–9, level-2 also 5–9.
         let score = make_score("=1 =2 =3 =4 0 0 0", "a b c d");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let groups = collect_underline_levels(&pages);
@@ -1132,17 +1133,17 @@ mod tests {
         assert_eq!(
             groups[0][0],
             UnderlineSpan {
-                from_column: 4,
-                to_column: 8,
-                last_head_column: 7
+                from_column: 5,
+                to_column: 9,
+                last_head_column: 8
             }
         );
         assert_eq!(
             groups[0][1],
             UnderlineSpan {
-                from_column: 4,
-                to_column: 8,
-                last_head_column: 7
+                from_column: 5,
+                to_column: 9,
+                last_head_column: 8
             }
         );
     }
@@ -1151,15 +1152,15 @@ mod tests {
     fn tied_notes_share_one_lyric_syllable() {
         // 3~3 is a tie (same pitch): both notes share one syllable.
         // 3~3 1 2 with lyrics "a b c":
-        //   3 (col 0) → "a",  second 3 (col 4) → no lyric,  1 (col 8) → "b",  2 (col 12) → "c"
+        //   3 (col 5) → "a",  second 3 (col 9) → no lyric,  1 (col 13) → "b",  2 (col 17) → "c"
         let score = make_score("3~3 1 2", "a b c");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         assert_eq!(
             collect_lyric_positions(&pages),
             vec![
-                (4, "a".to_string()),
-                (12, "b".to_string()),
-                (16, "c".to_string())
+                (5, "a".to_string()),
+                (13, "b".to_string()),
+                (17, "c".to_string())
             ],
         );
     }
@@ -1174,9 +1175,9 @@ mod tests {
         assert_eq!(
             collect_lyric_positions(&pages),
             vec![
-                (4, "a".to_string()),
-                (8, "b".to_string()),
-                (16, "c".to_string())
+                (5, "a".to_string()),
+                (9, "b".to_string()),
+                (17, "c".to_string())
             ],
         );
     }
@@ -1189,10 +1190,10 @@ mod tests {
         assert_eq!(
             collect_lyric_positions(&pages),
             vec![
-                (4, "你".to_string()),
-                (8, "-".to_string()),
-                (12, "好".to_string()),
-                (16, "a".to_string())
+                (5, "你".to_string()),
+                (9, "-".to_string()),
+                (13, "好".to_string()),
+                (17, "a".to_string())
             ],
         );
     }
@@ -1412,9 +1413,9 @@ mod tests {
         } = &bottom_bars[0].content
         {
             assert_eq!(*from_column, 0);
-            // 4 (directives) + 16 (notes) + 1 (bar) = 21
+            // 1 (left bar col) + 4 (directives) + 16 (notes) + 1 (end bar) = 22
             assert_eq!(
-                *to_column, 21,
+                *to_column, 22,
                 "to_column should equal current_col at flush time"
             );
         } else {
@@ -1562,9 +1563,9 @@ mod tests {
     #[test]
     fn cross_measure_tie_emits_right_half_arc_on_line_wrap() {
         // With default max_columns=28:
-        // Measure 1: 4 (directives) + 16 (notes) + 1 (bar) = 21 cols
-        // Measure 2: 0 + 16 + 1 = 17 cols → 21+17=38 > 28 → wraps to new line
-        // 3~ at col 16 in measure 1 should produce a right-half arc ending at the bar line (col 20).
+        // Measure 1: 1 (left bar col) + 4 (directives) + 16 (notes) + 1 (end bar) = 22 cols
+        // Measure 2: 1 (left bar col) + 0 + 16 + 1 = 18 cols → 22+16=38 > 28 → wraps to new line
+        // 3~ at col 17 in measure 1 should produce a right-half arc ending at the bar line (col 21 = 22-1).
         let score = make_score("0 0 0 3~ | 3 0 0 0", "a");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
@@ -1572,10 +1573,10 @@ mod tests {
             !curves.is_empty(),
             "expected right-half tie arc when cross-measure tie wraps to new line"
         );
-        // The right-half arc starts at the tied note (col 16) and ends at the bar line (col 20 = 21-1).
+        // The right-half arc starts at the tied note (col 17) and ends at the bar line (col 21 = 22-1).
         assert!(
-            curves.iter().any(|&(from, to)| from == 16 && to == 20),
-            "expected right-half arc from col 16 to col 20; got: {:?}",
+            curves.iter().any(|&(from, to)| from == 17 && to == 21),
+            "expected right-half arc from col 17 to col 21; got: {:?}",
             curves
         );
     }

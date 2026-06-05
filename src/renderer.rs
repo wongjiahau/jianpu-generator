@@ -156,7 +156,7 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                     ));
                 }
                 GridContent::BarLine { height_in_rows } => {
-                    let line_x = base_x;
+                    let line_x = x;
                     let line_y1 = base_y;
                     let line_y2 = base_y + *height_in_rows as f32 * row_height;
                     elements.push_str(&format!(
