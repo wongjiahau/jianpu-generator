@@ -36,20 +36,15 @@ pub fn write_pdf(svgs: &[String]) -> Result<Vec<u8>, JianPuError> {
     let svg_name = Name(b"Svg");
 
     for (i, svg_str) in svgs.iter().enumerate() {
-        let tree = svg2pdf::usvg::Tree::from_str(svg_str, &options).map_err(|e| {
-            JianPuError::new(Span::new(0, 0), format!("SVG parse error: {}", e))
-        })?;
+        let tree = svg2pdf::usvg::Tree::from_str(svg_str, &options)
+            .map_err(|e| JianPuError::new(Span::new(0, 0), format!("SVG parse error: {}", e)))?;
 
         let page_width = tree.size().width();
         let page_height = tree.size().height();
 
-        let (svg_chunk, svg_ref) =
-            svg2pdf::to_chunk(&tree, conversion_options).map_err(|e| {
-                JianPuError::new(
-                    Span::new(0, 0),
-                    format!("SVG to PDF chunk failed: {}", e),
-                )
-            })?;
+        let (svg_chunk, svg_ref) = svg2pdf::to_chunk(&tree, conversion_options).map_err(|e| {
+            JianPuError::new(Span::new(0, 0), format!("SVG to PDF chunk failed: {}", e))
+        })?;
 
         // Renumber the chunk's internal refs so they don't conflict with our allocator.
         let mut map = HashMap::new();

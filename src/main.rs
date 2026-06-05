@@ -64,7 +64,11 @@ fn main() {
 
 fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
     match format {
-        GenerateFormat::Pdf { input, output, tracks } => {
+        GenerateFormat::Pdf {
+            input,
+            output,
+            tracks,
+        } => {
             let output_path = output.unwrap_or_else(|| input.with_extension("pdf"));
             let mut score = parse_and_group(&input)?;
             filter_tracks(&mut score, &tracks);
@@ -77,7 +81,11 @@ fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
             println!("written to {:?}", output_path);
             Ok(())
         }
-        GenerateFormat::Svg { input, output, tracks } => {
+        GenerateFormat::Svg {
+            input,
+            output,
+            tracks,
+        } => {
             let output_path = output.unwrap_or_else(|| input.with_extension("svg"));
             let mut score = parse_and_group(&input)?;
             filter_tracks(&mut score, &tracks);
@@ -96,7 +104,11 @@ fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
             }
             Ok(())
         }
-        GenerateFormat::Midi { input, output, tracks } => {
+        GenerateFormat::Midi {
+            input,
+            output,
+            tracks,
+        } => {
             let output_path = output.unwrap_or_else(|| input.with_extension("mid"));
             let mut score = parse_and_group(&input)?;
             filter_tracks(&mut score, &tracks);
@@ -110,7 +122,10 @@ fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
 
 fn parse_and_group(input: &Path) -> Result<ast::grouped::Score, error::JianPuError> {
     let content = std::fs::read_to_string(input).map_err(|e| {
-        error::JianPuError::new(error::Span::new(0, 0), format!("could not read {:?}: {}", input, e))
+        error::JianPuError::new(
+            error::Span::new(0, 0),
+            format!("could not read {:?}: {}", input, e),
+        )
     })?;
     let filename = input.to_string_lossy().to_string();
     let doc = parser::parse(&content, &filename)?;
@@ -122,14 +137,17 @@ fn filter_tracks(score: &mut ast::grouped::Score, tracks: &[String]) {
         return;
     }
     for measure in &mut score.measures {
-        measure.parts.retain(|part| {
-            part.name.as_ref().map_or(false, |name| tracks.contains(name))
-        });
+        measure
+            .parts
+            .retain(|part| part.name.as_ref().is_some_and(|name| tracks.contains(name)));
     }
 }
 
 fn write_file(path: &Path, data: &[u8]) -> Result<(), error::JianPuError> {
     std::fs::write(path, data).map_err(|e| {
-        error::JianPuError::new(error::Span::new(0, 0), format!("could not write {:?}: {}", path, e))
+        error::JianPuError::new(
+            error::Span::new(0, 0),
+            format!("could not write {:?}: {}", path, e),
+        )
     })
 }

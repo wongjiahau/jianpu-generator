@@ -4,7 +4,10 @@ use crate::layout::types::{GridContent, HorizontalAlignment, Page, VerticalAlign
 const PAGE_MARGIN: f32 = 25.0;
 
 pub fn render(pages: &[Page], row_height: u32, note_number_width: u32) -> Vec<String> {
-    pages.iter().map(|page| render_page(page, row_height, note_number_width)).collect()
+    pages
+        .iter()
+        .map(|page| render_page(page, row_height, note_number_width))
+        .collect()
 }
 
 fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
@@ -94,8 +97,13 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                 GridContent::DurationUnderlines { levels } => {
                     let _ = x;
                     for (i, span) in levels.iter().enumerate() {
-                        let line_x1 = span.from_column as f32 * column_width + column_width * 0.1 + PAGE_MARGIN;
-                        let line_x2 = span.last_head_column as f32 * column_width + column_width * 0.5 + note_number_width * 0.5 + PAGE_MARGIN;
+                        let line_x1 = span.from_column as f32 * column_width
+                            + column_width * 0.1
+                            + PAGE_MARGIN;
+                        let line_x2 = span.last_head_column as f32 * column_width
+                            + column_width * 0.5
+                            + note_number_width * 0.5
+                            + PAGE_MARGIN;
                         let line_y = base_y + row_height * 0.1 + (i as f32) * (row_height * 0.15);
                         elements.push_str(&format!(
                             r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="1"/>"#,
@@ -103,7 +111,10 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                         ));
                     }
                 }
-                GridContent::LowerOctaveDots { count, underline_count } => {
+                GridContent::LowerOctaveDots {
+                    count,
+                    underline_count,
+                } => {
                     let dot_radius = row_height * 0.08;
                     for i in 0..*count {
                         let slot = *underline_count as f32 + i as f32;
@@ -115,13 +126,20 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                     }
                 }
                 GridContent::Lyric { text, is_cjk } => {
-                    let font_size = if *is_cjk { cjk_font_size } else { base_font_size };
+                    let font_size = if *is_cjk {
+                        cjk_font_size
+                    } else {
+                        base_font_size
+                    };
                     elements.push_str(&format!(
                         r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="hanging" font-family="sans-serif">{}</text>"#,
                         x, y, font_size, escape_xml(text)
                     ));
                 }
-                GridContent::TieOrSlurCurve { from_column, to_column } => {
+                GridContent::TieOrSlurCurve {
+                    from_column,
+                    to_column,
+                } => {
                     let _ = x;
                     let x1 = (*from_column as f32 + 0.5) * column_width + PAGE_MARGIN;
                     let x2 = (*to_column as f32 + 0.5) * column_width + PAGE_MARGIN;
@@ -146,7 +164,10 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                         line_x, line_y1, line_x, line_y2
                     ));
                 }
-                GridContent::TimeSignatureLabel { numerator, denominator } => {
+                GridContent::TimeSignatureLabel {
+                    numerator,
+                    denominator,
+                } => {
                     let slot_width = 2.0 * column_width;
                     let center_x = base_x + slot_width / 2.0;
                     let numerator_y = y - row_height * 0.25;
@@ -182,7 +203,10 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                         x, y, base_font_size * 0.8, escape_xml(text)
                     ));
                 }
-                GridContent::HorizontalBar { from_column, to_column } => {
+                GridContent::HorizontalBar {
+                    from_column,
+                    to_column,
+                } => {
                     let _ = x;
                     let x1 = *from_column as f32 * column_width + PAGE_MARGIN;
                     let x2 = *to_column as f32 * column_width + PAGE_MARGIN;
@@ -261,7 +285,11 @@ mod tests {
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();
         let pages = layout::layout(&score, A4_W, A4_H);
-        render(&pages, score.metadata.row_height, score.metadata.note_number_width)
+        render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        )
     }
 
     #[test]
@@ -273,9 +301,19 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
-        assert!(svgs[0].contains("Verse 1"), "expected section label 'Verse 1' in SVG");
-        assert!(svgs[0].contains("font-style=\"italic\""), "expected italic style on section label");
+        let svgs = render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        );
+        assert!(
+            svgs[0].contains("Verse 1"),
+            "expected section label 'Verse 1' in SVG"
+        );
+        assert!(
+            svgs[0].contains("font-style=\"italic\""),
+            "expected italic style on section label"
+        );
     }
 
     #[test]
@@ -318,9 +356,11 @@ mod tests {
         // Just verify two different font-size values appear
         let font_size_14 = svg.contains("font-size=\"14.4\"");
         let font_size_17 = svg.contains("font-size=\"17.3\"");
-        assert!(font_size_14 && font_size_17,
+        assert!(
+            font_size_14 && font_size_17,
             "Expected both base (14.4) and CJK (17.3) font sizes in SVG, got: {}",
-            &svg[..svg.len().min(500)]);
+            &svg[..svg.len().min(500)]
+        );
     }
 
     #[test]
@@ -336,7 +376,10 @@ mod tests {
         // row_height=24, PAGE_MARGIN=25, row=4 → base_y=121.0
         // dot_y = 121.0 + 24*0.1 + 0*(24*0.15) = 123.4
         let svgs = render_score("1. 2 3 4", "a b c d");
-        assert!(svgs[0].contains(r#"cy="123.4""#), "1-beat lower-octave dot must be at slot 0 (cy=123.4)");
+        assert!(
+            svgs[0].contains(r#"cy="123.4""#),
+            "1-beat lower-octave dot must be at slot 0 (cy=123.4)"
+        );
     }
 
     #[test]
@@ -348,7 +391,10 @@ mod tests {
         let score_str = "=1. =1 =1 =1 =1 =1 =1 =1 =1 =1 =1 =1 =1 =1 =1 =1";
         let lyrics_str = "a b c d e f g h i j k l m n o p";
         let svgs = render_score(score_str, lyrics_str);
-        assert!(svgs[0].contains(r#"cy="130.6""#), "quarter-beat lower-octave dot must be at slot 2 (cy=130.6)");
+        assert!(
+            svgs[0].contains(r#"cy="130.6""#),
+            "quarter-beat lower-octave dot must be at slot 2 (cy=130.6)"
+        );
     }
 
     #[test]
@@ -375,10 +421,20 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
+        let svgs = render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        );
         let svg = &svgs[0];
-        assert!(svg.contains(">2<"), "expected numerator 2 in SVG for 2/4 time signature");
-        assert!(svg.contains(">4<"), "expected denominator 4 in SVG for 2/4 time signature");
+        assert!(
+            svg.contains(">2<"),
+            "expected numerator 2 in SVG for 2/4 time signature"
+        );
+        assert!(
+            svg.contains(">4<"),
+            "expected denominator 4 in SVG for 2/4 time signature"
+        );
     }
 
     #[test]
@@ -391,9 +447,16 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
+        let svgs = render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        );
         let svg = &svgs[0];
-        assert!(svg.contains("♩=75"), "expected BPM label text '♩=75' in SVG output");
+        assert!(
+            svg.contains("♩=75"),
+            "expected BPM label text '♩=75' in SVG output"
+        );
     }
 
     #[test]
@@ -405,8 +468,15 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
-        assert!(svgs[0].contains("Soprano"), "expected 'Soprano' label in SVG");
+        let svgs = render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        );
+        assert!(
+            svgs[0].contains("Soprano"),
+            "expected 'Soprano' label in SVG"
+        );
         assert!(svgs[0].contains("Alto"), "expected 'Alto' label in SVG");
     }
 
@@ -415,7 +485,11 @@ mod tests {
         use crate::layout::types::*;
         use nonempty::nonempty;
         let page = Page {
-            header: Header { title: "t".to_string(), subtitle: None, author: "a".to_string() },
+            header: Header {
+                title: "t".to_string(),
+                subtitle: None,
+                author: "a".to_string(),
+            },
             footer: Footer { page: 1, total: 1 },
             page_width_pt: A4_W,
             row_groups: vec![RowGroup {
@@ -425,7 +499,10 @@ mod tests {
                     position: GridPosition { column: 0, row: 6 },
                     horizontal_alignment: HorizontalAlignment::Left,
                     vertical_alignment: VerticalAlignment::Top,
-                    content: GridContent::HorizontalBar { from_column: 0, to_column: 16 },
+                    content: GridContent::HorizontalBar {
+                        from_column: 0,
+                        to_column: 16
+                    },
                 }],
             }],
         };
@@ -449,8 +526,15 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
-        assert!(svgs[0].contains("A&amp;B"), "expected XML-escaped label in SVG");
+        let svgs = render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        );
+        assert!(
+            svgs[0].contains("A&amp;B"),
+            "expected XML-escaped label in SVG"
+        );
         assert!(!svgs[0].contains("A&B\""), "expected raw & to be escaped");
     }
 
@@ -465,16 +549,27 @@ mod tests {
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
-        let svgs = render(&pages, score.metadata.row_height, score.metadata.note_number_width);
+        let svgs = render(
+            &pages,
+            score.metadata.row_height,
+            score.metadata.note_number_width,
+        );
         let svg = &svgs[0];
         // Bar 1 appears in the SVG
-        assert!(svg.contains(">1<") || svg.contains(">1 <"),
-            "expected bar number 1 in SVG output");
+        assert!(
+            svg.contains(">1<") || svg.contains(">1 <"),
+            "expected bar number 1 in SVG output"
+        );
         // Bar 2 appears in the SVG
-        assert!(svg.contains(">2<") || svg.contains(">2 <"),
-            "expected bar number 2 in SVG output");
+        assert!(
+            svg.contains(">2<") || svg.contains(">2 <"),
+            "expected bar number 2 in SVG output"
+        );
         // Small font size 8.6 is used for bar numbers
-        assert!(svg.contains("font-size=\"8.6\""),
-            "expected bar number font-size 8.6 in SVG; snippet: {}", &svg[..svg.len().min(800)]);
+        assert!(
+            svg.contains("font-size=\"8.6\""),
+            "expected bar number font-size 8.6 in SVG; snippet: {}",
+            &svg[..svg.len().min(800)]
+        );
     }
 }

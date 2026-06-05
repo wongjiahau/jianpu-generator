@@ -20,7 +20,10 @@ pub fn tokenize_lyrics(content: &str) -> Vec<Syllable> {
     let flush = |current_latin: &mut String, raw: &mut Vec<Syllable>| {
         let trimmed = current_latin.trim().to_string();
         if !trimmed.is_empty() {
-            raw.push(Syllable { text: trimmed, held: false });
+            raw.push(Syllable {
+                text: trimmed,
+                held: false,
+            });
         }
         current_latin.clear();
     };
@@ -28,13 +31,19 @@ pub fn tokenize_lyrics(content: &str) -> Vec<Syllable> {
     for c in content.chars() {
         if is_cjk_char(c) {
             flush(&mut current_latin, &mut raw);
-            raw.push(Syllable { text: c.to_string(), held: false });
+            raw.push(Syllable {
+                text: c.to_string(),
+                held: false,
+            });
         } else if c == '-' {
             // `-` is a special delimiter — flush any pending latin, then push a
             // dedicated dash syllable.  Do NOT accumulate it into current_latin
             // so that consecutive dashes each produce their own token.
             flush(&mut current_latin, &mut raw);
-            raw.push(Syllable { text: "-".to_string(), held: false });
+            raw.push(Syllable {
+                text: "-".to_string(),
+                held: false,
+            });
         } else if c.is_whitespace() {
             flush(&mut current_latin, &mut raw);
         } else {
@@ -52,7 +61,10 @@ pub fn tokenize_lyrics(content: &str) -> Vec<Syllable> {
             if let Some(last) = result.last_mut() {
                 last.held = true;
             }
-            result.push(Syllable { text: "-".to_string(), held: false });
+            result.push(Syllable {
+                text: "-".to_string(),
+                held: false,
+            });
         } else {
             result.push(syllable);
         }

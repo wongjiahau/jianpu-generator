@@ -19,13 +19,19 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
         match section.kind {
             SectionKind::Metadata => {
                 if raw_metadata.is_some() {
-                    return Err(JianPuError::new(doc_span.clone(), "duplicate [metadata] section"));
+                    return Err(JianPuError::new(
+                        doc_span.clone(),
+                        "duplicate [metadata] section",
+                    ));
                 }
                 raw_metadata = Some((section.content, section.content_offset));
             }
             SectionKind::Score => {
                 if raw_score.is_some() {
-                    return Err(JianPuError::new(doc_span.clone(), "duplicate [score] section"));
+                    return Err(JianPuError::new(
+                        doc_span.clone(),
+                        "duplicate [score] section",
+                    ));
                 }
                 raw_score = Some((section.content, section.content_offset));
             }
@@ -34,8 +40,8 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
 
     let (meta_content, meta_offset) = raw_metadata
         .ok_or_else(|| JianPuError::new(doc_span.clone(), "missing [metadata] section"))?;
-    let (score_content, _score_offset) = raw_score
-        .ok_or_else(|| JianPuError::new(doc_span, "missing [score] section"))?;
+    let (score_content, _score_offset) =
+        raw_score.ok_or_else(|| JianPuError::new(doc_span, "missing [score] section"))?;
 
     let metadata = metadata_parser::parse_metadata(&meta_content, meta_offset)?;
     let parts_decl = metadata.parts.clone();

@@ -19,6 +19,7 @@ pub struct ParsedPart {
 
 #[derive(Debug)]
 pub struct ParsedDocument {
+    #[allow(dead_code)]
     pub filename: String,
     pub metadata: ParsedMetadata,
     pub parts: Vec<ParsedPart>,
@@ -48,7 +49,10 @@ pub enum ScoreEvent {
     Rest(ParsedRest),
     BpmChange(u32),
     KeyChange(KeyChange),
-    TimeSignatureChange { numerator: u8, denominator: u8 },
+    TimeSignatureChange {
+        numerator: u8,
+        denominator: u8,
+    },
     /// The `-` token: extends the previous note/rest by one full beat (4 quarter-beats).
     Extension,
     LabelChange(String),
@@ -95,10 +99,22 @@ pub struct Note {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum NoteName { A, B, C, D, E, F, G }
+pub enum NoteName {
+    A,
+    B,
+    C,
+    D,
+    E,
+    F,
+    G,
+}
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum Accidental { Flat, Sharp, Natural }
+pub enum Accidental {
+    Flat,
+    Sharp,
+    Natural,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Syllable {

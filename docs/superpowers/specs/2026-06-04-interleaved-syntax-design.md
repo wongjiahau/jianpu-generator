@@ -38,7 +38,7 @@ li ttle lamb
 ```
 
 - Each blank-line-separated group is exactly **one bar (measure)**.
-- The first line of a group may optionally be a `(...)` directive row containing `time=`, `key=`, and/or `bpm=` changes. Directives apply to all subsequent bars until overridden.
+- The first line of a group may optionally be a `(...)` directive row containing `time=`, `key=`, and/or `bpm=` changes. Directives are global (apply to all parts) and persist to all subsequent bars until overridden by another `(...)` row.
 - The remaining lines map 1:1 to the `parts` declaration in order.
 - The `|` bar separator token is no longer used.
 

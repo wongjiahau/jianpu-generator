@@ -1,14 +1,12 @@
-use midly::{
-    Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind,
-};
 use midly::num::{u15, u24, u28, u4, u7};
+use midly::{Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, TrackEventKind};
 
 use std::collections::HashMap;
 
 use crate::ast::grouped::{NoteEvent, Score};
 use crate::ast::parsed::{Accidental, JianPuPitch, KeyChange, NoteName};
 
-const TPQ: u16 = 480;     // ticks per quarter note
+const TPQ: u16 = 480; // ticks per quarter note
 const VELOCITY: u8 = 80;
 const CHANNEL: u8 = 0;
 const PIANO: u8 = 0;
@@ -28,7 +26,10 @@ enum RawKind {
 pub fn write_midi(score: &Score) -> Vec<u8> {
     let mut raw: Vec<RawEvent> = Vec::new();
 
-    raw.push(RawEvent { tick: 0, kind: RawKind::ProgramChange(PIANO) });
+    raw.push(RawEvent {
+        tick: 0,
+        kind: RawKind::ProgramChange(PIANO),
+    });
 
     let mut current_tick: u32 = 0;
 
@@ -48,7 +49,10 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
     for measure in &score.measures {
         if let Some(bpm) = measure.bpm {
             let micros = 60_000_000 / bpm;
-            raw.push(RawEvent { tick: current_tick, kind: RawKind::Tempo(micros) });
+            raw.push(RawEvent {
+                tick: current_tick,
+                kind: RawKind::Tempo(micros),
+            });
         }
 
         if let Some(key) = &measure.key {
@@ -79,17 +83,26 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
                         // Flush any other pending ties/slurs: their NoteOff lands at the
                         // start of the current note (legato cutoff for slurs)
                         for (slurred_note, _) in pending_ties.drain() {
-                            raw.push(RawEvent { tick: part_tick, kind: RawKind::NoteOff(slurred_note) });
+                            raw.push(RawEvent {
+                                tick: part_tick,
+                                kind: RawKind::NoteOff(slurred_note),
+                            });
                         }
 
                         if !is_tie_continuation {
-                            raw.push(RawEvent { tick: part_tick, kind: RawKind::NoteOn(midi_note) });
+                            raw.push(RawEvent {
+                                tick: part_tick,
+                                kind: RawKind::NoteOn(midi_note),
+                            });
                         }
 
                         if note.tie {
                             pending_ties.insert(midi_note, note_off_tick);
                         } else {
-                            raw.push(RawEvent { tick: note_off_tick, kind: RawKind::NoteOff(midi_note) });
+                            raw.push(RawEvent {
+                                tick: note_off_tick,
+                                kind: RawKind::NoteOff(midi_note),
+                            });
                         }
 
                         part_tick += ticks;
@@ -97,7 +110,10 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
                     NoteEvent::Rest(rest) => {
                         // A rest ends any held notes
                         for (slurred_note, _) in pending_ties.drain() {
-                            raw.push(RawEvent { tick: part_tick, kind: RawKind::NoteOff(slurred_note) });
+                            raw.push(RawEvent {
+                                tick: part_tick,
+                                kind: RawKind::NoteOff(slurred_note),
+                            });
                         }
                         part_tick += duration_to_ticks(rest.duration);
                     }
@@ -118,7 +134,10 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
     // Flush any ties still held at end of score (e.g. trailing tied note on last measure)
     for pending_ties in per_part_ties {
         for (midi_note, note_off_tick) in pending_ties {
-            raw.push(RawEvent { tick: note_off_tick, kind: RawKind::NoteOff(midi_note) });
+            raw.push(RawEvent {
+                tick: note_off_tick,
+                kind: RawKind::NoteOff(midi_note),
+            });
         }
     }
 
@@ -148,7 +167,9 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
                 delta: u28::from(delta),
                 kind: TrackEventKind::Midi {
                     channel: u4::from(CHANNEL),
-                    message: MidiMessage::ProgramChange { program: u7::from(*program) },
+                    message: MidiMessage::ProgramChange {
+                        program: u7::from(*program),
+                    },
                 },
             },
             RawKind::NoteOn(note) => TrackEvent {
@@ -207,21 +228,21 @@ fn note_name_to_semitone(name: &NoteName) -> i32 {
 
 fn pitch_to_scale_offset(pitch: &JianPuPitch) -> i32 {
     match pitch {
-        JianPuPitch::One   => 0,
-        JianPuPitch::Two   => 2,
+        JianPuPitch::One => 0,
+        JianPuPitch::Two => 2,
         JianPuPitch::Three => 4,
-        JianPuPitch::Four  => 5,
-        JianPuPitch::Five  => 7,
-        JianPuPitch::Six   => 9,
+        JianPuPitch::Four => 5,
+        JianPuPitch::Five => 7,
+        JianPuPitch::Six => 9,
         JianPuPitch::Seven => 11,
     }
 }
 
 fn accidental_offset(acc: &Accidental) -> i32 {
     match acc {
-        Accidental::Sharp   =>  1,
-        Accidental::Flat    => -1,
-        Accidental::Natural =>  0,
+        Accidental::Sharp => 1,
+        Accidental::Flat => -1,
+        Accidental::Natural => 0,
     }
 }
 
@@ -243,27 +264,45 @@ mod tests {
     use crate::ast::parsed::{Accidental, KeyChange, Note, NoteName};
 
     fn key(name: NoteName, octave: u8) -> KeyChange {
-        KeyChange { note: Note { name, octave, accidental: Accidental::Natural } }
+        KeyChange {
+            note: Note {
+                name,
+                octave,
+                accidental: Accidental::Natural,
+            },
+        }
     }
 
     #[test]
     fn middle_c_degree_one() {
-        assert_eq!(resolve_midi_note(&JianPuPitch::One, 0, &key(NoteName::C, 4)), 60);
+        assert_eq!(
+            resolve_midi_note(&JianPuPitch::One, 0, &key(NoteName::C, 4)),
+            60
+        );
     }
 
     #[test]
     fn degree_five_c4_is_g4() {
-        assert_eq!(resolve_midi_note(&JianPuPitch::Five, 0, &key(NoteName::C, 4)), 67);
+        assert_eq!(
+            resolve_midi_note(&JianPuPitch::Five, 0, &key(NoteName::C, 4)),
+            67
+        );
     }
 
     #[test]
     fn octave_up_shifts_by_12() {
-        assert_eq!(resolve_midi_note(&JianPuPitch::One, 1, &key(NoteName::C, 4)), 72);
+        assert_eq!(
+            resolve_midi_note(&JianPuPitch::One, 1, &key(NoteName::C, 4)),
+            72
+        );
     }
 
     #[test]
     fn key_g4_degree_one_is_midi_67() {
-        assert_eq!(resolve_midi_note(&JianPuPitch::One, 0, &key(NoteName::G, 4)), 67);
+        assert_eq!(
+            resolve_midi_note(&JianPuPitch::One, 0, &key(NoteName::G, 4)),
+            67
+        );
     }
 
     #[test]

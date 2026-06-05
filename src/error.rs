@@ -36,20 +36,30 @@ pub struct JianPuError {
 
 impl JianPuError {
     pub fn new(span: Span, message: impl Into<String>) -> Self {
-        Self { location: Location::Span(span), message: message.into() }
+        Self {
+            location: Location::Span(span),
+            message: message.into(),
+        }
     }
 
     pub fn at_bar(bar: usize, note: usize, message: impl Into<String>) -> Self {
-        Self { location: Location::Bar { bar, note }, message: message.into() }
+        Self {
+            location: Location::Bar { bar, note },
+            message: message.into(),
+        }
     }
 }
 
 impl std::fmt::Display for JianPuError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match &self.location {
-            Location::Span(span) => write!(f, "{} (at byte {}-{})", self.message, span.start, span.end),
+            Location::Span(span) => {
+                write!(f, "{} (at byte {}-{})", self.message, span.start, span.end)
+            }
             Location::Bar { bar, note: 0 } => write!(f, "{} (bar {})", self.message, bar),
-            Location::Bar { bar, note } => write!(f, "{} (bar {}, note {})", self.message, bar, note),
+            Location::Bar { bar, note } => {
+                write!(f, "{} (bar {}, note {})", self.message, bar, note)
+            }
         }
     }
 }

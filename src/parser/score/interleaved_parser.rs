@@ -1,36 +1,52 @@
 use crate::ast::parsed::{
-    Accidental, KeyChange, Note, NoteName, ParsedLyrics, ParsedPart, ParsedScore,
-    PartColumn, ScoreEvent,
+    Accidental, KeyChange, Note, NoteName, ParsedLyrics, ParsedPart, ParsedScore, PartColumn,
+    ScoreEvent,
 };
 use crate::error::{JianPuError, Span, Spanned};
-use crate::utils::tokenize_lyrics;
 use crate::parser::score::{token_parser, tokenizer};
+use crate::utils::tokenize_lyrics;
 
 pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, JianPuError> {
     let groups = collect_groups(content);
 
-    let notes_names: Vec<String> = parts.iter().filter_map(|p| match p {
-        PartColumn::Notes { name } => Some(name.clone()),
-        _ => None,
-    }).collect();
+    let notes_names: Vec<String> = parts
+        .iter()
+        .filter_map(|p| match p {
+            PartColumn::Notes { name } => Some(name.clone()),
+            _ => None,
+        })
+        .collect();
 
     if notes_names.is_empty() {
-        return Err(JianPuError::new(Span::new(0, 0), "parts declaration has no 'notes:' columns"));
+        return Err(JianPuError::new(
+            Span::new(0, 0),
+            "parts declaration has no 'notes:' columns",
+        ));
     }
 
-    enum ColAction { Notes(usize), Lyrics(usize) }
+    enum ColAction {
+        Notes(usize),
+        Lyrics(usize),
+    }
 
-    let col_actions: Vec<ColAction> = parts.iter().map(|p| match p {
-        PartColumn::Notes { name } => {
-            let idx = notes_names.iter().position(|n| n == name).unwrap();
-            ColAction::Notes(idx)
-        }
-        PartColumn::Lyrics { name } => {
-            let idx = notes_names.iter().position(|n| n == name)
-                .unwrap_or_else(|| panic!("lyrics column '{}' has no matching notes column", name));
-            ColAction::Lyrics(idx)
-        }
-    }).collect();
+    let col_actions: Vec<ColAction> = parts
+        .iter()
+        .map(|p| match p {
+            PartColumn::Notes { name } => {
+                let idx = notes_names.iter().position(|n| n == name).unwrap();
+                ColAction::Notes(idx)
+            }
+            PartColumn::Lyrics { name } => {
+                let idx = notes_names
+                    .iter()
+                    .position(|n| n == name)
+                    .unwrap_or_else(|| {
+                        panic!("lyrics column '{}' has no matching notes column", name)
+                    });
+                ColAction::Lyrics(idx)
+            }
+        })
+        .collect();
 
     let mut events_acc: Vec<Vec<Spanned<ScoreEvent>>> =
         (0..notes_names.len()).map(|_| Vec::new()).collect();
@@ -54,7 +70,11 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
         let (directive_events, data_lines) = split_directive(group_lines, bar)?;
 
         for e in &directive_events {
-            if let ScoreEvent::TimeSignatureChange { numerator, denominator } = &e.value {
+            if let ScoreEvent::TimeSignatureChange {
+                numerator,
+                denominator,
+            } = &e.value
+            {
                 time_num = *numerator;
                 time_den = *denominator;
             }
@@ -63,18 +83,31 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
         // Allow fewer lines than parts only when trailing columns are all Lyrics columns;
         // missing lyrics lines are treated as empty (no syllables).
         // Too many lines or too few notes lines are always errors.
-        let notes_cols_count = parts.iter().filter(|p| matches!(p, PartColumn::Notes { .. })).count();
+        let notes_cols_count = parts
+            .iter()
+            .filter(|p| matches!(p, PartColumn::Notes { .. }))
+            .count();
         if data_lines.len() < notes_cols_count {
-            return Err(JianPuError::at_bar(bar, 0, format!(
-                "expected {} lines (one per parts column), got {}",
-                parts.len(), data_lines.len()
-            )));
+            return Err(JianPuError::at_bar(
+                bar,
+                0,
+                format!(
+                    "expected {} lines (one per parts column), got {}",
+                    parts.len(),
+                    data_lines.len()
+                ),
+            ));
         }
         if data_lines.len() > parts.len() {
-            return Err(JianPuError::at_bar(bar, 0, format!(
-                "expected {} lines (one per parts column), got {}",
-                parts.len(), data_lines.len()
-            )));
+            return Err(JianPuError::at_bar(
+                bar,
+                0,
+                format!(
+                    "expected {} lines (one per parts column), got {}",
+                    parts.len(),
+                    data_lines.len()
+                ),
+            ));
         }
 
         // Pad with empty strings for missing trailing lyrics lines
@@ -107,9 +140,17 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
     let mut result = Vec::new();
     for (i, name) in notes_names.iter().enumerate() {
         result.push(ParsedPart {
-            name: if name.is_empty() { None } else { Some(name.clone()) },
-            score: ParsedScore { events: std::mem::take(&mut events_acc[i]) },
-            lyrics: syllables_acc[i].take().map(|s| ParsedLyrics { syllables: s }),
+            name: if name.is_empty() {
+                None
+            } else {
+                Some(name.clone())
+            },
+            score: ParsedScore {
+                events: std::mem::take(&mut events_acc[i]),
+            },
+            lyrics: syllables_acc[i]
+                .take()
+                .map(|s| ParsedLyrics { syllables: s }),
         });
     }
 
@@ -144,7 +185,11 @@ fn split_directive(
     if lines.first().map(|l| l.starts_with('(')).unwrap_or(false) {
         let directive_line = &lines[0];
         if !directive_line.ends_with(')') {
-            return Err(JianPuError::at_bar(bar, 0, "directive row must end with ')'"));
+            return Err(JianPuError::at_bar(
+                bar,
+                0,
+                "directive row must end with ')'",
+            ));
         }
         let events = parse_directive_line(directive_line)?;
         Ok((events, &lines[1..]))
@@ -186,9 +231,8 @@ fn tokenize_directive_tokens(inner: &str) -> Result<Vec<String>, String> {
 
 fn parse_directive_line(line: &str) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
     let inner = &line[1..line.len() - 1];
-    let tokens = tokenize_directive_tokens(inner).map_err(|msg| {
-        JianPuError::new(Span::new(0, line.len()), msg)
-    })?;
+    let tokens = tokenize_directive_tokens(inner)
+        .map_err(|msg| JianPuError::new(Span::new(0, line.len()), msg))?;
     let mut events = Vec::new();
 
     for token in &tokens {
@@ -212,11 +256,17 @@ fn parse_directive_line(line: &str) -> Result<Vec<Spanned<ScoreEvent>>, JianPuEr
             }
             let text = rest[1..rest.len() - 1].to_string();
             if text.is_empty() {
-                return Err(JianPuError::new(span, "label value must not be empty".to_string()));
+                return Err(JianPuError::new(
+                    span,
+                    "label value must not be empty".to_string(),
+                ));
             }
             ScoreEvent::LabelChange(text)
         } else {
-            return Err(JianPuError::new(span, format!("unknown directive: '{}'", token)));
+            return Err(JianPuError::new(
+                span,
+                format!("unknown directive: '{}'", token),
+            ));
         };
 
         events.push(Spanned::new(event, span));
@@ -233,41 +283,80 @@ fn parse_key_value(value: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
     })?;
 
     let name = match name_char {
-        'A' => NoteName::A, 'B' => NoteName::B, 'C' => NoteName::C,
-        'D' => NoteName::D, 'E' => NoteName::E, 'F' => NoteName::F,
+        'A' => NoteName::A,
+        'B' => NoteName::B,
+        'C' => NoteName::C,
+        'D' => NoteName::D,
+        'E' => NoteName::E,
+        'F' => NoteName::F,
         'G' => NoteName::G,
-        _ => return Err(JianPuError::new(span.clone(), format!("invalid note name: '{}'", name_char))),
+        _ => {
+            return Err(JianPuError::new(
+                span.clone(),
+                format!("invalid note name: '{}'", name_char),
+            ))
+        }
     };
 
     let accidental = match chars.peek() {
-        Some('b') => { chars.next(); Accidental::Flat }
-        Some('#') => { chars.next(); Accidental::Sharp }
+        Some('b') => {
+            chars.next();
+            Accidental::Flat
+        }
+        Some('#') => {
+            chars.next();
+            Accidental::Sharp
+        }
         _ => Accidental::Natural,
     };
 
     let octave_str: String = chars.collect();
     let octave = octave_str.parse::<u8>().map_err(|_| {
-        JianPuError::new(span.clone(), format!("invalid octave in 'key={}': expected number", value))
+        JianPuError::new(
+            span.clone(),
+            format!("invalid octave in 'key={}': expected number", value),
+        )
     })?;
 
-    Ok(ScoreEvent::KeyChange(KeyChange { note: Note { name, octave, accidental } }))
+    Ok(ScoreEvent::KeyChange(KeyChange {
+        note: Note {
+            name,
+            octave,
+            accidental,
+        },
+    }))
 }
 
 fn parse_time_value(value: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
     let parts: Vec<&str> = value.split('/').collect();
     if parts.len() != 2 {
-        return Err(JianPuError::new(span.clone(), format!("invalid time signature: '{}'", value)));
+        return Err(JianPuError::new(
+            span.clone(),
+            format!("invalid time signature: '{}'", value),
+        ));
     }
     let numerator = parts[0].parse::<u8>().map_err(|_| {
-        JianPuError::new(span.clone(), format!("invalid time numerator: '{}'", parts[0]))
+        JianPuError::new(
+            span.clone(),
+            format!("invalid time numerator: '{}'", parts[0]),
+        )
     })?;
     let denominator = parts[1].parse::<u8>().map_err(|_| {
-        JianPuError::new(span.clone(), format!("invalid time denominator: '{}'", parts[1]))
+        JianPuError::new(
+            span.clone(),
+            format!("invalid time denominator: '{}'", parts[1]),
+        )
     })?;
     if denominator == 0 {
-        return Err(JianPuError::new(span, "time denominator cannot be zero".to_string()));
+        return Err(JianPuError::new(
+            span,
+            "time denominator cannot be zero".to_string(),
+        ));
     }
-    Ok(ScoreEvent::TimeSignatureChange { numerator, denominator })
+    Ok(ScoreEvent::TimeSignatureChange {
+        numerator,
+        denominator,
+    })
 }
 
 fn beats_per_measure(num: u8, den: u8) -> u32 {
@@ -302,10 +391,14 @@ fn validate_beats(
     }
 
     if total < expected {
-        return Err(JianPuError::at_bar(bar, 0, format!(
-            "incomplete measure: expected {} quarter-beats, got {}",
-            expected, total
-        )));
+        return Err(JianPuError::at_bar(
+            bar,
+            0,
+            format!(
+                "incomplete measure: expected {} quarter-beats, got {}",
+                expected, total
+            ),
+        ));
     }
 
     Ok(())
@@ -316,8 +409,16 @@ mod tests {
     use super::*;
     use crate::ast::parsed::PartColumn;
 
-    fn notes_col(name: &str) -> PartColumn { PartColumn::Notes { name: name.to_string() } }
-    fn lyrics_col(name: &str) -> PartColumn { PartColumn::Lyrics { name: name.to_string() } }
+    fn notes_col(name: &str) -> PartColumn {
+        PartColumn::Notes {
+            name: name.to_string(),
+        }
+    }
+    fn lyrics_col(name: &str) -> PartColumn {
+        PartColumn::Lyrics {
+            name: name.to_string(),
+        }
+    }
 
     #[test]
     fn single_unnamed_part_no_lyrics() {
@@ -365,7 +466,10 @@ mod tests {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\nextra line\n";
         let parts = vec![notes_col(""), lyrics_col("")];
         let err = parse(content, &parts).unwrap_err();
-        assert!(matches!(err.location, crate::error::Location::Bar { bar: 1, .. }));
+        assert!(matches!(
+            err.location,
+            crate::error::Location::Bar { bar: 1, .. }
+        ));
     }
 
     #[test]
@@ -387,7 +491,10 @@ mod tests {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4 5\n";
         let parts = vec![notes_col("")];
         let err = parse(content, &parts).unwrap_err();
-        assert!(matches!(err.location, crate::error::Location::Bar { bar: 1, note: 5 }));
+        assert!(matches!(
+            err.location,
+            crate::error::Location::Bar { bar: 1, note: 5 }
+        ));
     }
 
     #[test]
@@ -395,16 +502,15 @@ mod tests {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3\n";
         let parts = vec![notes_col("")];
         let err = parse(content, &parts).unwrap_err();
-        assert!(matches!(err.location, crate::error::Location::Bar { bar: 1, note: 0 }));
+        assert!(matches!(
+            err.location,
+            crate::error::Location::Bar { bar: 1, note: 0 }
+        ));
     }
 
     #[test]
     fn directive_row_is_optional() {
-        let content = concat!(
-            "(time=4/4 key=C4 bpm=120)\n1 2 3 4\n",
-            "\n",
-            "5 6 7 1\n",
-        );
+        let content = concat!("(time=4/4 key=C4 bpm=120)\n1 2 3 4\n", "\n", "5 6 7 1\n",);
         let parts = vec![notes_col("")];
         let result = parse(content, &parts).unwrap();
         assert_eq!(result[0].score.events.len(), 11);
@@ -435,7 +541,11 @@ mod tests {
         let parts = vec![notes_col("")];
         let result = parse(content, &parts).unwrap();
         use crate::ast::parsed::{Accidental, ScoreEvent};
-        let key_event = result[0].score.events.iter().find(|e| matches!(&e.value, ScoreEvent::KeyChange(_)));
+        let key_event = result[0]
+            .score
+            .events
+            .iter()
+            .find(|e| matches!(&e.value, ScoreEvent::KeyChange(_)));
         assert!(key_event.is_some());
         if let ScoreEvent::KeyChange(kc) = &key_event.unwrap().value {
             assert_eq!(kc.note.accidental, Accidental::Flat);
@@ -448,7 +558,10 @@ mod tests {
         let parts = vec![notes_col("")];
         let result = parse(content, &parts).unwrap();
         use crate::ast::parsed::ScoreEvent;
-        let label_event = result[0].score.events.iter()
+        let label_event = result[0]
+            .score
+            .events
+            .iter()
             .find(|e| matches!(&e.value, ScoreEvent::LabelChange(_)));
         assert!(label_event.is_some(), "expected a LabelChange event");
         if let ScoreEvent::LabelChange(text) = &label_event.unwrap().value {
@@ -476,7 +589,11 @@ mod tests {
         let parts = vec![notes_col("")];
         let result = parse(content, &parts).unwrap();
         use crate::ast::parsed::{Accidental, ScoreEvent};
-        let key_event = result[0].score.events.iter().find(|e| matches!(&e.value, ScoreEvent::KeyChange(_)));
+        let key_event = result[0]
+            .score
+            .events
+            .iter()
+            .find(|e| matches!(&e.value, ScoreEvent::KeyChange(_)));
         if let ScoreEvent::KeyChange(kc) = &key_event.unwrap().value {
             assert_eq!(kc.note.accidental, Accidental::Sharp);
         }

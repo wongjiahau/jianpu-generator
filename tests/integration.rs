@@ -52,7 +52,10 @@ fn generate_midi_produces_midi() {
     assert!(status.success(), "generate midi command failed");
     let bytes = fs::read(output_path).unwrap();
     // MIDI files start with "MThd"
-    assert!(bytes.starts_with(b"MThd"), "output is not a valid MIDI file");
+    assert!(
+        bytes.starts_with(b"MThd"),
+        "output is not a valid MIDI file"
+    );
 
     let _ = fs::remove_file(input_path);
     let _ = fs::remove_file(output_path);

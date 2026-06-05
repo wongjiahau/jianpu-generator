@@ -26,6 +26,7 @@ pub struct Page {
 #[derive(Debug, Clone)]
 pub struct RowGroup {
     pub elements: NonEmpty<GridElement>,
+    #[allow(dead_code)]
     pub height_in_rows: u32,
     /// Number of grid columns actually used by this row group.
     pub width_in_columns: u32,
@@ -41,6 +42,7 @@ pub struct GridPosition {
 pub enum HorizontalAlignment {
     Left,
     Center,
+    #[allow(dead_code)]
     Right,
 }
 
@@ -71,26 +73,56 @@ pub struct UnderlineSpan {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum GridContent {
-    NoteHead { pitch: JianPuPitch, octave: i8 },
+    NoteHead {
+        pitch: JianPuPitch,
+        octave: i8,
+    },
     Rest,
-    Lyric { text: String, is_cjk: bool },
-    TieOrSlurCurve { from_column: u32, to_column: u32 },
+    Lyric {
+        text: String,
+        is_cjk: bool,
+    },
+    TieOrSlurCurve {
+        from_column: u32,
+        to_column: u32,
+    },
     /// Horizontal underlines for a beam group.
     /// `levels[0]` is the topmost line (closest to the note heads), spanning all notes.
     /// Additional entries are drawn below it; each covers one maximal contiguous sub-run
     /// of notes whose underline count is >= that level number.
-    DurationUnderlines { levels: Vec<UnderlineSpan> },
+    DurationUnderlines {
+        levels: Vec<UnderlineSpan>,
+    },
     /// Dots indicating a note is one or more octaves below the default octave.
     /// Placed in row 2 with VerticalAlignment::Bottom so they always appear below underlines.
-    LowerOctaveDots { count: u32, underline_count: u8 },
-    BarLine { height_in_rows: u32 },
+    LowerOctaveDots {
+        count: u32,
+        underline_count: u8,
+    },
+    BarLine {
+        height_in_rows: u32,
+    },
     Extension,
-    TimeSignatureLabel { numerator: u8, denominator: u8 },
-    BpmLabel { bpm: u32 },
-    PartLabel { text: String },
-    HorizontalBar { from_column: u32, to_column: u32 },
-    BarNumber { number: u32 },
-    SectionLabel { text: String },
+    TimeSignatureLabel {
+        numerator: u8,
+        denominator: u8,
+    },
+    BpmLabel {
+        bpm: u32,
+    },
+    PartLabel {
+        text: String,
+    },
+    HorizontalBar {
+        from_column: u32,
+        to_column: u32,
+    },
+    BarNumber {
+        number: u32,
+    },
+    SectionLabel {
+        text: String,
+    },
 }
 
 #[cfg(test)]

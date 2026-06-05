@@ -49,7 +49,9 @@ pub fn combine(parts: Vec<GroupedPart>) -> Result<Vec<MultiPartMeasure>, JianPuE
                 };
                 PartSlice {
                     name: part.name.clone(),
-                    notes: Notes { events: measure.notes.events.clone() },
+                    notes: Notes {
+                        events: measure.notes.events.clone(),
+                    },
                     lyrics,
                 }
             })
