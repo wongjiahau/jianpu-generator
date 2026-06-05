@@ -1,6 +1,7 @@
 mod ast;
 mod combiner;
 mod error;
+mod error_reporter;
 mod grouper;
 mod layout;
 mod midi;
