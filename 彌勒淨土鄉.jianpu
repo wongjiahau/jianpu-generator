@@ -5,7 +5,7 @@ author = "天然師尊 慈賜"
 row height = 20
 max columns = 40
 note number width = 8
-parts = notes:A1,T notes:A2 lyrics:A1,T notes:S1 lyrics:S1 notes:S2 lyrics:S2
+parts = notes:A1&T notes:A2 lyrics:A1&T notes:S1 lyrics:S1 notes:S2 lyrics:S2
 
 [score]
 
