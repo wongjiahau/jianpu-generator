@@ -50,15 +50,15 @@ fn parse_single_token(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
 }
 
 fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
-    let mut chars = text.chars().peekable();
+    let mut chars = text.char_indices().peekable();
 
     // Duration prefix
     let duration: u32 = match chars.peek() {
-        Some('=') => {
+        Some(&(_, '=')) => {
             chars.next();
             1
         }
-        Some('_') => {
+        Some(&(_, '_')) => {
             chars.next();
             2
         }
@@ -67,13 +67,13 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
 
     // Leading octave dots
     let mut leading_dots = 0i8;
-    while chars.peek() == Some(&'.') {
+    while chars.peek().map(|&(_, c)| c) == Some('.') {
         leading_dots += 1;
         chars.next();
     }
 
-    // Pitch digit
-    let pitch_char = chars.next().ok_or_else(|| {
+    // Pitch digit — span points to this exact character
+    let (pitch_byte, pitch_char) = chars.next().ok_or_else(|| {
         JianPuError::new(
             span.clone(),
             format!("expected a pitch digit (0-7), got: {}", text),
@@ -81,8 +81,9 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
     })?;
 
     if !matches!(pitch_char, '0'..='7') {
+        let pos = span.start + pitch_byte;
         return Err(JianPuError::new(
-            span.clone(),
+            Span::new(pos, pos + pitch_char.len_utf8()),
             format!("expected pitch digit 0-7, got: {}", pitch_char),
         ));
     }
@@ -90,7 +91,7 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
     // Trailing octave dots and tie
     let mut trailing_dots = 0i8;
     let mut tie = false;
-    while let Some(&c) = chars.peek() {
+    while let Some(&(idx, c)) = chars.peek() {
         match c {
             '.' => {
                 trailing_dots += 1;
@@ -102,8 +103,9 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
                 break;
             }
             _ => {
+                let pos = span.start + idx;
                 return Err(JianPuError::new(
-                    span.clone(),
+                    Span::new(pos, pos + c.len_utf8()),
                     format!("unexpected character after pitch: {}", c),
                 ));
             }

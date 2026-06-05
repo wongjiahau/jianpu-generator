@@ -6,7 +6,11 @@ use crate::error::{JianPuError, Span, Spanned};
 use crate::parser::score::{token_parser, tokenizer};
 use crate::utils::tokenize_lyrics;
 
-pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, JianPuError> {
+pub fn parse(
+    content: &str,
+    base_offset: usize,
+    parts: &[PartColumn],
+) -> Result<Vec<ParsedPart>, JianPuError> {
     let groups = collect_groups(content);
 
     let notes_names: Vec<String> = parts
@@ -108,8 +112,8 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
             ));
         }
 
-        // Pad with empty strings for missing trailing lyrics lines
-        let padded_data: Vec<String> = (0..parts.len())
+        // Pad with empty strings/zero-offsets for missing trailing lyrics lines
+        let padded_data: Vec<(String, usize)> = (0..parts.len())
             .map(|i| data_lines.get(i).cloned().unwrap_or_default())
             .collect();
 
@@ -119,10 +123,10 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
 
         let beats_expected = beats_per_measure(time_num, time_den);
 
-        for (i, line) in padded_data.iter().enumerate() {
+        for (i, (line, line_offset)) in padded_data.iter().enumerate() {
             match col_actions[i] {
                 ColAction::Notes(idx) => {
-                    let tokens = tokenizer::tokenize(line, 0);
+                    let tokens = tokenizer::tokenize(line, base_offset + line_offset);
                     let events = token_parser::parse_tokens(tokens)?;
                     validate_beats(&events, beats_expected, bar)?;
                     events_acc[idx].extend(events);
@@ -155,19 +159,23 @@ pub fn parse(content: &str, parts: &[PartColumn]) -> Result<Vec<ParsedPart>, Jia
     Ok(result)
 }
 
-fn collect_groups(content: &str) -> Vec<Vec<String>> {
-    let mut groups: Vec<Vec<String>> = Vec::new();
-    let mut current: Vec<String> = Vec::new();
+/// Returns groups of `(trimmed_line, byte_offset_within_content)` pairs.
+fn collect_groups(content: &str) -> Vec<Vec<(String, usize)>> {
+    let mut groups: Vec<Vec<(String, usize)>> = Vec::new();
+    let mut current: Vec<(String, usize)> = Vec::new();
+    let mut byte_offset: usize = 0;
 
     for line in content.lines() {
-        let trimmed = line.trim().to_string();
+        let leading = line.len() - line.trim_start().len();
+        let trimmed = line.trim();
         if trimmed.is_empty() {
             if !current.is_empty() {
                 groups.push(std::mem::take(&mut current));
             }
         } else {
-            current.push(trimmed);
+            current.push((trimmed.to_string(), byte_offset + leading));
         }
+        byte_offset += line.len() + 1; // +1 for '\n'
     }
     if !current.is_empty() {
         groups.push(current);
@@ -176,29 +184,37 @@ fn collect_groups(content: &str) -> Vec<Vec<String>> {
     groups
 }
 
+#[allow(clippy::type_complexity)]
 fn split_directive(
-    lines: &[String],
+    lines: &[(String, usize)],
     _bar: usize,
-) -> Result<(Vec<Spanned<ScoreEvent>>, &[String]), JianPuError> {
-    if lines.first().map(|l| l.starts_with('(')).unwrap_or(false) {
-        let directive_line = &lines[0];
+) -> Result<(Vec<Spanned<ScoreEvent>>, &[(String, usize)]), JianPuError> {
+    if lines
+        .first()
+        .map(|(l, _)| l.starts_with('('))
+        .unwrap_or(false)
+    {
+        let (directive_line, directive_offset) = &lines[0];
         if !directive_line.ends_with(')') {
             return Err(JianPuError::new(
-                Span::new(0, 0),
+                Span::new(*directive_offset, directive_offset + directive_line.len()),
                 "directive row must end with ')'",
             ));
         }
-        let events = parse_directive_line(directive_line)?;
+        let events = parse_directive_line(directive_line, *directive_offset)?;
         Ok((events, &lines[1..]))
     } else {
         Ok((Vec::new(), lines))
     }
 }
 
-fn tokenize_directive_tokens(inner: &str) -> Result<Vec<String>, String> {
+/// Returns `(token_text, byte_offset_within_inner)` pairs.
+fn tokenize_directive_tokens(inner: &str) -> Result<Vec<(String, usize)>, String> {
     let mut tokens = Vec::new();
     let mut current = String::new();
+    let mut current_start: usize = 0;
     let mut in_quote = false;
+    let mut byte_offset: usize = 0;
 
     for ch in inner.chars() {
         if in_quote {
@@ -206,34 +222,49 @@ fn tokenize_directive_tokens(inner: &str) -> Result<Vec<String>, String> {
             if ch == '"' {
                 in_quote = false;
             }
+            byte_offset += ch.len_utf8();
         } else if ch == '"' {
+            if current.is_empty() {
+                current_start = byte_offset;
+            }
             current.push(ch);
             in_quote = true;
+            byte_offset += ch.len_utf8();
         } else if ch.is_whitespace() {
             if !current.is_empty() {
-                tokens.push(std::mem::take(&mut current));
+                tokens.push((std::mem::take(&mut current), current_start));
             }
+            byte_offset += ch.len_utf8();
         } else {
+            if current.is_empty() {
+                current_start = byte_offset;
+            }
             current.push(ch);
+            byte_offset += ch.len_utf8();
         }
     }
     if in_quote {
         return Err("unclosed quote in directive line".to_string());
     }
     if !current.is_empty() {
-        tokens.push(current);
+        tokens.push((current, current_start));
     }
     Ok(tokens)
 }
 
-fn parse_directive_line(line: &str) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
+fn parse_directive_line(
+    line: &str,
+    line_offset: usize,
+) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
     let inner = &line[1..line.len() - 1];
+    let inner_offset = line_offset + 1; // skip '('
     let tokens = tokenize_directive_tokens(inner)
-        .map_err(|msg| JianPuError::new(Span::new(0, line.len()), msg))?;
+        .map_err(|msg| JianPuError::new(Span::new(line_offset, line_offset + line.len()), msg))?;
     let mut events = Vec::new();
 
-    for token in &tokens {
-        let span = Span::new(0, token.len());
+    for (token, token_inner_offset) in &tokens {
+        let token_file_offset = inner_offset + token_inner_offset;
+        let span = Span::new(token_file_offset, token_file_offset + token.len());
 
         let event = if let Some(rest) = token.strip_prefix("bpm=") {
             let bpm = rest.parse::<u32>().map_err(|_| {
@@ -377,17 +408,30 @@ fn validate_beats(
         if beats > 0 {
             total += beats;
             if total > expected {
-                return Err(JianPuError::new(Span::new(0, 0), format!(
-                    "note exceeds measure boundary: measure has {} quarter-beats, cumulative is now {}",
-                    expected, total
-                )));
+                return Err(JianPuError::new(
+                    e.span.clone(),
+                    format!(
+                        "note exceeds measure boundary: measure has {} quarter-beats, cumulative is now {}",
+                        expected, total
+                    ),
+                ));
             }
         }
     }
 
     if total < expected {
+        let span = events
+            .iter()
+            .rfind(|e| {
+                matches!(
+                    &e.value,
+                    ScoreEvent::Note(_) | ScoreEvent::Rest(_) | ScoreEvent::Extension
+                )
+            })
+            .map(|e| e.span.clone())
+            .unwrap_or(Span::new(0, 0));
         return Err(JianPuError::new(
-            Span::new(0, 0),
+            span,
             format!(
                 "incomplete measure: expected {} quarter-beats, got {}",
                 expected, total
@@ -418,7 +462,7 @@ mod tests {
     fn single_unnamed_part_no_lyrics() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].name, None);
         assert!(result[0].lyrics.is_none());
@@ -429,7 +473,7 @@ mod tests {
     fn single_part_with_lyrics() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\ndo re mi fa\n";
         let parts = vec![notes_col(""), lyrics_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         assert_eq!(result.len(), 1);
         assert!(result[0].lyrics.is_some());
         assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
@@ -446,7 +490,7 @@ mod tests {
             "5 6 7 1\n",
         );
         let parts = vec![notes_col("Soprano"), notes_col("Alto")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].name, Some("Soprano".to_string()));
         assert_eq!(result[1].name, Some("Alto".to_string()));
@@ -459,7 +503,7 @@ mod tests {
         // 3 lines for 2-column parts declaration → error
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\nextra line\n";
         let parts = vec![notes_col(""), lyrics_col("")];
-        let err = parse(content, &parts).unwrap_err();
+        let err = parse(content, 0, &parts).unwrap_err();
         assert!(err.message.contains("expected") && err.message.contains("got"));
     }
 
@@ -472,7 +516,7 @@ mod tests {
             "5 6 7 1\n",
         );
         let parts = vec![notes_col(""), lyrics_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
     }
@@ -481,23 +525,63 @@ mod tests {
     fn rejects_overfull_measure() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4 5\n";
         let parts = vec![notes_col("")];
-        let err = parse(content, &parts).unwrap_err();
+        let err = parse(content, 0, &parts).unwrap_err();
         assert!(err.message.contains("note exceeds measure boundary"));
+    }
+
+    #[test]
+    fn overfull_measure_span_points_to_offending_note() {
+        // "(time=4/4 key=C4 bpm=120)\n" = 26 bytes
+        // "1 2 3 4 5" → '5' is at byte offset 8 within the line
+        // global offset: 26 + 8 = 34
+        let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4 5\n";
+        let parts = vec![notes_col("")];
+        let err = parse(content, 0, &parts).unwrap_err();
+        assert_eq!(err.span.start, 34, "span must point to the offending '5'");
+        assert_eq!(err.span.end, 35);
     }
 
     #[test]
     fn rejects_underfull_measure() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3\n";
         let parts = vec![notes_col("")];
-        let err = parse(content, &parts).unwrap_err();
+        let err = parse(content, 0, &parts).unwrap_err();
         assert!(err.message.contains("incomplete measure"));
+    }
+
+    #[test]
+    fn underfull_measure_span_points_to_last_note() {
+        // "(time=4/4 key=C4 bpm=120)\n" = 26 bytes
+        // "4 4 4 _4" → '_4' starts at byte offset 6 within the line
+        // global offset: 26 + 6 = 32
+        let content = "(time=4/4 key=C4 bpm=120)\n4 4 4 _4\n";
+        let parts = vec![notes_col("")];
+        let err = parse(content, 0, &parts).unwrap_err();
+        assert_eq!(err.span.start, 32, "span must point to the last note '_4'");
+        assert_eq!(err.span.end, 34);
+    }
+
+    #[test]
+    fn underfull_measure_in_second_bar_span_points_to_last_note() {
+        // "(time=4/4 key=C4 bpm=120)\n" = 26 bytes
+        // "5 5 5 5\n"                   =  8 bytes
+        // "\n"                          =  1 byte  (blank separator)
+        // "4 4 4 _4" → '_4' at offset 6 within line → global 26+8+1+6 = 41
+        let content = "(time=4/4 key=C4 bpm=120)\n5 5 5 5\n\n4 4 4 _4\n";
+        let parts = vec![notes_col("")];
+        let err = parse(content, 0, &parts).unwrap_err();
+        assert_eq!(
+            err.span.start, 41,
+            "span must point to the last note '_4' in the second bar"
+        );
+        assert_eq!(err.span.end, 43);
     }
 
     #[test]
     fn directive_row_is_optional() {
         let content = concat!("(time=4/4 key=C4 bpm=120)\n1 2 3 4\n", "\n", "5 6 7 1\n",);
         let parts = vec![notes_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         assert_eq!(result[0].score.events.len(), 11);
     }
 
@@ -509,7 +593,7 @@ mod tests {
             "(time=3/4)\n1 2 3\n",
         );
         let parts = vec![notes_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         assert!(result[0].score.events.len() > 0);
     }
 
@@ -517,14 +601,14 @@ mod tests {
     fn rejects_unknown_directive() {
         let content = "(foo=bar)\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        assert!(parse(content, &parts).is_err());
+        assert!(parse(content, 0, &parts).is_err());
     }
 
     #[test]
     fn key_directive_parses_flat() {
         let content = "(time=4/4 key=Bb4 bpm=120)\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         use crate::ast::parsed::{Accidental, ScoreEvent};
         let key_event = result[0]
             .score
@@ -541,7 +625,7 @@ mod tests {
     fn label_directive_parsed() {
         let content = "(time=4/4 key=C4 bpm=120 label=\"Verse 1\")\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         use crate::ast::parsed::ScoreEvent;
         let label_event = result[0]
             .score
@@ -558,21 +642,21 @@ mod tests {
     fn label_directive_rejects_unclosed_quote() {
         let content = "(label=\"Verse 1)\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        assert!(parse(content, &parts).is_err());
+        assert!(parse(content, 0, &parts).is_err());
     }
 
     #[test]
     fn label_directive_rejects_empty_label() {
         let content = "(label=\"\")\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        assert!(parse(content, &parts).is_err());
+        assert!(parse(content, 0, &parts).is_err());
     }
 
     #[test]
     fn key_directive_parses_sharp() {
         let content = "(time=4/4 key=F#3 bpm=120)\n1 2 3 4\n";
         let parts = vec![notes_col("")];
-        let result = parse(content, &parts).unwrap();
+        let result = parse(content, 0, &parts).unwrap();
         use crate::ast::parsed::{Accidental, ScoreEvent};
         let key_event = result[0]
             .score

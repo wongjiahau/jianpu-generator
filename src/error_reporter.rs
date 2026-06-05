@@ -18,7 +18,10 @@ fn render_to_writer(e: &JianPuError, mut writer: impl std::io::Write) {
     };
 
     let filename = path.to_string_lossy().into_owned();
-    let span = (filename.clone(), e.span.start..e.span.end);
+    // ariadne indexes by Unicode character count, not by byte offset.
+    let char_start = source[..e.span.start.min(source.len())].chars().count();
+    let char_end = source[..e.span.end.min(source.len())].chars().count();
+    let span = (filename.clone(), char_start..char_end);
 
     Report::build(ReportKind::Error, span.clone())
         .with_message(&e.message)
@@ -52,6 +55,32 @@ mod tests {
             output.contains("expected pitch digit 0-7"),
             "output was: {output}"
         );
+    }
+
+    #[test]
+    fn render_shows_code_block_when_source_contains_multibyte_unicode() {
+        // Each Chinese character is 3 bytes. The error token "x" is at byte offset 12
+        // (3 bytes × 4 chars = 12), but at character offset 4.
+        // Without the byte→char conversion ariadne would look past end-of-source
+        // and silently omit the code block.
+        let source = "你好世界 x 4\n";
+        let path = write_temp_file("test_unicode_render.jianpu", source);
+        let token_byte_start = "你好世界 ".len(); // 3*4 + 1 = 13
+        let e = JianPuError::new(
+            Span::new(token_byte_start, token_byte_start + 1),
+            "bad token",
+        )
+        .with_path(&path);
+
+        let mut buf = Vec::new();
+        render_to_writer(&e, &mut buf);
+        let output = String::from_utf8_lossy(&buf);
+        // The code block must appear — presence of '│' confirms ariadne rendered it.
+        assert!(
+            output.contains('│'),
+            "expected ariadne code block (│) in output, got: {output}"
+        );
+        assert!(output.contains("bad token"), "output was: {output}");
     }
 
     #[test]
