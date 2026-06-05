@@ -2,9 +2,7 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct Span {
-    #[allow(dead_code)]
     pub start: usize,
-    #[allow(dead_code)]
     pub end: usize,
 }
 
@@ -28,10 +26,8 @@ impl<T> Spanned<T> {
 
 #[derive(Debug)]
 pub struct JianPuError {
-    #[allow(dead_code)]
     pub span: Span,
     pub message: String,
-    #[allow(dead_code)]
     pub path: Option<PathBuf>,
 }
 
@@ -44,7 +40,6 @@ impl JianPuError {
         }
     }
 
-    #[allow(dead_code)]
     pub fn with_path(mut self, path: impl AsRef<Path>) -> Self {
         self.path = Some(path.as_ref().to_path_buf());
         self

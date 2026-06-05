@@ -58,7 +58,7 @@ fn main() {
     };
 
     if let Err(e) = result {
-        eprintln!("error: {}", e);
+        error_reporter::render(&e);
         std::process::exit(1);
     }
 }
@@ -129,8 +129,8 @@ fn parse_and_group(input: &Path) -> Result<ast::grouped::Score, error::JianPuErr
         )
     })?;
     let filename = input.to_string_lossy().to_string();
-    let doc = parser::parse(&content, &filename)?;
-    grouper::group(doc)
+    let doc = parser::parse(&content, &filename).map_err(|e| e.with_path(input))?;
+    grouper::group(doc).map_err(|e| e.with_path(input))
 }
 
 fn filter_tracks(score: &mut ast::grouped::Score, tracks: &[String]) {

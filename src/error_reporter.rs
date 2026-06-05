@@ -1,11 +1,9 @@
 use crate::error::JianPuError;
 
-#[allow(dead_code)]
 pub fn render(e: &JianPuError) {
     render_to_writer(e, std::io::stderr());
 }
 
-#[allow(dead_code)]
 fn render_to_writer(e: &JianPuError, mut writer: impl std::io::Write) {
     use ariadne::{Label, Report, ReportKind, Source};
 
