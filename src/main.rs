@@ -9,6 +9,7 @@ mod parser;
 mod pdf;
 mod renderer;
 mod utils;
+mod wav;
 
 use clap::{Parser, Subcommand};
 use std::path::{Path, PathBuf};
@@ -43,6 +44,12 @@ enum GenerateFormat {
         tracks: Vec<String>,
     },
     Midi {
+        input: PathBuf,
+        output: Option<PathBuf>,
+        #[arg(long, value_delimiter = ',', num_args = 0..)]
+        tracks: Vec<String>,
+    },
+    Wav {
         input: PathBuf,
         output: Option<PathBuf>,
         #[arg(long, value_delimiter = ',', num_args = 0..)]
@@ -125,6 +132,20 @@ fn run_generate(format: GenerateFormat) -> Result<(), error::JianPuError> {
             filter_tracks(&mut score, &tracks);
             let midi_bytes = midi::write_midi(&score);
             write_file(&output_path, &midi_bytes)?;
+            println!("written to {:?}", output_path);
+            Ok(())
+        }
+        GenerateFormat::Wav {
+            input,
+            output,
+            tracks,
+        } => {
+            let output_path = output.unwrap_or_else(|| default_output(&input, &tracks, "wav"));
+            let mut score = parse_and_group(&input)?;
+            filter_tracks(&mut score, &tracks);
+            let midi_bytes = midi::write_midi(&score);
+            let wav_bytes = wav::write_wav(&midi_bytes);
+            write_file(&output_path, &wav_bytes)?;
             println!("written to {:?}", output_path);
             Ok(())
         }

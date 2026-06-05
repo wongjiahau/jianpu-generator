@@ -1,20 +1,87 @@
-#![allow(unused_imports, dead_code)]
-
 use hound::{SampleFormat, WavSpec, WavWriter};
 use midly::{MetaMessage, MidiMessage, Smf, Timing, TrackEventKind};
 use oxisynth::{MidiEvent, SoundFont, Synth, SynthDescriptor};
 use std::io::Cursor;
 
-#[allow(dead_code)]
 const SAMPLE_RATE: u32 = 44100;
-#[allow(dead_code)]
 const CHOIR_AAHS_PROGRAM: u8 = 52;
 
-#[allow(dead_code)]
 static SF2_BYTES: &[u8] = include_bytes!("../fonts/GeneralUser_GS.sf2");
 
-pub fn write_wav(_midi_bytes: &[u8]) -> Vec<u8> {
-    todo!()
+pub fn write_wav(midi_bytes: &[u8]) -> Vec<u8> {
+    let smf = Smf::parse(midi_bytes).expect("invalid MIDI bytes");
+    let tpq = match smf.header.timing {
+        Timing::Metrical(t) => t.as_int() as u32,
+        _ => 480,
+    };
+
+    let mut synth = Synth::new(SynthDescriptor {
+        sample_rate: SAMPLE_RATE as f32,
+        ..Default::default()
+    })
+    .expect("synth init failed");
+
+    let sf = SoundFont::load(&mut Cursor::new(SF2_BYTES)).expect("soundfont load failed");
+    synth.add_font(sf, true);
+
+    let mut micros_per_beat: u32 = 500_000; // default 120 BPM
+    let mut all_l: Vec<f32> = Vec::new();
+    let mut all_r: Vec<f32> = Vec::new();
+
+    for event in smf.tracks[0].iter() {
+        let delta = event.delta.as_int();
+        if delta > 0 {
+            let n = ticks_to_samples(delta, tpq, micros_per_beat);
+            render_samples(&mut synth, n, &mut all_l, &mut all_r);
+        }
+        match &event.kind {
+            TrackEventKind::Meta(MetaMessage::Tempo(t)) => {
+                micros_per_beat = t.as_int();
+            }
+            TrackEventKind::Midi { channel, message } => {
+                let ch = channel.as_int();
+                match message {
+                    MidiMessage::ProgramChange { program } => {
+                        let p = if program.as_int() == 0 {
+                            CHOIR_AAHS_PROGRAM
+                        } else {
+                            program.as_int()
+                        };
+                        synth
+                            .send_event(MidiEvent::ProgramChange {
+                                channel: ch,
+                                program_id: p,
+                            })
+                            .ok();
+                    }
+                    MidiMessage::NoteOn { key, vel } => {
+                        synth
+                            .send_event(MidiEvent::NoteOn {
+                                channel: ch,
+                                key: key.as_int(),
+                                vel: vel.as_int(),
+                            })
+                            .ok();
+                    }
+                    MidiMessage::NoteOff { key, .. } => {
+                        synth
+                            .send_event(MidiEvent::NoteOff {
+                                channel: ch,
+                                key: key.as_int(),
+                            })
+                            .ok();
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // Render 1 second of tail so reverb fully decays
+    render_samples(&mut synth, SAMPLE_RATE as usize, &mut all_l, &mut all_r);
+
+    encode_wav(&all_l, &all_r)
 }
 
 fn ticks_to_samples(ticks: u32, tpq: u32, micros_per_beat: u32) -> usize {
