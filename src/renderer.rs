@@ -31,7 +31,7 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
         escape_xml(&page.header.title)
     ));
 
-    let subtitle_author_y = PAGE_MARGIN + row_height * 1.5;
+    let subtitle_author_y = PAGE_MARGIN + row_height * 2.25;
     if let Some(subtitle) = &page.header.subtitle {
         elements.push_str(&format!(
             r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="middle" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,

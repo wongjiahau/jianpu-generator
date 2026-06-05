@@ -22,6 +22,11 @@ fn parse_single_token(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
         return Ok(ScoreEvent::Extension);
     }
 
+    // Standalone tie/slur marker
+    if text == "~" {
+        return Ok(ScoreEvent::TieMarker);
+    }
+
     // BPM directive: bpm=N
     if let Some(rest) = text.strip_prefix("bpm=") {
         let bpm = rest

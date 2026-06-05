@@ -55,6 +55,8 @@ pub enum ScoreEvent {
     },
     /// The `-` token: extends the previous note/rest by one full beat (4 quarter-beats).
     Extension,
+    /// The standalone `~` token: ties the previous note to the next one.
+    TieMarker,
     LabelChange(String),
 }
 

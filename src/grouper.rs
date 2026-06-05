@@ -138,6 +138,24 @@ fn group_part(part: ParsedPart) -> Result<GroupedPart, JianPuError> {
                     flush_measure!();
                 }
             }
+            ScoreEvent::TieMarker => {
+                // When `-` fills a measure exactly it flushes current_notes, so fall
+                // back to the last note of the last completed measure.
+                let last_note = current_notes
+                    .last_mut()
+                    .or_else(|| measures.last_mut().and_then(|m| m.notes.events.last_mut()));
+                match last_note {
+                    Some(NoteEvent::Note(n)) => {
+                        n.tie = true;
+                    }
+                    _ => {
+                        return Err(JianPuError::new(
+                            spanned.span,
+                            "tie `~` without a preceding note".to_string(),
+                        ));
+                    }
+                }
+            }
             ScoreEvent::Note(pn) => {
                 if current_beat >= capacity {
                     flush_measure!();
@@ -437,5 +455,41 @@ mod tests {
         let m1_lyrics = score.measures[1].parts[0].lyrics.as_ref().unwrap();
         assert_eq!(m0_lyrics.syllables.len(), 4);
         assert_eq!(m1_lyrics.syllables.len(), 4);
+    }
+
+    #[test]
+    fn standalone_tie_marker_after_extension_that_flushes_measure() {
+        // `6 - - -` fills a 4/4 measure exactly; `~ 7 0 0 0` starts the next group.
+        // The `~` must reach back into the flushed measure and set tie=true on note 6.
+        let score = parse_and_group(concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n6 - - -\n\n~ 7 0 0 0\n",
+        ));
+        let notes_m0 = first_part_notes(&score, 0);
+        match notes_m0.last().unwrap() {
+            NoteEvent::Note(n) => assert!(n.tie, "note 6 in measure 0 should be tied"),
+            _ => panic!("expected Note"),
+        }
+    }
+
+    #[test]
+    fn standalone_tie_marker_sets_tie_on_preceding_note() {
+        // `6 - ~ 7` means note 6 extended by one beat, slurred into note 7
+        let score = parse_and_group(concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n6 - ~ 7 0\n",
+        ));
+        let notes = first_part_notes(&score, 0);
+        match &notes[0] {
+            NoteEvent::Note(n) => {
+                assert_eq!(n.duration, 8, "note 6 should be extended to 2 beats");
+                assert!(n.tie, "note 6 should have tie=true");
+            }
+            _ => panic!("expected Note"),
+        }
+        match &notes[1] {
+            NoteEvent::Note(n) => assert_eq!(n.pitch, crate::ast::parsed::JianPuPitch::Seven),
+            _ => panic!("expected Note"),
+        }
     }
 }
