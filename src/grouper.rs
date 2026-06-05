@@ -160,6 +160,7 @@ fn group_part(part: ParsedPart) -> Result<GroupedPart, JianPuError> {
                     flush_measure!();
                 }
             }
+            ScoreEvent::LabelChange(_) => {}
             ScoreEvent::Rest(pr) => {
                 if current_beat >= capacity {
                     flush_measure!();

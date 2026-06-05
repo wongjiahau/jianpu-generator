@@ -153,11 +153,45 @@ fn split_directive(
     }
 }
 
+fn tokenize_directive_tokens(inner: &str) -> Result<Vec<String>, String> {
+    let mut tokens = Vec::new();
+    let mut current = String::new();
+    let mut in_quote = false;
+
+    for ch in inner.chars() {
+        if in_quote {
+            current.push(ch);
+            if ch == '"' {
+                in_quote = false;
+            }
+        } else if ch == '"' {
+            current.push(ch);
+            in_quote = true;
+        } else if ch.is_whitespace() {
+            if !current.is_empty() {
+                tokens.push(std::mem::take(&mut current));
+            }
+        } else {
+            current.push(ch);
+        }
+    }
+    if !current.is_empty() {
+        tokens.push(current);
+    }
+    if in_quote {
+        return Err("unclosed quote in directive line".to_string());
+    }
+    Ok(tokens)
+}
+
 fn parse_directive_line(line: &str) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
     let inner = &line[1..line.len() - 1];
+    let tokens = tokenize_directive_tokens(inner).map_err(|msg| {
+        JianPuError::new(Span::new(0, line.len()), msg)
+    })?;
     let mut events = Vec::new();
 
-    for token in inner.split_whitespace() {
+    for token in &tokens {
         let span = Span::new(0, token.len());
 
         let event = if let Some(rest) = token.strip_prefix("bpm=") {
@@ -169,6 +203,15 @@ fn parse_directive_line(line: &str) -> Result<Vec<Spanned<ScoreEvent>>, JianPuEr
             parse_key_value(rest, span.clone())?
         } else if let Some(rest) = token.strip_prefix("time=") {
             parse_time_value(rest, span.clone())?
+        } else if let Some(rest) = token.strip_prefix("label=") {
+            if rest.len() < 2 || !rest.starts_with('"') || !rest.ends_with('"') {
+                return Err(JianPuError::new(
+                    span,
+                    format!("label value must be a quoted string, got: {}", rest),
+                ));
+            }
+            let text = rest[1..rest.len() - 1].to_string();
+            ScoreEvent::LabelChange(text)
         } else {
             return Err(JianPuError::new(span, format!("unknown directive: '{}'", token)));
         };
@@ -394,6 +437,27 @@ mod tests {
         if let ScoreEvent::KeyChange(kc) = &key_event.unwrap().value {
             assert_eq!(kc.note.accidental, Accidental::Flat);
         }
+    }
+
+    #[test]
+    fn label_directive_parsed() {
+        let content = "(time=4/4 key=C4 bpm=120 label=\"Verse 1\")\n1 2 3 4\n";
+        let parts = vec![notes_col("")];
+        let result = parse(content, &parts).unwrap();
+        use crate::ast::parsed::ScoreEvent;
+        let label_event = result[0].score.events.iter()
+            .find(|e| matches!(&e.value, ScoreEvent::LabelChange(_)));
+        assert!(label_event.is_some(), "expected a LabelChange event");
+        if let ScoreEvent::LabelChange(text) = &label_event.unwrap().value {
+            assert_eq!(text, "Verse 1");
+        }
+    }
+
+    #[test]
+    fn label_directive_rejects_unclosed_quote() {
+        let content = "(label=\"Verse 1)\n1 2 3 4\n";
+        let parts = vec![notes_col("")];
+        assert!(parse(content, &parts).is_err());
     }
 
     #[test]

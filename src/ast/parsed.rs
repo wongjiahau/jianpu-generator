@@ -50,6 +50,7 @@ pub enum ScoreEvent {
     TimeSignatureChange { numerator: u8, denominator: u8 },
     /// The `-` token: extends the previous note/rest by one full beat (4 quarter-beats).
     Extension,
+    LabelChange(String),
 }
 
 #[derive(Debug)]
