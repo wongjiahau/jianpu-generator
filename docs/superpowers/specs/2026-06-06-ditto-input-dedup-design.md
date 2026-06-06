@@ -2,7 +2,7 @@
 
 ## Summary
 
-Add a `"` ditto token that can appear on any score line (notes or lyrics) to mean "same content as the immediately preceding line of the same column type." The parser resolves ditto eagerly at parse time — the resulting AST is identical to writing the content out explicitly.
+Add a `"` ditto token that can appear on any score line (notes or lyrics) to mean "same content as the immediately preceding line of the same column type." Resolution happens in a new `desugar` stage that sits between the parser and the grouper. Downstream stages never see a ditto token.
 
 ## Motivation
 
@@ -36,6 +36,20 @@ When parts diverge partway through a group, only the lines that differ need actu
 "                                ← S2 lyrics (= S1)
 ```
 
+## Pipeline
+
+```
+parse()    → ParsedScore  (may contain Ditto nodes in notes/lyrics/chord lines)
+   ↓
+desugar()  → ParsedScore  (no Ditto nodes; all resolved to concrete content)
+   ↓
+group()    → grouped::Score
+   ↓
+layout / midi / wav  (unchanged)
+```
+
+The parser recognises `"` as a `Ditto` variant and stores it in the AST. The desugarer is a small, independently testable pass that replaces each `Ditto` with a copy of the preceding line of the same column type. Error messages for invalid ditto usage are emitted by the desugarer, not the parser.
+
 ## Resolution Rules
 
 - A `"` on a **notes** line copies the content of the closest preceding **notes** line within the same measure group.
@@ -46,9 +60,9 @@ When parts diverge partway through a group, only the lines that differ need actu
 
 ## Scope
 
-- Input parsing only. The AST and all downstream stages (layout, renderer, MIDI, WAV) are unchanged — they never see a ditto token.
+- Input side only. All downstream stages (layout, renderer, MIDI, WAV) are unchanged — they never see a ditto token.
 - No output rendering changes in this feature.
-- Per-track output (`--split-tracks`) is unaffected; since ditto is resolved at parse time, individual tracks always see their full content.
+- Per-track output (`--split-tracks`) is unaffected; since ditto is resolved before grouping, individual tracks always see their full content.
 
 ## Error Cases
 
