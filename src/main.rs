@@ -1,5 +1,6 @@
 mod ast;
 mod combiner;
+mod desugar;
 mod error;
 mod error_reporter;
 mod grouper;
