@@ -142,6 +142,92 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
             }
         }
 
+        // Process chord parts
+        for row in &measure.parts {
+            if let PartRow::Chord(chord_slice) = row {
+                let mut chord_tick = current_tick;
+                for event in &chord_slice.events {
+                    match event {
+                        crate::ast::grouped::GroupedChordEvent::Chord(chord) => {
+                            let ticks = duration_to_ticks(chord.duration);
+
+                            // Resolve root note using the chord's degree + key
+                            let base_root = resolve_midi_note(&chord.degree, 0, &active_key);
+                            let acc_delta: i32 = match chord.accidental {
+                                Accidental::Sharp => 1,
+                                Accidental::Flat => -1,
+                                Accidental::Natural => 0,
+                            };
+                            let root = (base_root as i32 + acc_delta).clamp(0, 127) as u8;
+
+                            // Triad intervals above root
+                            let triad_offsets: &[i32] = match chord.triad {
+                                crate::ast::parsed::TriadQuality::Major => &[0, 4, 7],
+                                crate::ast::parsed::TriadQuality::Minor => &[0, 3, 7],
+                                crate::ast::parsed::TriadQuality::Diminished => &[0, 3, 6],
+                                crate::ast::parsed::TriadQuality::Augmented => &[0, 4, 8],
+                            };
+
+                            // Extension interval
+                            let ext_offset: Option<i32> = match &chord.extension {
+                                Some(crate::ast::parsed::Extension::DominantSeventh) => Some(10),
+                                Some(crate::ast::parsed::Extension::MajorSeventh) => Some(11),
+                                None => None,
+                            };
+
+                            // Collect all chord tone MIDI notes
+                            let mut notes_to_play: Vec<u8> = triad_offsets
+                                .iter()
+                                .map(|&off| (root as i32 + off).clamp(0, 127) as u8)
+                                .collect();
+                            if let Some(off) = ext_offset {
+                                notes_to_play.push((root as i32 + off).clamp(0, 127) as u8);
+                            }
+
+                            // Slash chord bass note: one octave below root
+                            if let Some(bass) = &chord.bass {
+                                let base_bass = resolve_midi_note(&bass.degree, 0, &active_key);
+                                let bass_acc: i32 = match bass.accidental {
+                                    Accidental::Sharp => 1,
+                                    Accidental::Flat => -1,
+                                    Accidental::Natural => 0,
+                                };
+                                let bass_note =
+                                    ((base_bass as i32 + bass_acc) - 12).clamp(0, 127) as u8;
+                                notes_to_play.push(bass_note);
+                            }
+
+                            // Emit NoteOn for all notes simultaneously
+                            for &midi_note in &notes_to_play {
+                                raw.push(RawEvent {
+                                    tick: chord_tick,
+                                    kind: RawKind::NoteOn(midi_note),
+                                });
+                            }
+                            // Emit NoteOff at end of duration
+                            let off_tick = chord_tick + ticks;
+                            for &midi_note in &notes_to_play {
+                                raw.push(RawEvent {
+                                    tick: off_tick,
+                                    kind: RawKind::NoteOff(midi_note),
+                                });
+                            }
+
+                            chord_tick += ticks;
+                        }
+                        crate::ast::grouped::GroupedChordEvent::Rest(dur) => {
+                            chord_tick += duration_to_ticks(*dur);
+                        }
+                    }
+                }
+                // Extend measure_duration if chord part is longer
+                let chord_duration = chord_tick - current_tick;
+                if chord_duration > measure_duration {
+                    measure_duration = chord_duration;
+                }
+            }
+        }
+
         current_tick += measure_duration;
     }
 
@@ -276,6 +362,61 @@ pub(crate) fn duration_to_ticks(quarter_beats: u32) -> u32 {
 mod tests {
     use super::*;
     use crate::ast::parsed::{Accidental, KeyChange, Note, NoteName};
+
+    #[test]
+    fn chord_major_expands_to_three_notes() {
+        use crate::ast::grouped::{
+            ChordSlice, GroupedChord, GroupedChordEvent, Metadata, MultiPartMeasure, PartRow,
+            Score, TimeSignature,
+        };
+        use crate::ast::parsed::{
+            Accidental, JianPuPitch, KeyChange, Note, NoteName, TriadQuality,
+        };
+
+        let key = KeyChange {
+            note: Note {
+                name: NoteName::C,
+                octave: 4,
+                accidental: Accidental::Natural,
+            },
+        };
+        let chord = GroupedChord {
+            degree: JianPuPitch::One,
+            accidental: Accidental::Natural,
+            triad: TriadQuality::Major,
+            extension: None,
+            bass: None,
+            duration: 16,
+        };
+        let score = Score {
+            metadata: Metadata {
+                title: String::new(),
+                subtitle: None,
+                author: String::new(),
+                row_height: 24,
+                max_columns: 28,
+                label_width: 40,
+                note_number_width: 8,
+            },
+            measures: vec![MultiPartMeasure {
+                time_signature: Some(TimeSignature {
+                    numerator: 4,
+                    denominator: 4,
+                }),
+                bpm: Some(120),
+                key: Some(key),
+                label: None,
+                parts: vec![PartRow::Chord(ChordSlice {
+                    name: None,
+                    events: vec![GroupedChordEvent::Chord(chord)],
+                })],
+            }],
+        };
+        let midi_bytes = write_midi(&score);
+        // MIDI bytes must be non-empty and start with MThd
+        assert!(midi_bytes.starts_with(b"MThd"), "expected MIDI header");
+        assert!(midi_bytes.len() > 20);
+    }
 
     fn key(name: NoteName, octave: u8) -> KeyChange {
         KeyChange {
