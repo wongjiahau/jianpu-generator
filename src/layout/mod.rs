@@ -72,6 +72,67 @@ fn compute_underline_levels(buffer: &[BeamBufferEntry]) -> Vec<UnderlineSpan> {
     levels
 }
 
+fn format_chord_symbol(chord: &crate::ast::grouped::GroupedChord) -> String {
+    use crate::ast::parsed::{Accidental, Extension, JianPuPitch, TriadQuality};
+
+    let degree = match chord.degree {
+        JianPuPitch::One => '1',
+        JianPuPitch::Two => '2',
+        JianPuPitch::Three => '3',
+        JianPuPitch::Four => '4',
+        JianPuPitch::Five => '5',
+        JianPuPitch::Six => '6',
+        JianPuPitch::Seven => '7',
+    };
+    let accidental = match chord.accidental {
+        Accidental::Sharp => "♯",
+        Accidental::Flat => "♭",
+        Accidental::Natural => "",
+    };
+    let triad = match chord.triad {
+        TriadQuality::Major => "",
+        TriadQuality::Minor => "m",
+        TriadQuality::Diminished => "°",
+        TriadQuality::Augmented => "⁺",
+    };
+    let extension = match &chord.extension {
+        Some(Extension::DominantSeventh) => "⁷",
+        Some(Extension::MajorSeventh) => "△⁷",
+        None => "",
+    };
+    let mut result = format!("{}{}{}{}", degree, accidental, triad, extension);
+
+    if let Some(bass) = &chord.bass {
+        let bass_degree = match bass.degree {
+            JianPuPitch::One => '1',
+            JianPuPitch::Two => '2',
+            JianPuPitch::Three => '3',
+            JianPuPitch::Four => '4',
+            JianPuPitch::Five => '5',
+            JianPuPitch::Six => '6',
+            JianPuPitch::Seven => '7',
+        };
+        let bass_acc = match bass.accidental {
+            Accidental::Sharp => "♯",
+            Accidental::Flat => "♭",
+            Accidental::Natural => "",
+        };
+        result.push('/');
+        result.push(bass_degree);
+        result.push_str(bass_acc);
+    }
+
+    result
+}
+
+fn part_row_height(row: &crate::ast::grouped::PartRow) -> u32 {
+    use crate::ast::grouped::PartRow;
+    match row {
+        PartRow::Notes(_) => 4,
+        PartRow::Chord(_) => 2,
+    }
+}
+
 fn compute_prefix_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 {
     let mut width = 0;
     if measure.time_signature.is_some() {
@@ -93,14 +154,26 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let row_height = score.metadata.row_height as f32;
     let columns_per_row = score.metadata.max_columns;
 
-    let num_parts = score
+    let row_group_height: u32 = score
         .measures
         .first()
-        .map(|m| m.parts.len())
+        .map(|m| m.parts.iter().map(part_row_height).sum::<u32>())
+        .unwrap_or(4)
+        .max(4);
+    let bar_height: u32 = row_group_height - 1;
+
+    let num_notes_parts = score
+        .measures
+        .first()
+        .map(|m| {
+            use crate::ast::grouped::PartRow;
+            m.parts
+                .iter()
+                .filter(|p| matches!(p, PartRow::Notes(_)))
+                .count()
+        })
         .unwrap_or(1)
         .max(1) as u32;
-    let row_group_height: u32 = 4 * num_parts;
-    let bar_height: u32 = row_group_height - 1;
 
     let has_named_parts = score
         .measures
@@ -130,13 +203,6 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         author: score.metadata.author.clone(),
     };
 
-    // Collect part names for label emission (from first measure's parts)
-    let part_names: Vec<Option<String>> = score
-        .measures
-        .first()
-        .map(|m| m.parts.iter().map(|p| p.name().cloned()).collect())
-        .unwrap_or_default();
-
     let mut pages: Vec<Page> = Vec::new();
     let mut current_page_row_groups: Vec<RowGroup> = Vec::new();
     let mut current_elements: Vec<GridElement> = Vec::new();
@@ -147,16 +213,17 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let mut bar_number: u32 = 1;
 
     // Per-part state that persists across measure boundaries
-    let mut per_part_prev_tie: Vec<bool> = vec![false; num_parts as usize];
-    let mut per_part_prev_pitch: Vec<Option<JianPuPitch>> = vec![None; num_parts as usize];
+    let mut per_part_prev_tie: Vec<bool> = vec![false; num_notes_parts as usize];
+    let mut per_part_prev_pitch: Vec<Option<JianPuPitch>> = vec![None; num_notes_parts as usize];
     let mut per_part_beam_buffer: Vec<Vec<BeamBufferEntry>> =
-        (0..num_parts).map(|_| Vec::new()).collect();
+        (0..num_notes_parts).map(|_| Vec::new()).collect();
     // pending_chain must persist across measures so cross-measure tie/slur arcs are emitted
     let mut per_part_pending_chain: Vec<Vec<(u32, JianPuPitch)>> =
-        vec![Vec::new(); num_parts as usize];
-    let mut per_part_chain_row: Vec<u32> = vec![0; num_parts as usize];
+        vec![Vec::new(); num_notes_parts as usize];
+    let mut per_part_chain_row: Vec<u32> = vec![0; num_notes_parts as usize];
     // Tracks a tie pitch that crossed a line boundary, so a left-half arc can be drawn on the new line.
-    let mut per_part_cross_line_tie: Vec<Option<JianPuPitch>> = vec![None; num_parts as usize];
+    let mut per_part_cross_line_tie: Vec<Option<JianPuPitch>> =
+        vec![None; num_notes_parts as usize];
 
     for measure in &score.measures {
         let prefix_width = compute_prefix_width(measure);
@@ -166,16 +233,17 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             use crate::ast::grouped::PartRow;
             // Flush open beam buffers for all notes parts
             let mut notes_idx_flush = 0usize;
-            for (part_idx, part_row) in measure.parts.iter().enumerate() {
+            let mut flush_row_cursor = current_row_offset;
+            for part_row in measure.parts.iter() {
                 if let PartRow::Notes(_) = part_row {
-                    let part_row_start = current_row_offset + part_idx as u32 * 4;
                     flush_beam_buffer(
                         &mut per_part_beam_buffer[notes_idx_flush],
-                        part_row_start,
+                        flush_row_cursor,
                         &mut current_elements,
                     );
                     notes_idx_flush += 1;
                 }
+                flush_row_cursor += part_row_height(part_row);
             }
             // Emit right-half tie arcs for open chains crossing the line boundary.
             // prev_tie is intentionally NOT reset here — it persists to the next line
@@ -283,19 +351,20 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         }
         // Emit part labels at start of each system line
         if is_line_start && has_named_parts {
-            for (part_idx, name_opt) in part_names.iter().enumerate() {
-                if let Some(name) = name_opt {
-                    let part_row = current_row_offset + part_idx as u32 * 4;
+            let mut row_cursor = current_row_offset;
+            for part_row in &measure.parts {
+                if let Some(name) = part_row.name() {
                     current_elements.push(GridElement {
                         position: GridPosition {
                             column: 0,
-                            row: part_row + 1,
+                            row: row_cursor + 1,
                         },
                         horizontal_alignment: HorizontalAlignment::Left,
                         vertical_alignment: VerticalAlignment::Center,
                         content: GridContent::PartLabel { text: name.clone() },
                     });
                 }
+                row_cursor += part_row_height(part_row);
             }
         }
         is_line_start = false;
@@ -321,17 +390,17 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
 
         {
             use crate::ast::grouped::PartRow;
-            let mut notes_count_for_directives = 0usize;
-            for (part_idx, part_row_enum) in measure.parts.iter().enumerate() {
+            let mut directive_row_cursor = current_row_offset;
+            let mut is_first_directive_part = true;
+            for part_row_enum in measure.parts.iter() {
                 if let PartRow::Notes(_) = part_row_enum {
-                    let part_row_start = current_row_offset + part_idx as u32 * 4;
                     let mut dc = directive_col_start;
 
                     if let Some(ts) = &measure.time_signature {
                         current_elements.push(GridElement {
                             position: GridPosition {
                                 column: dc,
-                                row: part_row_start + 1,
+                                row: directive_row_cursor + 1,
                             },
                             horizontal_alignment: HorizontalAlignment::Center,
                             vertical_alignment: VerticalAlignment::Center,
@@ -341,7 +410,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                             },
                         });
                         dc += 2;
-                        if notes_count_for_directives == 0 {
+                        if is_first_directive_part {
                             directive_advance += 2;
                         }
                     }
@@ -350,18 +419,19 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
                         current_elements.push(GridElement {
                             position: GridPosition {
                                 column: dc,
-                                row: part_row_start + 1,
+                                row: directive_row_cursor + 1,
                             },
                             horizontal_alignment: HorizontalAlignment::Center,
                             vertical_alignment: VerticalAlignment::Center,
                             content: GridContent::BpmLabel { bpm },
                         });
-                        if notes_count_for_directives == 0 {
+                        if is_first_directive_part {
                             directive_advance += 2;
                         }
                     }
-                    notes_count_for_directives += 1;
+                    is_first_directive_part = false;
                 }
+                directive_row_cursor += part_row_height(part_row_enum);
             }
         }
 
@@ -397,10 +467,11 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
 
         // Emit notes/lyrics for each part
         {
-            use crate::ast::grouped::PartRow;
+            use crate::ast::grouped::{GroupedChordEvent, PartRow};
             let mut notes_idx = 0usize;
-            for (part_idx, part_row_enum) in measure.parts.iter().enumerate() {
-                let part_row_offset = current_row_offset + part_idx as u32 * 4;
+            let mut main_row_cursor = current_row_offset;
+            for part_row_enum in measure.parts.iter() {
+                let part_row_offset = main_row_cursor;
                 match part_row_enum {
                     PartRow::Notes(part_slice) => {
                         let mut col = note_col_start;
@@ -615,9 +686,31 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
 
                         flush_beam_buffer(beam_buf, part_row_offset, &mut current_elements);
                         notes_idx += 1;
+                        main_row_cursor += 4;
                     } // end PartRow::Notes
-                    PartRow::Chord(_) => {
-                        // handled in Task 8
+                    PartRow::Chord(chord_slice) => {
+                        let mut col = note_col_start;
+                        for event in &chord_slice.events {
+                            match event {
+                                GroupedChordEvent::Chord(chord) => {
+                                    let text = format_chord_symbol(chord);
+                                    current_elements.push(GridElement {
+                                        position: GridPosition {
+                                            column: col,
+                                            row: main_row_cursor + 1,
+                                        },
+                                        horizontal_alignment: HorizontalAlignment::Left,
+                                        vertical_alignment: VerticalAlignment::Center,
+                                        content: GridContent::ChordSymbol { text },
+                                    });
+                                    col += chord.duration;
+                                }
+                                GroupedChordEvent::Rest(dur) => {
+                                    col += dur;
+                                }
+                            }
+                        }
+                        main_row_cursor += 2;
                     }
                 } // end match part_row_enum
             } // end for part_row_enum
@@ -1746,6 +1839,31 @@ mod tests {
             !has_bar_number,
             "bar number must be suppressed when section label is present"
         );
+    }
+
+    #[test]
+    fn chord_row_emits_chord_symbol_element() {
+        use crate::layout::types::GridContent;
+        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = chord: notes:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1 - - -\n1 - - -\n";
+        let doc = crate::parser::parse(input, "test.jianpu").unwrap();
+        let score = crate::grouper::group(doc).unwrap();
+        let pages = layout(&score, 595.0, 842.0);
+        let all_elements: Vec<_> = pages
+            .iter()
+            .flat_map(|p| p.row_groups.iter())
+            .flat_map(|rg| rg.elements.iter())
+            .collect();
+        let chord_symbols: Vec<_> = all_elements
+            .iter()
+            .filter(|e| matches!(e.content, GridContent::ChordSymbol { .. }))
+            .collect();
+        assert!(
+            !chord_symbols.is_empty(),
+            "expected at least one ChordSymbol element"
+        );
+        if let GridContent::ChordSymbol { text } = &chord_symbols[0].content {
+            assert_eq!(text, "1");
+        }
     }
 
     #[test]

@@ -124,6 +124,9 @@ pub enum GridContent {
     SectionLabel {
         text: String,
     },
+    ChordSymbol {
+        text: String,
+    },
 }
 
 #[cfg(test)]
