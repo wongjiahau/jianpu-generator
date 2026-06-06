@@ -48,7 +48,7 @@ fn desugar_group(
             let col_type = column_type(&parts[i]);
             let source = (0..resolved.len())
                 .rev()
-                .find(|&j| j < parts.len() && column_type(&parts[j]) == col_type)
+                .find(|&j| column_type(&parts[j]) == col_type)
                 .map(|j| resolved[j].0.clone());
 
             match source {
@@ -208,6 +208,18 @@ mod tests {
             "got: {}",
             err.message
         );
+    }
+
+    #[test]
+    fn directive_line_is_not_a_ditto_source() {
+        // The ditto should copy from the notes line, not the directive line.
+        let groups = vec![group(&["(time=4/4)", "1 2 3 4", "\""])];
+        let parts = vec![notes("A"), notes("B")];
+        let result = desugar_groups(groups, &parts).unwrap();
+        // directive passes through unchanged
+        assert_eq!(result[0][0].0, "(time=4/4)");
+        // ditto resolves to the notes line
+        assert_eq!(result[0][2].0, "1 2 3 4");
     }
 
     #[test]
