@@ -728,12 +728,13 @@ mod tests {
         let parts = vec![notes_col("S"), notes_col("A")];
         let (result, _) = parse(content, 0, &parts).unwrap();
         assert_eq!(result.len(), 2);
-        // Both parts should have 7 events (3 directives + 4 notes).
+        // Soprano gets 3 directive events + 4 notes = 7.
+        // Alto gets 4 notes only (directives are added to the first notes part only).
         assert_eq!(result[0].score.events.len(), 7);
         assert_eq!(
             result[1].score.events.len(),
             4,
-            "Alto must have the same notes as Soprano"
+            "Alto should have 4 note events after ditto resolution"
         );
     }
 
