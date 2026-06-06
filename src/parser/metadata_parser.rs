@@ -32,11 +32,15 @@ fn parse_parts(
             PartColumn::Lyrics {
                 name: name.to_string(),
             }
+        } else if let Some(name) = token.strip_prefix("chord:") {
+            PartColumn::Chord {
+                name: name.to_string(),
+            }
         } else {
             return Err(JianPuError::new(
                 span.clone(),
                 format!(
-                    "invalid parts token '{}': expected 'notes:<name>' or 'lyrics:<name>'",
+                    "invalid parts token '{}': expected 'notes:<name>', 'lyrics:<name>', or 'chord:<name>'",
                     token
                 ),
             ));
@@ -272,5 +276,34 @@ mod tests {
     fn rejects_invalid_parts_token() {
         let content = "title = \"t\"\nauthor = \"a\"\nparts = invalid:foo\n";
         assert!(parse_metadata(content, 0).is_err());
+    }
+
+    #[test]
+    fn parses_chord_column_in_parts() {
+        use crate::ast::parsed::PartColumn;
+        let input = "title = \"t\"\nauthor = \"a\"\nparts = chord:main notes:main\n";
+        let meta = super::parse_metadata(input, 0).unwrap();
+        assert_eq!(
+            meta.parts,
+            vec![
+                PartColumn::Chord {
+                    name: "main".to_string()
+                },
+                PartColumn::Notes {
+                    name: "main".to_string()
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_parts_token_includes_chord_hint() {
+        let input = "title = \"t\"\nauthor = \"a\"\nparts = bad:x\n";
+        let err = super::parse_metadata(input, 0).unwrap_err();
+        assert!(
+            err.message.contains("chord:"),
+            "expected 'chord:' in error message, got: {}",
+            err.message
+        );
     }
 }
