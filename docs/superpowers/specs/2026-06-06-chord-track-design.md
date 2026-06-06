@@ -72,7 +72,7 @@ enum TriadQuality { Major, Minor, Augmented, Diminished }
 enum Extension { DominantSeventh, MajorSeventh }
 
 struct ParsedChordSymbol {
-    degree: u8,            // 1–7
+    degree: JianPuPitch,   // reuse existing enum (One–Seven)
     accidental: Accidental, // reuse existing enum (Flat, Sharp, Natural)
     triad: TriadQuality,
     extension: Option<Extension>,
@@ -85,7 +85,7 @@ enum ParsedChordEvent { Chord(ParsedChordSymbol), Rest, Extend }
 
 ```rust
 struct GroupedChord {
-    degree: u8,
+    degree: JianPuPitch,   // reuse existing enum
     accidental: Accidental,
     triad: TriadQuality,
     extension: Option<Extension>,
@@ -155,7 +155,7 @@ The grouper interleaves `PartRow::Notes` and `PartRow::Chord` entries in the ord
 
 For each `PartRow::Chord(slice)` in a measure, iterate `GroupedChordEvent`s:
 
-**Root note resolution:** reuse `resolve_midi_note` with the chord's degree + accidental + active key, with octave offset 0 (the key's default octave, same as a melody note with no `_`/`.` prefix). All chord tones are built upward from this root using the interval offsets below; if an interval would exceed MIDI 127, clamp to 127.
+**Root note resolution:** reuse `resolve_midi_note` with the chord's `JianPuPitch` degree + accidental + active key, with octave offset 0 (the key's default octave, same as a melody note with no `_`/`.` prefix). All chord tones are built upward from this root using the interval offsets below; if an interval would exceed MIDI 127, clamp to 127.
 
 **Interval offsets by triad:**
 
