@@ -31,6 +31,7 @@ pub fn parse(
     enum ColAction {
         Notes(usize),
         Lyrics(usize),
+        Chord,
     }
 
     let col_actions: Vec<ColAction> = parts
@@ -49,6 +50,7 @@ pub fn parse(
                     });
                 ColAction::Lyrics(idx)
             }
+            PartColumn::Chord { .. } => ColAction::Chord,
         })
         .collect();
 
@@ -134,6 +136,9 @@ pub fn parse(
                 ColAction::Lyrics(idx) => {
                     let syllables = tokenize_lyrics(line);
                     syllables_acc[idx].as_mut().unwrap().extend(syllables);
+                }
+                ColAction::Chord => {
+                    // Chord column parsing not yet implemented; skip for now.
                 }
             }
         }

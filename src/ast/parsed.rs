@@ -27,8 +27,62 @@ pub struct ParsedDocument {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum PartColumn {
-    Notes { name: String },
-    Lyrics { name: String },
+    Notes {
+        name: String,
+    },
+    Lyrics {
+        name: String,
+    },
+    #[allow(dead_code)]
+    Chord {
+        name: String,
+    },
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum TriadQuality {
+    Major,
+    Minor,
+    Augmented,
+    Diminished,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum Extension {
+    DominantSeventh,
+    MajorSeventh,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct BassDegree {
+    pub degree: JianPuPitch,
+    pub accidental: Accidental,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ParsedChordSymbol {
+    pub degree: JianPuPitch,
+    pub accidental: Accidental,
+    pub triad: TriadQuality,
+    pub extension: Option<Extension>,
+    pub bass: Option<BassDegree>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, PartialEq)]
+pub enum ParsedChordEvent {
+    Chord(ParsedChordSymbol),
+    Rest,
+    Extend,
+}
+
+#[allow(dead_code)]
+#[derive(Debug)]
+pub struct ParsedChordPart {
+    pub name: Option<String>,
+    pub events_per_measure: Vec<Vec<ParsedChordEvent>>,
 }
 
 #[derive(Debug)]
