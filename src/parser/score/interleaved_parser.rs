@@ -153,7 +153,12 @@ pub fn parse(
                     syllables_acc[idx].as_mut().unwrap().extend(syllables);
                 }
                 ColAction::Chord(chord_idx) => {
-                    let events = crate::parser::score::chord_parser::parse(line)?;
+                    let events =
+                        crate::parser::score::chord_parser::parse(line).map_err(|mut e| {
+                            e.span.start += base_offset;
+                            e.span.end += base_offset;
+                            e
+                        })?;
                     chord_events_acc[chord_idx].push(events);
                 }
             }
