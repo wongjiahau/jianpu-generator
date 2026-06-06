@@ -243,7 +243,7 @@ fn render_page(page: &Page, row_height: u32, note_number_width: u32) -> String {
                 GridContent::ChordSymbol { text } => {
                     elements.push_str(&format!(
                         r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="start" dominant-baseline="middle" font-family="sans-serif">{}</text>"#,
-                        x, y, base_font_size * 0.8, escape_xml(text)
+                        x, y, base_font_size * 0.75, escape_xml(text)
                     ));
                 }
             }
