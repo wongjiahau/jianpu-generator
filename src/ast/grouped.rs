@@ -1,4 +1,4 @@
-use crate::ast::parsed::{JianPuPitch, KeyChange, Syllable};
+use crate::ast::parsed::{Accidental, Extension, JianPuPitch, KeyChange, Syllable, TriadQuality};
 
 // ── Public final types ────────────────────────────────────────────────────────
 
@@ -41,7 +41,53 @@ pub struct MultiPartMeasure {
     // TODO: key-change rendering (1=X label) is not yet implemented in layout/renderer
     pub key: Option<KeyChange>,
     pub label: Option<String>,
-    pub parts: Vec<PartSlice>,
+    pub parts: Vec<PartRow>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+pub struct GroupedChord {
+    pub degree: JianPuPitch,
+    pub accidental: Accidental,
+    pub triad: TriadQuality,
+    pub extension: Option<Extension>,
+    pub bass: Option<crate::ast::parsed::BassDegree>,
+    pub duration: u32,
+}
+
+#[allow(dead_code)]
+#[derive(Clone)]
+pub enum GroupedChordEvent {
+    Chord(GroupedChord),
+    Rest(u32),
+}
+
+#[derive(Clone)]
+pub struct ChordSlice {
+    pub name: Option<String>,
+    #[allow(dead_code)]
+    pub events: Vec<GroupedChordEvent>,
+}
+
+#[derive(Clone)]
+pub enum PartRow {
+    Notes(PartSlice),
+    Chord(ChordSlice),
+}
+
+impl PartRow {
+    pub fn name(&self) -> Option<&String> {
+        match self {
+            PartRow::Notes(s) => s.name.as_ref(),
+            PartRow::Chord(s) => s.name.as_ref(),
+        }
+    }
+}
+
+// Intermediate type for the chord grouper:
+pub(crate) struct GroupedChordPart {
+    pub(crate) name: Option<String>,
+    pub(crate) measures: Vec<ChordSlice>,
 }
 
 #[derive(Clone)]

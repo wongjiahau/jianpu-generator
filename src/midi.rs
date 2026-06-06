@@ -61,12 +61,26 @@ pub fn write_midi(score: &Score) -> Vec<u8> {
 
         let mut measure_duration: u32 = 0;
 
+        // Filter to only Notes parts
+        use crate::ast::grouped::PartRow;
+        let notes_parts: Vec<&crate::ast::grouped::PartSlice> = measure
+            .parts
+            .iter()
+            .filter_map(|r| {
+                if let PartRow::Notes(p) = r {
+                    Some(p)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         // Grow per_part_ties to cover any new parts introduced in this measure
-        while per_part_ties.len() < measure.parts.len() {
+        while per_part_ties.len() < notes_parts.len() {
             per_part_ties.push(HashMap::new());
         }
 
-        for (part_idx, part) in measure.parts.iter().enumerate() {
+        for (part_idx, part) in notes_parts.iter().enumerate() {
             let pending_ties = &mut per_part_ties[part_idx];
             let mut part_tick = current_tick;
 

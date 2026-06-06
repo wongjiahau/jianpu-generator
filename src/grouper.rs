@@ -4,22 +4,24 @@ use crate::combiner;
 use crate::error::JianPuError;
 
 pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
+    let parts_ordering = doc.metadata.parts.clone();
+    let metadata = doc.metadata;
     let mut grouped_parts = Vec::new();
     for part in doc.parts {
         grouped_parts.push(group_part(part)?);
     }
 
-    let measures = combiner::combine(grouped_parts)?;
+    let measures = combiner::combine(grouped_parts, vec![], &parts_ordering)?;
 
     Ok(Score {
         metadata: Metadata {
-            title: doc.metadata.title,
-            subtitle: doc.metadata.subtitle,
-            author: doc.metadata.author,
-            row_height: doc.metadata.row_height.unwrap_or(24),
-            max_columns: doc.metadata.max_columns.unwrap_or(28),
-            label_width: doc.metadata.label_width.unwrap_or(40),
-            note_number_width: doc.metadata.note_number_width.unwrap_or(8),
+            title: metadata.title,
+            subtitle: metadata.subtitle,
+            author: metadata.author,
+            row_height: metadata.row_height.unwrap_or(24),
+            max_columns: metadata.max_columns.unwrap_or(28),
+            label_width: metadata.label_width.unwrap_or(40),
+            note_number_width: metadata.note_number_width.unwrap_or(8),
         },
         measures,
     })
@@ -263,7 +265,11 @@ mod tests {
     }
 
     fn first_part_notes(score: &Score, measure_idx: usize) -> &Vec<NoteEvent> {
-        &score.measures[measure_idx].parts[0].notes.events
+        use crate::ast::grouped::PartRow;
+        match &score.measures[measure_idx].parts[0] {
+            PartRow::Notes(p) => &p.notes.events,
+            _ => panic!("expected Notes part"),
+        }
     }
 
     #[test]
@@ -402,8 +408,11 @@ mod tests {
         let score = group(doc).unwrap();
         assert_eq!(score.measures.len(), 1);
         assert_eq!(score.measures[0].parts.len(), 2);
-        assert_eq!(score.measures[0].parts[0].name, Some("Soprano".to_string()));
-        assert_eq!(score.measures[0].parts[1].name, Some("Alto".to_string()));
+        assert_eq!(
+            score.measures[0].parts[0].name(),
+            Some(&"Soprano".to_string())
+        );
+        assert_eq!(score.measures[0].parts[1].name(), Some(&"Alto".to_string()));
     }
 
     #[test]
@@ -453,8 +462,15 @@ mod tests {
         let doc = parser::parse(input, "test.jianpu").unwrap();
         let score = group(doc).unwrap();
         assert_eq!(score.measures.len(), 2);
-        let m0_lyrics = score.measures[0].parts[0].lyrics.as_ref().unwrap();
-        let m1_lyrics = score.measures[1].parts[0].lyrics.as_ref().unwrap();
+        use crate::ast::grouped::PartRow;
+        let m0_lyrics = match &score.measures[0].parts[0] {
+            PartRow::Notes(p) => p.lyrics.as_ref().unwrap(),
+            _ => panic!("expected Notes part"),
+        };
+        let m1_lyrics = match &score.measures[1].parts[0] {
+            PartRow::Notes(p) => p.lyrics.as_ref().unwrap(),
+            _ => panic!("expected Notes part"),
+        };
         assert_eq!(m0_lyrics.syllables.len(), 4);
         assert_eq!(m1_lyrics.syllables.len(), 4);
     }

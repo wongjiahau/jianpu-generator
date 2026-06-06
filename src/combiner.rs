@@ -1,13 +1,23 @@
 use crate::ast::grouped::*;
-use crate::ast::parsed::{JianPuPitch, Syllable};
+use crate::ast::parsed::{JianPuPitch, PartColumn, Syllable};
 use crate::error::{JianPuError, Span};
 
-pub fn combine(parts: Vec<GroupedPart>) -> Result<Vec<MultiPartMeasure>, JianPuError> {
-    if parts.is_empty() {
+pub fn combine(
+    parts: Vec<GroupedPart>,
+    chord_parts: Vec<GroupedChordPart>,
+    parts_ordering: &[PartColumn],
+) -> Result<Vec<MultiPartMeasure>, JianPuError> {
+    if parts.is_empty() && chord_parts.is_empty() {
         return Ok(Vec::new());
     }
 
-    let expected_len = parts[0].measures.len();
+    // Use the first notes part as the measure count source.
+    let expected_len = if !parts.is_empty() {
+        parts[0].measures.len()
+    } else {
+        0
+    };
+
     for part in &parts[1..] {
         if part.measures.len() != expected_len {
             return Err(JianPuError::new(
@@ -15,6 +25,19 @@ pub fn combine(parts: Vec<GroupedPart>) -> Result<Vec<MultiPartMeasure>, JianPuE
                 format!(
                     "part {:?} has {} measures but the first part has {}; all parts must have the same number of measures",
                     part.name, part.measures.len(), expected_len
+                ),
+            ));
+        }
+    }
+    for cp in &chord_parts {
+        if cp.measures.len() != expected_len {
+            return Err(JianPuError::new(
+                Span::new(0, 0),
+                format!(
+                    "chord part {:?} has {} measures but notes parts have {}",
+                    cp.name,
+                    cp.measures.len(),
+                    expected_len
                 ),
             ));
         }
@@ -36,33 +59,52 @@ pub fn combine(parts: Vec<GroupedPart>) -> Result<Vec<MultiPartMeasure>, JianPuE
     for measure_idx in 0..num_measures {
         let first = &parts[0].measures[measure_idx];
 
-        let part_slices = parts
-            .iter()
-            .enumerate()
-            .map(|(part_idx, part)| {
-                let measure = &part.measures[measure_idx];
-                let syllables = lyrics_per_part[part_idx][measure_idx].clone();
-                let lyrics = if part.lyrics.is_some() {
-                    Some(Lyrics { syllables })
-                } else {
-                    None
-                };
-                PartSlice {
-                    name: part.name.clone(),
-                    notes: Notes {
-                        events: measure.notes.events.clone(),
-                    },
-                    lyrics,
+        // Build part rows in parts_ordering order
+        let mut notes_idx = 0usize;
+        let mut chord_idx = 0usize;
+        let mut part_rows: Vec<PartRow> = Vec::new();
+
+        for col in parts_ordering {
+            match col {
+                PartColumn::Notes { .. } => {
+                    if notes_idx < parts.len() {
+                        let part = &parts[notes_idx];
+                        let measure = &part.measures[measure_idx];
+                        let syllables = lyrics_per_part[notes_idx][measure_idx].clone();
+                        let lyrics = if part.lyrics.is_some() {
+                            Some(Lyrics { syllables })
+                        } else {
+                            None
+                        };
+                        part_rows.push(PartRow::Notes(PartSlice {
+                            name: part.name.clone(),
+                            notes: Notes {
+                                events: measure.notes.events.clone(),
+                            },
+                            lyrics,
+                        }));
+                        notes_idx += 1;
+                    }
                 }
-            })
-            .collect();
+                PartColumn::Lyrics { .. } => {
+                    // lyrics bundled into the Notes PartSlice above
+                }
+                PartColumn::Chord { .. } => {
+                    if chord_idx < chord_parts.len() {
+                        let cp = &chord_parts[chord_idx];
+                        part_rows.push(PartRow::Chord(cp.measures[measure_idx].clone()));
+                        chord_idx += 1;
+                    }
+                }
+            }
+        }
 
         combined.push(MultiPartMeasure {
             time_signature: first.time_signature.clone(),
             bpm: first.bpm,
             key: first.key.clone(),
             label: first.label.clone(),
-            parts: part_slices,
+            parts: part_rows,
         });
     }
 

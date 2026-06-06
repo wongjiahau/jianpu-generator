@@ -105,7 +105,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let has_named_parts = score
         .measures
         .first()
-        .map(|m| m.parts.iter().any(|p| p.name.is_some()))
+        .map(|m| m.parts.iter().any(|p| p.name().is_some()))
         .unwrap_or(false);
     let label_cols: u32 = if has_named_parts {
         ((score.metadata.label_width as f32 / row_height).ceil()) as u32
@@ -134,7 +134,7 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
     let part_names: Vec<Option<String>> = score
         .measures
         .first()
-        .map(|m| m.parts.iter().map(|p| p.name.clone()).collect())
+        .map(|m| m.parts.iter().map(|p| p.name().cloned()).collect())
         .unwrap_or_default();
 
     let mut pages: Vec<Page> = Vec::new();
@@ -163,34 +163,49 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         let measure_width = measure_column_width(measure);
 
         if current_col + prefix_width + measure_width > columns_per_row {
-            // Flush open beam buffers for all parts
-            for (part_idx, beam_buf) in per_part_beam_buffer.iter_mut().enumerate() {
-                let part_row = current_row_offset + part_idx as u32 * 4;
-                flush_beam_buffer(beam_buf, part_row, &mut current_elements);
+            use crate::ast::grouped::PartRow;
+            // Flush open beam buffers for all notes parts
+            let mut notes_idx_flush = 0usize;
+            for (part_idx, part_row) in measure.parts.iter().enumerate() {
+                if let PartRow::Notes(_) = part_row {
+                    let part_row_start = current_row_offset + part_idx as u32 * 4;
+                    flush_beam_buffer(
+                        &mut per_part_beam_buffer[notes_idx_flush],
+                        part_row_start,
+                        &mut current_elements,
+                    );
+                    notes_idx_flush += 1;
+                }
             }
             // Emit right-half tie arcs for open chains crossing the line boundary.
             // prev_tie is intentionally NOT reset here — it persists to the next line
             // so that the continuation note skips consuming a lyric syllable.
-            for (part_idx, chain) in per_part_pending_chain.iter().enumerate() {
-                if !chain.is_empty() {
-                    let chain_row = per_part_chain_row[part_idx];
-                    let last = chain.last().unwrap();
-                    let to_col = current_col.saturating_sub(1);
-                    if last.0 < to_col {
-                        current_elements.push(GridElement {
-                            position: GridPosition {
-                                column: last.0,
-                                row: chain_row,
-                            },
-                            horizontal_alignment: HorizontalAlignment::Left,
-                            vertical_alignment: VerticalAlignment::Top,
-                            content: GridContent::TieOrSlurCurve {
-                                from_column: last.0,
-                                to_column: to_col,
-                            },
-                        });
+            let mut notes_idx_tie = 0usize;
+            for (part_idx, part_row) in measure.parts.iter().enumerate() {
+                if let PartRow::Notes(_) = part_row {
+                    let chain = &per_part_pending_chain[notes_idx_tie];
+                    let chain_row = per_part_chain_row[notes_idx_tie];
+                    if !chain.is_empty() {
+                        let last = chain.last().unwrap();
+                        let to_col = current_col.saturating_sub(1);
+                        if last.0 < to_col {
+                            current_elements.push(GridElement {
+                                position: GridPosition {
+                                    column: last.0,
+                                    row: chain_row,
+                                },
+                                horizontal_alignment: HorizontalAlignment::Left,
+                                vertical_alignment: VerticalAlignment::Top,
+                                content: GridContent::TieOrSlurCurve {
+                                    from_column: last.0,
+                                    to_column: to_col,
+                                },
+                            });
+                        }
+                        per_part_cross_line_tie[notes_idx_tie] = Some(last.1.clone());
                     }
-                    per_part_cross_line_tie[part_idx] = Some(last.1.clone());
+                    let _ = part_idx; // suppress unused warning
+                    notes_idx_tie += 1;
                 }
             }
             for chain in per_part_pending_chain.iter_mut() {
@@ -301,45 +316,52 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
             });
         }
 
-        // Emit directives for every part at their respective row offsets
+        // Emit directives for every notes part at their respective row offsets
         let directive_col_start = current_col;
         let mut directive_advance = 0u32;
 
-        for part_idx in 0..(num_parts as usize) {
-            let part_row = current_row_offset + part_idx as u32 * 4;
-            let mut dc = directive_col_start;
+        {
+            use crate::ast::grouped::PartRow;
+            let mut notes_count_for_directives = 0usize;
+            for (part_idx, part_row_enum) in measure.parts.iter().enumerate() {
+                if let PartRow::Notes(_) = part_row_enum {
+                    let part_row_start = current_row_offset + part_idx as u32 * 4;
+                    let mut dc = directive_col_start;
 
-            if let Some(ts) = &measure.time_signature {
-                current_elements.push(GridElement {
-                    position: GridPosition {
-                        column: dc,
-                        row: part_row + 1,
-                    },
-                    horizontal_alignment: HorizontalAlignment::Center,
-                    vertical_alignment: VerticalAlignment::Center,
-                    content: GridContent::TimeSignatureLabel {
-                        numerator: ts.numerator,
-                        denominator: ts.denominator,
-                    },
-                });
-                dc += 2;
-                if part_idx == 0 {
-                    directive_advance += 2;
-                }
-            }
+                    if let Some(ts) = &measure.time_signature {
+                        current_elements.push(GridElement {
+                            position: GridPosition {
+                                column: dc,
+                                row: part_row_start + 1,
+                            },
+                            horizontal_alignment: HorizontalAlignment::Center,
+                            vertical_alignment: VerticalAlignment::Center,
+                            content: GridContent::TimeSignatureLabel {
+                                numerator: ts.numerator,
+                                denominator: ts.denominator,
+                            },
+                        });
+                        dc += 2;
+                        if notes_count_for_directives == 0 {
+                            directive_advance += 2;
+                        }
+                    }
 
-            if let Some(bpm) = measure.bpm {
-                current_elements.push(GridElement {
-                    position: GridPosition {
-                        column: dc,
-                        row: part_row + 1,
-                    },
-                    horizontal_alignment: HorizontalAlignment::Center,
-                    vertical_alignment: VerticalAlignment::Center,
-                    content: GridContent::BpmLabel { bpm },
-                });
-                if part_idx == 0 {
-                    directive_advance += 2;
+                    if let Some(bpm) = measure.bpm {
+                        current_elements.push(GridElement {
+                            position: GridPosition {
+                                column: dc,
+                                row: part_row_start + 1,
+                            },
+                            horizontal_alignment: HorizontalAlignment::Center,
+                            vertical_alignment: VerticalAlignment::Center,
+                            content: GridContent::BpmLabel { bpm },
+                        });
+                        if notes_count_for_directives == 0 {
+                            directive_advance += 2;
+                        }
+                    }
+                    notes_count_for_directives += 1;
                 }
             }
         }
@@ -348,215 +370,259 @@ pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Pag
         let note_col_start = current_col;
 
         // Compute max notes width for bar line placement
-        let max_notes_width: u32 = measure
-            .parts
-            .iter()
-            .map(|part| {
-                part.notes
-                    .events
-                    .iter()
-                    .map(|n| match n {
-                        NoteEvent::Note(note) => note.duration,
-                        NoteEvent::Rest(rest) => rest.duration,
-                    })
-                    .sum::<u32>()
-            })
-            .max()
-            .unwrap_or(0);
+        let max_notes_width: u32 = {
+            use crate::ast::grouped::PartRow;
+            measure
+                .parts
+                .iter()
+                .filter_map(|row| {
+                    if let PartRow::Notes(p) = row {
+                        Some(p)
+                    } else {
+                        None
+                    }
+                })
+                .map(|part| {
+                    part.notes
+                        .events
+                        .iter()
+                        .map(|n| match n {
+                            NoteEvent::Note(note) => note.duration,
+                            NoteEvent::Rest(rest) => rest.duration,
+                        })
+                        .sum::<u32>()
+                })
+                .max()
+                .unwrap_or(0)
+        };
 
         // Emit notes/lyrics for each part
-        for (part_idx, part_slice) in measure.parts.iter().enumerate() {
-            let part_row = current_row_offset + part_idx as u32 * 4;
-            let mut col = note_col_start;
-            let measure_col_start_for_part = note_col_start;
+        {
+            use crate::ast::grouped::PartRow;
+            let mut notes_idx = 0usize;
+            for (part_idx, part_row_enum) in measure.parts.iter().enumerate() {
+                let part_row_offset = current_row_offset + part_idx as u32 * 4;
+                match part_row_enum {
+                    PartRow::Notes(part_slice) => {
+                        let mut col = note_col_start;
+                        let measure_col_start_for_part = note_col_start;
 
-            let pending_chain = &mut per_part_pending_chain[part_idx];
-            let chain_row_ref = &mut per_part_chain_row[part_idx];
-            if pending_chain.is_empty() {
-                *chain_row_ref = part_row + 1;
-            }
-            let beam_buf = &mut per_part_beam_buffer[part_idx];
-            let prev_tie = &mut per_part_prev_tie[part_idx];
-            let prev_pitch = &mut per_part_prev_pitch[part_idx];
-            let cross_line_tie = &mut per_part_cross_line_tie[part_idx];
-
-            let mut lyrics_iter = part_slice.lyrics.as_ref().map(|l| l.syllables.iter());
-
-            for note_event in &part_slice.notes.events {
-                match note_event {
-                    NoteEvent::Note(note) => {
-                        // Note head (row +1)
-                        current_elements.push(GridElement {
-                            position: GridPosition {
-                                column: col,
-                                row: part_row + 1,
-                            },
-                            horizontal_alignment: HorizontalAlignment::Center,
-                            vertical_alignment: VerticalAlignment::Center,
-                            content: GridContent::NoteHead {
-                                pitch: note.pitch.clone(),
-                                octave: note.octave,
-                                dotted: note.dotted,
-                            },
-                        });
-
-                        // Lower octave dots (row +2)
-                        if note.octave < 0 {
-                            let dot_underline_count = match note.duration {
-                                1 => 2u8,
-                                2 | 3 => 1u8,
-                                _ => 0u8,
-                            };
-                            current_elements.push(GridElement {
-                                position: GridPosition {
-                                    column: col,
-                                    row: part_row + 2,
-                                },
-                                horizontal_alignment: HorizontalAlignment::Center,
-                                vertical_alignment: VerticalAlignment::Top,
-                                content: GridContent::LowerOctaveDots {
-                                    count: (-note.octave) as u32,
-                                    underline_count: dot_underline_count,
-                                },
-                            });
+                        let pending_chain = &mut per_part_pending_chain[notes_idx];
+                        let chain_row_ref = &mut per_part_chain_row[notes_idx];
+                        if pending_chain.is_empty() {
+                            *chain_row_ref = part_row_offset + 1;
                         }
+                        let beam_buf = &mut per_part_beam_buffer[notes_idx];
+                        let prev_tie = &mut per_part_prev_tie[notes_idx];
+                        let prev_pitch = &mut per_part_prev_pitch[notes_idx];
+                        let cross_line_tie = &mut per_part_cross_line_tie[notes_idx];
 
-                        // Extension dashes (row +1)
-                        if note.duration > 4 {
-                            let extra_beats = (note.duration - 4) / 4;
-                            for i in 0..extra_beats {
-                                current_elements.push(GridElement {
-                                    position: GridPosition {
-                                        column: col + 4 + i * 4,
-                                        row: part_row + 1,
-                                    },
-                                    horizontal_alignment: HorizontalAlignment::Center,
-                                    vertical_alignment: VerticalAlignment::Center,
-                                    content: GridContent::Extension,
-                                });
-                            }
-                        }
+                        let mut lyrics_iter =
+                            part_slice.lyrics.as_ref().map(|l| l.syllables.iter());
 
-                        let underline_count = match note.duration {
-                            1 => 2,
-                            2 | 3 => 1,
-                            _ => 0,
-                        };
-
-                        if underline_count == 0 {
-                            flush_beam_buffer(beam_buf, part_row, &mut current_elements);
-                        }
-
-                        pending_chain.push((col, note.pitch.clone()));
-
-                        // Lyric (row +3)
-                        let is_tie_continuation =
-                            *prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
-
-                        // Left-half arc for a tie that crossed a line boundary
-                        if cross_line_tie.is_some() {
-                            if is_tie_continuation && col > label_cols {
-                                current_elements.push(GridElement {
-                                    position: GridPosition {
-                                        column: label_cols,
-                                        row: *chain_row_ref,
-                                    },
-                                    horizontal_alignment: HorizontalAlignment::Left,
-                                    vertical_alignment: VerticalAlignment::Top,
-                                    content: GridContent::TieOrSlurCurve {
-                                        from_column: label_cols,
-                                        to_column: col,
-                                    },
-                                });
-                            }
-                            *cross_line_tie = None;
-                        }
-
-                        if !is_tie_continuation {
-                            if let Some(ref mut iter) = lyrics_iter {
-                                if let Some(syllable) = iter.next() {
-                                    let is_cjk = syllable
-                                        .text
-                                        .chars()
-                                        .next()
-                                        .map(is_cjk_char)
-                                        .unwrap_or(false);
+                        for note_event in &part_slice.notes.events {
+                            match note_event {
+                                NoteEvent::Note(note) => {
+                                    // Note head (row +1)
                                     current_elements.push(GridElement {
                                         position: GridPosition {
                                             column: col,
-                                            row: part_row + 3,
+                                            row: part_row_offset + 1,
                                         },
                                         horizontal_alignment: HorizontalAlignment::Center,
-                                        vertical_alignment: VerticalAlignment::Top,
-                                        content: GridContent::Lyric {
-                                            text: syllable.text.clone(),
-                                            is_cjk,
+                                        vertical_alignment: VerticalAlignment::Center,
+                                        content: GridContent::NoteHead {
+                                            pitch: note.pitch.clone(),
+                                            octave: note.octave,
+                                            dotted: note.dotted,
                                         },
                                     });
+
+                                    // Lower octave dots (row +2)
+                                    if note.octave < 0 {
+                                        let dot_underline_count = match note.duration {
+                                            1 => 2u8,
+                                            2 | 3 => 1u8,
+                                            _ => 0u8,
+                                        };
+                                        current_elements.push(GridElement {
+                                            position: GridPosition {
+                                                column: col,
+                                                row: part_row_offset + 2,
+                                            },
+                                            horizontal_alignment: HorizontalAlignment::Center,
+                                            vertical_alignment: VerticalAlignment::Top,
+                                            content: GridContent::LowerOctaveDots {
+                                                count: (-note.octave) as u32,
+                                                underline_count: dot_underline_count,
+                                            },
+                                        });
+                                    }
+
+                                    // Extension dashes (row +1)
+                                    if note.duration > 4 {
+                                        let extra_beats = (note.duration - 4) / 4;
+                                        for i in 0..extra_beats {
+                                            current_elements.push(GridElement {
+                                                position: GridPosition {
+                                                    column: col + 4 + i * 4,
+                                                    row: part_row_offset + 1,
+                                                },
+                                                horizontal_alignment: HorizontalAlignment::Center,
+                                                vertical_alignment: VerticalAlignment::Center,
+                                                content: GridContent::Extension,
+                                            });
+                                        }
+                                    }
+
+                                    let underline_count = match note.duration {
+                                        1 => 2,
+                                        2 | 3 => 1,
+                                        _ => 0,
+                                    };
+
+                                    if underline_count == 0 {
+                                        flush_beam_buffer(
+                                            beam_buf,
+                                            part_row_offset,
+                                            &mut current_elements,
+                                        );
+                                    }
+
+                                    pending_chain.push((col, note.pitch.clone()));
+
+                                    // Lyric (row +3)
+                                    let is_tie_continuation =
+                                        *prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
+
+                                    // Left-half arc for a tie that crossed a line boundary
+                                    if cross_line_tie.is_some() {
+                                        if is_tie_continuation && col > label_cols {
+                                            current_elements.push(GridElement {
+                                                position: GridPosition {
+                                                    column: label_cols,
+                                                    row: *chain_row_ref,
+                                                },
+                                                horizontal_alignment: HorizontalAlignment::Left,
+                                                vertical_alignment: VerticalAlignment::Top,
+                                                content: GridContent::TieOrSlurCurve {
+                                                    from_column: label_cols,
+                                                    to_column: col,
+                                                },
+                                            });
+                                        }
+                                        *cross_line_tie = None;
+                                    }
+
+                                    if !is_tie_continuation {
+                                        if let Some(ref mut iter) = lyrics_iter {
+                                            if let Some(syllable) = iter.next() {
+                                                let is_cjk = syllable
+                                                    .text
+                                                    .chars()
+                                                    .next()
+                                                    .map(is_cjk_char)
+                                                    .unwrap_or(false);
+                                                current_elements.push(GridElement {
+                                                    position: GridPosition {
+                                                        column: col,
+                                                        row: part_row_offset + 3,
+                                                    },
+                                                    horizontal_alignment:
+                                                        HorizontalAlignment::Center,
+                                                    vertical_alignment: VerticalAlignment::Top,
+                                                    content: GridContent::Lyric {
+                                                        text: syllable.text.clone(),
+                                                        is_cjk,
+                                                    },
+                                                });
+                                            }
+                                        }
+                                    }
+                                    *prev_tie = note.tie;
+                                    *prev_pitch = Some(note.pitch.clone());
+
+                                    if underline_count > 0 {
+                                        beam_buf.push(BeamBufferEntry {
+                                            column: col,
+                                            underline_count,
+                                            duration: note.duration,
+                                        });
+                                    }
+
+                                    col += note.duration;
+
+                                    let beat_position = col - measure_col_start_for_part;
+                                    if underline_count > 0 && beat_position % 4 == 0 {
+                                        flush_beam_buffer(
+                                            beam_buf,
+                                            part_row_offset,
+                                            &mut current_elements,
+                                        );
+                                    }
+
+                                    if !note.tie {
+                                        flush_chain(
+                                            pending_chain,
+                                            *chain_row_ref,
+                                            &mut current_elements,
+                                        );
+                                        pending_chain.clear();
+                                    }
+                                }
+                                NoteEvent::Rest(rest) => {
+                                    let rest_underline_count = match rest.duration {
+                                        1 => 2,
+                                        2 => 1,
+                                        _ => 0,
+                                    };
+                                    if rest_underline_count == 0 {
+                                        flush_beam_buffer(
+                                            beam_buf,
+                                            part_row_offset,
+                                            &mut current_elements,
+                                        );
+                                    }
+                                    current_elements.push(GridElement {
+                                        position: GridPosition {
+                                            column: col,
+                                            row: part_row_offset + 1,
+                                        },
+                                        horizontal_alignment: HorizontalAlignment::Center,
+                                        vertical_alignment: VerticalAlignment::Center,
+                                        content: GridContent::Rest,
+                                    });
+                                    if rest_underline_count > 0 {
+                                        beam_buf.push(BeamBufferEntry {
+                                            column: col,
+                                            underline_count: rest_underline_count,
+                                            duration: rest.duration,
+                                        });
+                                    }
+                                    col += rest.duration;
+                                    *prev_tie = false;
+                                    *cross_line_tie = None;
+                                    let beat_position = col - measure_col_start_for_part;
+                                    if rest_underline_count > 0 && beat_position % 4 == 0 {
+                                        flush_beam_buffer(
+                                            beam_buf,
+                                            part_row_offset,
+                                            &mut current_elements,
+                                        );
+                                    }
                                 }
                             }
                         }
-                        *prev_tie = note.tie;
-                        *prev_pitch = Some(note.pitch.clone());
 
-                        if underline_count > 0 {
-                            beam_buf.push(BeamBufferEntry {
-                                column: col,
-                                underline_count,
-                                duration: note.duration,
-                            });
-                        }
-
-                        col += note.duration;
-
-                        let beat_position = col - measure_col_start_for_part;
-                        if underline_count > 0 && beat_position % 4 == 0 {
-                            flush_beam_buffer(beam_buf, part_row, &mut current_elements);
-                        }
-
-                        if !note.tie {
-                            flush_chain(pending_chain, *chain_row_ref, &mut current_elements);
-                            pending_chain.clear();
-                        }
+                        flush_beam_buffer(beam_buf, part_row_offset, &mut current_elements);
+                        notes_idx += 1;
+                    } // end PartRow::Notes
+                    PartRow::Chord(_) => {
+                        // handled in Task 8
                     }
-                    NoteEvent::Rest(rest) => {
-                        let rest_underline_count = match rest.duration {
-                            1 => 2,
-                            2 => 1,
-                            _ => 0,
-                        };
-                        if rest_underline_count == 0 {
-                            flush_beam_buffer(beam_buf, part_row, &mut current_elements);
-                        }
-                        current_elements.push(GridElement {
-                            position: GridPosition {
-                                column: col,
-                                row: part_row + 1,
-                            },
-                            horizontal_alignment: HorizontalAlignment::Center,
-                            vertical_alignment: VerticalAlignment::Center,
-                            content: GridContent::Rest,
-                        });
-                        if rest_underline_count > 0 {
-                            beam_buf.push(BeamBufferEntry {
-                                column: col,
-                                underline_count: rest_underline_count,
-                                duration: rest.duration,
-                            });
-                        }
-                        col += rest.duration;
-                        *prev_tie = false;
-                        *cross_line_tie = None;
-                        let beat_position = col - measure_col_start_for_part;
-                        if rest_underline_count > 0 && beat_position % 4 == 0 {
-                            flush_beam_buffer(beam_buf, part_row, &mut current_elements);
-                        }
-                    }
-                }
-            }
-
-            flush_beam_buffer(beam_buf, part_row, &mut current_elements);
-        }
+                } // end match part_row_enum
+            } // end for part_row_enum
+        } // end block
 
         // Bar line spanning all parts
         let bar_col = note_col_start + max_notes_width;
@@ -675,9 +741,17 @@ fn flush_chain(chain: &[(u32, JianPuPitch)], chain_row: u32, elements: &mut Vec<
 }
 
 fn measure_column_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 {
+    use crate::ast::grouped::PartRow;
     let max_notes: u32 = measure
         .parts
         .iter()
+        .filter_map(|row| {
+            if let PartRow::Notes(p) = row {
+                Some(p)
+            } else {
+                None
+            }
+        })
         .map(|part| {
             part.notes
                 .events

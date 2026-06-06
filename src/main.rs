@@ -336,9 +336,11 @@ fn filter_tracks(score: &mut ast::grouped::Score, tracks: &[String]) {
         return;
     }
     for measure in &mut score.measures {
-        measure
-            .parts
-            .retain(|part| part.name.as_ref().is_some_and(|name| tracks.contains(name)));
+        measure.parts.retain(|part| {
+            part.name()
+                .as_ref()
+                .is_some_and(|name| tracks.contains(name))
+        });
     }
 }
 
@@ -347,7 +349,7 @@ fn collect_track_names(score: &ast::grouped::Score) -> Vec<String> {
     let mut names = Vec::new();
     for measure in &score.measures {
         for part in &measure.parts {
-            if let Some(name) = &part.name {
+            if let Some(name) = part.name() {
                 if seen.insert(name.clone()) {
                     names.push(name.clone());
                 }
