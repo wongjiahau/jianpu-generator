@@ -12,6 +12,7 @@ pub fn parse(
     parts: &[PartColumn],
 ) -> Result<(Vec<ParsedPart>, Vec<ParsedChordPart>), JianPuError> {
     let groups = collect_groups(content);
+    let groups = crate::desugar::desugar_groups(groups, parts)?;
 
     let notes_names: Vec<String> = parts
         .iter()
@@ -718,6 +719,45 @@ mod tests {
         let content = "(label=\"\")\n1 2 3 4\n";
         let parts = vec![notes_col("")];
         assert!(parse(content, 0, &parts).is_err());
+    }
+
+    #[test]
+    fn notes_ditto_resolves_in_full_parse() {
+        // Second part's notes line is `"` — should resolve to first part's notes.
+        let content = concat!("(time=4/4 key=C4 bpm=120)\n", "1 2 3 4\n", "\"\n",);
+        let parts = vec![notes_col("S"), notes_col("A")];
+        let (result, _) = parse(content, 0, &parts).unwrap();
+        assert_eq!(result.len(), 2);
+        // Both parts should have 7 events (3 directives + 4 notes).
+        assert_eq!(result[0].score.events.len(), 7);
+        assert_eq!(
+            result[1].score.events.len(),
+            4,
+            "Alto must have the same notes as Soprano"
+        );
+    }
+
+    #[test]
+    fn lyrics_ditto_resolves_in_full_parse() {
+        let content = concat!(
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "do re mi fa\n",
+            "\"\n",
+            "\"\n",
+        );
+        let parts = vec![
+            notes_col("S"),
+            lyrics_col("S"),
+            notes_col("A"),
+            lyrics_col("A"),
+        ];
+        let (result, _) = parse(content, 0, &parts).unwrap();
+        let s_lyrics = result[0].lyrics.as_ref().unwrap();
+        let a_lyrics = result[1].lyrics.as_ref().unwrap();
+        assert_eq!(s_lyrics.syllables.len(), 4);
+        assert_eq!(a_lyrics.syllables.len(), 4);
+        assert_eq!(s_lyrics.syllables[0].text, a_lyrics.syllables[0].text);
     }
 
     #[test]

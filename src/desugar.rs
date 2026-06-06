@@ -1,7 +1,6 @@
 use crate::ast::parsed::PartColumn;
 use crate::error::{JianPuError, Span};
 
-#[allow(dead_code)]
 /// Resolves `"` ditto lines within each measure group.
 ///
 /// A `"` on a data line means "same content as the closest preceding line of
@@ -19,7 +18,6 @@ pub fn desugar_groups(
         .collect()
 }
 
-#[allow(dead_code)]
 fn desugar_group(
     group: Vec<(String, usize)>,
     parts: &[PartColumn],
@@ -79,14 +77,12 @@ fn desugar_group(
 }
 
 #[derive(PartialEq)]
-#[allow(dead_code)]
 enum ColType {
     Notes,
     Lyrics,
     Chord,
 }
 
-#[allow(dead_code)]
 fn column_type(col: &PartColumn) -> ColType {
     match col {
         PartColumn::Notes { .. } => ColType::Notes,
@@ -95,7 +91,6 @@ fn column_type(col: &PartColumn) -> ColType {
     }
 }
 
-#[allow(dead_code)]
 fn col_type_name(col: &PartColumn) -> &'static str {
     match col {
         PartColumn::Notes { .. } => "notes",
