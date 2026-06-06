@@ -19,6 +19,7 @@ pub fn desugar_groups(
         .collect()
 }
 
+#[allow(dead_code)]
 fn desugar_group(
     group: Vec<(String, usize)>,
     parts: &[PartColumn],
@@ -40,7 +41,7 @@ fn desugar_group(
     let mut resolved: Vec<(String, usize)> = Vec::with_capacity(data_lines.len());
 
     for (i, (line, offset)) in data_lines.iter().enumerate() {
-        if line.as_str() == "\"" {
+        if line == "\"" {
             // Guard: if i >= parts.len() the interleaved parser will emit a better error.
             if i >= parts.len() {
                 resolved.push((line.clone(), *offset));
