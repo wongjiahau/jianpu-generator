@@ -29,8 +29,18 @@ export default function App() {
     () => new Set(),
   )
   const editorRef = useRef<EditorHandle>(null)
-  const { parts, partsLoading, svgs, wavUrl, audioAvailable, diagnostics, rendering } =
-    useJianpuWorker(source, disabledParts)
+  const {
+    parts,
+    partsLoading,
+    svgs,
+    wavUrl,
+    audioAvailable,
+    pdfAvailable,
+    pdfExporting,
+    diagnostics,
+    rendering,
+    exportPdf,
+  } = useJianpuWorker(source, disabledParts, store.active)
 
   useEffect(() => {
     const abbreviations = new Set(parts.map((part) => part.abbreviation))
@@ -134,6 +144,9 @@ export default function App() {
             rendering={rendering}
             wavUrl={wavUrl}
             audioAvailable={audioAvailable}
+            pdfAvailable={pdfAvailable}
+            pdfExporting={pdfExporting}
+            onExportPdf={exportPdf}
             emptyMessage={
               noPartsSelected ? 'No parts selected.' : 'No preview yet.'
             }

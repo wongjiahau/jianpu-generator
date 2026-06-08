@@ -20,13 +20,35 @@ interface JianpuWorkerState {
   svgs: string[]
   wavUrl: string | null
   audioAvailable: boolean
+  pdfAvailable: boolean
+  pdfExporting: boolean
   diagnostics: Diagnostic[]
   rendering: boolean
+  exportPdf: () => void
+}
+
+function downloadPdf(bytes: ArrayBuffer, filename: string) {
+  const url = URL.createObjectURL(
+    new Blob([bytes], { type: 'application/pdf' }),
+  )
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
+function pdfFilenameFromActiveFile(activeFile: string): string {
+  if (activeFile.endsWith('.jianpu')) {
+    return activeFile.replace(/\.jianpu$/, '.pdf')
+  }
+  return `${activeFile}.pdf`
 }
 
 export function useJianpuWorker(
   source: string,
   disabledParts: ReadonlySet<string>,
+  activeFile: string,
   debounceMs = 300,
 ): JianpuWorkerState {
   const [parts, setParts] = useState<PartInfo[]>([])
@@ -34,6 +56,8 @@ export function useJianpuWorker(
   const [svgs, setSvgs] = useState<string[]>([])
   const [wavUrl, setWavUrl] = useState<string | null>(null)
   const [audioAvailable, setAudioAvailable] = useState(false)
+  const [pdfAvailable, setPdfAvailable] = useState(false)
+  const [pdfExporting, setPdfExporting] = useState(false)
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([])
   const [rendering, setRendering] = useState(false)
 
@@ -41,13 +65,22 @@ export function useJianpuWorker(
   const wavUrlRef = useRef<string | null>(null)
   const partsRequestIdRef = useRef(0)
   const renderRequestIdRef = useRef(0)
+  const pdfRequestIdRef = useRef(0)
   const latestPartsIdRef = useRef(0)
   const latestRenderIdRef = useRef(0)
+  const latestPdfIdRef = useRef(0)
+  const sourceRef = useRef(source)
+  const activeFileRef = useRef(activeFile)
+  const enabledTracksRef = useRef<string[] | undefined>(undefined)
 
   const enabledTracks = useMemo(
     () => enabledTracksForRender(parts, disabledParts),
     [parts, disabledParts],
   )
+
+  sourceRef.current = source
+  activeFileRef.current = activeFile
+  enabledTracksRef.current = enabledTracks
 
   const setNextWavUrl = useCallback((next: string | null) => {
     if (wavUrlRef.current) {
@@ -68,6 +101,7 @@ export function useJianpuWorker(
       const msg = event.data
       if (msg.type === 'ready') {
         setAudioAvailable(msg.audioAvailable)
+        setPdfAvailable(msg.pdfAvailable)
         return
       }
 
@@ -75,6 +109,20 @@ export function useJianpuWorker(
         if (msg.id !== latestPartsIdRef.current) return
         setPartsLoading(false)
         setParts(msg.parts)
+        return
+      }
+
+      if (msg.type === 'pdf') {
+        if (msg.id !== latestPdfIdRef.current) return
+        setPdfExporting(false)
+        downloadPdf(msg.pdf, pdfFilenameFromActiveFile(activeFileRef.current))
+        return
+      }
+
+      if (msg.type === 'pdfErr') {
+        if (msg.id !== latestPdfIdRef.current) return
+        setPdfExporting(false)
+        setDiagnostics(msg.diagnostics)
         return
       }
 
@@ -145,13 +193,33 @@ export function useJianpuWorker(
     return () => window.clearTimeout(timer)
   }, [source, enabledTracks, debounceMs])
 
+  const exportPdf = useCallback(() => {
+    const worker = workerRef.current
+    if (!worker || pdfExporting) return
+
+    const id = ++pdfRequestIdRef.current
+    latestPdfIdRef.current = id
+    setPdfExporting(true)
+
+    const payload: WorkerRequest = {
+      type: 'generatePdf',
+      source: sourceRef.current,
+      id,
+      enabledTracks: enabledTracksRef.current,
+    }
+    worker.postMessage(payload)
+  }, [pdfExporting])
+
   return {
     parts,
     partsLoading,
     svgs,
     wavUrl,
     audioAvailable,
+    pdfAvailable,
+    pdfExporting,
     diagnostics,
     rendering,
+    exportPdf,
   }
 }

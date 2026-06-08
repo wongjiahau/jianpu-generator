@@ -3,6 +3,9 @@ interface PreviewProps {
   rendering: boolean
   wavUrl?: string | null
   audioAvailable?: boolean
+  pdfAvailable?: boolean
+  pdfExporting?: boolean
+  onExportPdf?: () => void
   emptyMessage?: string
 }
 
@@ -11,13 +14,33 @@ export function Preview({
   rendering,
   wavUrl = null,
   audioAvailable = false,
+  pdfAvailable = false,
+  pdfExporting = false,
+  onExportPdf,
   emptyMessage = 'No preview yet.',
 }: PreviewProps) {
+  const canExportPdf =
+    pdfAvailable && svgs.length > 0 && !rendering && !pdfExporting
+
   return (
     <div className="preview">
       <div className="preview-header">
         <span>Preview</span>
-        {rendering ? <span className="preview-status">Rendering…</span> : null}
+        <div className="preview-header-actions">
+          {pdfAvailable ? (
+            <button
+              type="button"
+              className="preview-export-btn"
+              disabled={!canExportPdf}
+              onClick={onExportPdf}
+            >
+              {pdfExporting ? 'Exporting PDF…' : 'Export PDF'}
+            </button>
+          ) : null}
+          {rendering ? (
+            <span className="preview-status">Rendering…</span>
+          ) : null}
+        </div>
       </div>
       {audioAvailable ? (
         <div className="preview-audio">

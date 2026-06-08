@@ -1,6 +1,8 @@
 use jianpu_generator::{
     error::JianPuError, error_reporter, list_parts_from_source, render_svgs_from_source_filtered,
 };
+#[cfg(feature = "pdf")]
+use jianpu_generator::write_pdf_from_source_filtered;
 #[cfg(feature = "wav")]
 use jianpu_generator::write_wav_from_source_filtered;
 use serde::Serialize;
@@ -59,6 +61,14 @@ enum GenerateWavResponse {
     Err { diagnostics: Vec<DiagnosticOut> },
 }
 
+#[cfg(feature = "pdf")]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "camelCase")]
+enum GeneratePdfResponse {
+    Ok { pdf: Vec<u8> },
+    Err { diagnostics: Vec<DiagnosticOut> },
+}
+
 fn diagnostic_from_error(source: &str, e: JianPuError) -> DiagnosticOut {
     let report = error_reporter::render_with_source(source, &e);
     DiagnosticOut {
@@ -105,6 +115,17 @@ fn generate_wav_response(source: &str, enabled_tracks: Option<Vec<String>>) -> G
     match write_wav_from_source_filtered(source, "input.jianpu", tracks) {
         Ok(wav) => GenerateWavResponse::Ok { wav },
         Err(e) => GenerateWavResponse::Err {
+            diagnostics: vec![diagnostic_from_error(source, e)],
+        },
+    }
+}
+
+#[cfg(feature = "pdf")]
+fn generate_pdf_response(source: &str, enabled_tracks: Option<Vec<String>>) -> GeneratePdfResponse {
+    let tracks = enabled_tracks.as_deref();
+    match write_pdf_from_source_filtered(source, "input.jianpu", tracks) {
+        Ok(pdf) => GeneratePdfResponse::Ok { pdf },
+        Err(e) => GeneratePdfResponse::Err {
             diagnostics: vec![diagnostic_from_error(source, e)],
         },
     }
@@ -185,6 +206,51 @@ fn generate_wav_to_js(source: &str, enabled_tracks: Option<Vec<String>>) -> JsVa
 #[wasm_bindgen]
 pub fn generate_wav(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValue {
     generate_wav_to_js(source, enabled_tracks)
+}
+
+#[cfg(feature = "pdf")]
+fn generate_pdf_to_js(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValue {
+    use js_sys::{Object, Reflect, Uint8Array};
+
+    match generate_pdf_response(source, enabled_tracks) {
+        GeneratePdfResponse::Ok { pdf } => {
+            let obj = Object::new();
+            if Reflect::set(
+                &obj,
+                &JsValue::from_str("status"),
+                &JsValue::from_str("ok"),
+            )
+            .is_err()
+            {
+                return JsValue::from_str("failed to build pdf response");
+            }
+            if Reflect::set(
+                &obj,
+                &JsValue::from_str("pdf"),
+                &Uint8Array::from(pdf.as_slice()),
+            )
+            .is_err()
+            {
+                return JsValue::from_str("failed to attach pdf bytes");
+            }
+            obj.into()
+        }
+        GeneratePdfResponse::Err { diagnostics } => {
+            to_js_value(&GeneratePdfResponse::Err { diagnostics })
+        }
+    }
+}
+
+/// Parse `.jianpu` source and write PDF bytes.
+///
+/// Available only when the `pdf` feature is enabled at build time.
+/// Returns the same structured `{ status, ... }` envelope as [`render`]:
+/// - `{ "status": "ok", "pdf": Uint8Array }`
+/// - `{ "status": "err", "diagnostics": [...] }`
+#[cfg(feature = "pdf")]
+#[wasm_bindgen]
+pub fn generate_pdf(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValue {
+    generate_pdf_to_js(source, enabled_tracks)
 }
 
 #[cfg(test)]
@@ -301,6 +367,25 @@ mod tests {
             RenderResponse::Err { diagnostics } => {
                 panic!(
                     "demo.jianpu failed in wasm render path: {}",
+                    diagnostics[0].message
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn demo_jianpu_generates_pdf() {
+        let source = include_str!("../../../demo.jianpu");
+        let resp = generate_pdf_response(source, None);
+        match resp {
+            GeneratePdfResponse::Ok { pdf } => {
+                assert!(pdf.len() > 4);
+                assert_eq!(&pdf[0..4], b"%PDF");
+            }
+            GeneratePdfResponse::Err { diagnostics } => {
+                panic!(
+                    "demo.jianpu failed in wasm pdf path: {}",
                     diagnostics[0].message
                 );
             }

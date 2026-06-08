@@ -376,6 +376,27 @@
   color: var(--muted);
 }
 
+.preview-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.preview-export-btn {
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  background: var(--surface);
+  color: inherit;
+  font: inherit;
+  padding: 0.2rem 0.55rem;
+  cursor: pointer;
+}
+
+.preview-export-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .preview-status {
   font-style: italic;
 }

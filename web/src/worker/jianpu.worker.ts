@@ -2,6 +2,7 @@ import init, * as jianpuWasm from 'jianpu-wasm'
 import { list_parts, render } from 'jianpu-wasm'
 import type {
   Diagnostic,
+  GeneratePdfResult,
   GenerateWavResult,
   ListPartsResult,
   PartInfo,
@@ -16,15 +17,31 @@ const generateWav =
       ) => GenerateWavResult)
     : null
 
+const generatePdf =
+  'generate_pdf' in jianpuWasm
+    ? (jianpuWasm.generate_pdf as (
+        source: string,
+        enabledTracks?: string[],
+      ) => GeneratePdfResult)
+    : null
+
 export type WorkerRequest =
   | { type: 'render'; source: string; id: number; enabledTracks?: string[] }
   | { type: 'listParts'; source: string; id: number }
+  | {
+      type: 'generatePdf'
+      source: string
+      id: number
+      enabledTracks?: string[]
+    }
 
 export type WorkerResponse =
-  | { type: 'ready'; audioAvailable: boolean }
+  | { type: 'ready'; audioAvailable: boolean; pdfAvailable: boolean }
   | { type: 'ok'; id: number; svgs: string[]; wav?: ArrayBuffer }
   | { type: 'err'; id: number; diagnostics: Diagnostic[] }
   | { type: 'parts'; id: number; parts: PartInfo[] }
+  | { type: 'pdf'; id: number; pdf: ArrayBuffer }
+  | { type: 'pdfErr'; id: number; diagnostics: Diagnostic[] }
 
 let initialized = false
 
@@ -35,18 +52,19 @@ async function ensureInit() {
     postMessage({
       type: 'ready',
       audioAvailable: generateWav !== null,
+      pdfAvailable: generatePdf !== null,
     } satisfies WorkerResponse)
   }
 }
 
-function wavBufferFromResult(wav: Uint8Array | number[]): ArrayBuffer {
-  const bytes = wav instanceof Uint8Array ? wav : new Uint8Array(wav)
-  if (bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) {
-    return bytes.buffer as ArrayBuffer
+function binaryBufferFromResult(bytes: Uint8Array | number[]): ArrayBuffer {
+  const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  if (view.byteOffset === 0 && view.byteLength === view.buffer.byteLength) {
+    return view.buffer as ArrayBuffer
   }
-  return bytes.buffer.slice(
-    bytes.byteOffset,
-    bytes.byteOffset + bytes.byteLength,
+  return view.buffer.slice(
+    view.byteOffset,
+    view.byteOffset + view.byteLength,
   ) as ArrayBuffer
 }
 
@@ -73,6 +91,44 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     return
   }
 
+  if (msg.type === 'generatePdf') {
+    if (!generatePdf) {
+      postMessage({
+        type: 'pdfErr',
+        id: msg.id,
+        diagnostics: [
+          {
+            severity: 'error',
+            message: 'PDF export is not available in this build.',
+            span: { start: 0, end: 0 },
+          },
+        ],
+      } satisfies WorkerResponse)
+      return
+    }
+
+    const result = generatePdf(msg.source, msg.enabledTracks)
+    if (result.status === 'ok') {
+      const pdfBuffer = binaryBufferFromResult(result.pdf)
+      postMessage(
+        {
+          type: 'pdf',
+          id: msg.id,
+          pdf: pdfBuffer,
+        } satisfies WorkerResponse,
+        { transfer: [pdfBuffer] },
+      )
+      return
+    }
+
+    postMessage({
+      type: 'pdfErr',
+      id: msg.id,
+      diagnostics: result.diagnostics,
+    } satisfies WorkerResponse)
+    return
+  }
+
   if (msg.type !== 'render') return
 
   const result = render(msg.source, msg.enabledTracks) as RenderResult
@@ -81,7 +137,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     if (generateWav) {
       const wavResult = generateWav(msg.source, msg.enabledTracks)
       if (wavResult.status === 'ok') {
-        wavBuffer = wavBufferFromResult(wavResult.wav)
+        wavBuffer = binaryBufferFromResult(wavResult.wav)
       }
     }
 

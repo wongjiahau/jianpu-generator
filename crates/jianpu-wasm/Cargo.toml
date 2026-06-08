@@ -10,6 +10,7 @@ crate-type = ["cdylib", "rlib"]
 [features]
 default = []
 wav = ["jianpu-generator/wav"]
+pdf = ["jianpu-generator/pdf"]
 
 [dependencies]
 jianpu-generator = { path = "../..", default-features = false }

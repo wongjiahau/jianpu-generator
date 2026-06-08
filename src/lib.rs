@@ -114,6 +114,22 @@ pub fn write_wav_from_source_filtered(
     wav::write_wav(&midi_bytes)
 }
 
+/// Parse, group, optionally filter tracks, and write PDF bytes.
+///
+/// When `enabled_tracks` is `None`, all parts are included.
+/// When `Some(tracks)` is empty, no parts are included.
+#[cfg(feature = "pdf")]
+pub fn write_pdf_from_source_filtered(
+    source: &str,
+    filename: &str,
+    enabled_tracks: Option<&[String]>,
+) -> Result<Vec<u8>, JianPuError> {
+    let mut score = compile(source, filename)?;
+    apply_track_filter(&mut score, enabled_tracks);
+    let svgs = render_svgs(&score);
+    pdf::write_pdf(&svgs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

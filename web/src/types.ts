@@ -36,6 +36,12 @@ type GenerateWavErr = { status: 'err'; diagnostics: Diagnostic[] }
 
 export type GenerateWavResult = GenerateWavOk | GenerateWavErr
 
+type GeneratePdfOk = { status: 'ok'; pdf: Uint8Array | number[] }
+
+type GeneratePdfErr = { status: 'err'; diagnostics: Diagnostic[] }
+
+export type GeneratePdfResult = GeneratePdfOk | GeneratePdfErr
+
 interface EditorSelection {
   start: number
   end: number
