@@ -22,8 +22,8 @@ export function ErrorPanel({ diagnostics }: ErrorPanelProps) {
       ) : null}
       {diagnostics.length > 1 ? (
         <ul className="error-panel-more">
-          {diagnostics.slice(1).map((d, i) => (
-            <li key={`${d.span.start}-${d.span.end}-${i}`}>
+          {diagnostics.slice(1).map((d) => (
+            <li key={`${d.span.start}-${d.span.end}-${d.message}`}>
               {d.message}{' '}
               <span className="error-panel-span">
                 (bytes {d.span.start}–{d.span.end})

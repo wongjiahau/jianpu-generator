@@ -14,11 +14,11 @@ export function Preview({ svgs, rendering }: PreviewProps) {
         {svgs.length === 0 && !rendering ? (
           <p className="preview-empty">No preview yet.</p>
         ) : null}
-        {svgs.map((svg, index) => (
+        {svgs.map((svg) => (
           <div
-            key={index}
+            key={svg}
             className="preview-page"
-            // SVG is generated locally by our WASM module.
+            // biome-ignore lint/security/noDangerouslySetInnerHtml: trusted SVG from local WASM renderer
             dangerouslySetInnerHTML={{ __html: svg }}
           />
         ))}

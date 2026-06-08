@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { DEFAULT_SOURCE, STORAGE_KEY } from './defaultSource'
-import { useJianpuRender } from './hooks/useJianpuRender'
 import { Editor } from './components/Editor'
 import { ErrorPanel } from './components/ErrorPanel'
 import { Preview } from './components/Preview'
+import { DEFAULT_SOURCE, STORAGE_KEY } from './defaultSource'
+import { useJianpuRender } from './hooks/useJianpuRender'
 import type { EditorHandle } from './types'
 import './App.css'
 

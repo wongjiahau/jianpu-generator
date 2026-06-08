@@ -69,7 +69,7 @@ mod tests {
             .iter()
             .find_map(|t| match t {
                 ParsedTrack::Notes(n) => Some(n),
-                _ => None,
+                ParsedTrack::Chord(_) => None,
             })
             .expect("expected a notes track")
     }

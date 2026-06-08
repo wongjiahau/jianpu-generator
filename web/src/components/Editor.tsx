@@ -1,13 +1,13 @@
 import MonacoEditor, { type Monaco, type OnMount } from '@monaco-editor/react'
+import type { editor } from 'monaco-editor'
 import {
   forwardRef,
+  type ReactNode,
   useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
-  type ReactNode,
 } from 'react'
-import type { editor } from 'monaco-editor'
 import type { Diagnostic, EditorHandle } from '../types'
 import { byteOffsetToStringIndex } from '../utils/byteSpan'
 
@@ -147,7 +147,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
 
   useEffect(() => {
     applyDiagnostics()
-  }, [applyDiagnostics, value])
+  }, [applyDiagnostics])
 
   return (
     <div className="editor">

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import type { WorkerRequest, WorkerResponse } from '../worker/jianpu.worker'
 import type { Diagnostic } from '../types'
+import type { WorkerRequest, WorkerResponse } from '../worker/jianpu.worker'
 
 interface RenderState {
   svgs: string[]

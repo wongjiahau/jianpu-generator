@@ -9,3 +9,6 @@ cargo clippy --all-targets -- -D warnings
 
 echo "Running cargo test..."
 cargo test
+
+echo "Running biome check..."
+(cd web && pnpm exec biome check .)
