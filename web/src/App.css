@@ -69,6 +69,59 @@
   min-height: 2rem;
 }
 
+.part-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-inline-size: 0;
+}
+
+.part-toggles-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 0;
+  margin: 0;
+}
+
+.part-toggles-status {
+  font-size: 0.75rem;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.part-toggles-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.part-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.part-toggle input {
+  margin: 0;
+}
+
+.part-toggle-label {
+  font-family: var(--mono);
+}
+
 .editor-surface {
   flex: 1;
   min-height: 0;

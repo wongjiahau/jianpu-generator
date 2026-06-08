@@ -19,6 +19,15 @@ pub mod wav;
 use ast::grouped::Score;
 use error::JianPuError;
 
+/// A part declared in the `[parts]` section.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct PartInfo {
+    /// Abbreviation used in score row labels and `--tracks` filtering.
+    pub abbreviation: String,
+    /// Full display name from the declaration left-hand side.
+    pub display_name: String,
+}
+
 /// Parse and group a `.jianpu` source string into a [`Score`].
 pub fn compile(source: &str, filename: &str) -> Result<Score, JianPuError> {
     let doc = parser::parse(source, filename)?;
@@ -35,15 +44,43 @@ pub fn render_svgs(score: &Score) -> Vec<String> {
 
 /// Parse, group, and render a `.jianpu` source string into SVG page strings.
 pub fn render_svgs_from_source(source: &str, filename: &str) -> Result<Vec<String>, JianPuError> {
-    let score = compile(source, filename)?;
+    render_svgs_from_source_filtered(source, filename, None)
+}
+
+/// List part declarations from a `.jianpu` source string.
+pub fn list_parts_from_source(source: &str, filename: &str) -> Result<Vec<PartInfo>, JianPuError> {
+    let doc = parser::parse(source, filename)?;
+    Ok(doc
+        .declarations
+        .into_iter()
+        .map(|d| PartInfo {
+            abbreviation: d.abbreviation,
+            display_name: d.display_name,
+        })
+        .collect())
+}
+
+/// Parse, group, optionally filter tracks, and render SVG page strings.
+///
+/// When `enabled_tracks` is `None`, all parts are rendered.
+/// When `Some(tracks)` is empty, no parts are rendered.
+pub fn render_svgs_from_source_filtered(
+    source: &str,
+    filename: &str,
+    enabled_tracks: Option<&[String]>,
+) -> Result<Vec<String>, JianPuError> {
+    let mut score = compile(source, filename)?;
+    apply_track_filter(&mut score, enabled_tracks);
     Ok(render_svgs(&score))
 }
 
-/// Retain only parts whose names appear in `tracks`. No-op when `tracks` is empty.
-pub fn filter_tracks(score: &mut Score, tracks: &[String]) {
-    if tracks.is_empty() {
+/// Retain only parts whose names appear in `enabled_tracks`.
+///
+/// `None` keeps every part. `Some([])` removes every part.
+pub fn apply_track_filter(score: &mut Score, enabled_tracks: Option<&[String]>) {
+    let Some(tracks) = enabled_tracks else {
         return;
-    }
+    };
     for measure in &mut score.measures {
         measure.parts.retain(|part| {
             part.name()
@@ -53,9 +90,65 @@ pub fn filter_tracks(score: &mut Score, tracks: &[String]) {
     }
 }
 
+/// Retain only parts whose names appear in `tracks`. No-op when `tracks` is empty.
+pub fn filter_tracks(score: &mut Score, tracks: &[String]) {
+    if tracks.is_empty() {
+        return;
+    }
+    apply_track_filter(score, Some(tracks));
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn list_parts_from_source_returns_declarations() {
+        let input = concat!(
+            "[metadata]\n",
+            "title = \"t\"\n",
+            "author = \"a\"\n",
+            "\n",
+            "[parts]\n",
+            "main = chord\n",
+            "Alto 1 & Tenor (A1&T) = notes lyrics\n",
+            "\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1m\n",
+            "1 2 3 4\n",
+            "a b c d\n",
+        );
+        let parts = list_parts_from_source(input, "test.jianpu").unwrap();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0].abbreviation, "main");
+        assert_eq!(parts[0].display_name, "main");
+        assert_eq!(parts[1].abbreviation, "A1&T");
+        assert_eq!(parts[1].display_name, "Alto 1 & Tenor");
+    }
+
+    #[test]
+    fn render_svgs_from_source_filtered_can_hide_parts() {
+        let input = concat!(
+            "[metadata]\n",
+            "title = \"t\"\n",
+            "author = \"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Soprano = notes\n",
+            "Alto = notes\n",
+            "\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "5 6 7 1\n",
+        );
+        let all = render_svgs_from_source(input, "test.jianpu").unwrap();
+        let soprano_only =
+            render_svgs_from_source_filtered(input, "test.jianpu", Some(&["Soprano".into()]))
+                .unwrap();
+        assert_ne!(all[0], soprano_only[0]);
+    }
 
     #[test]
     fn render_svgs_from_source_smoke() {

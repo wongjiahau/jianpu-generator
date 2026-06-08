@@ -19,6 +19,17 @@ export type RenderErr = { status: 'err'; diagnostics: Diagnostic[] }
 
 export type RenderResult = RenderOk | RenderErr
 
+export interface PartInfo {
+  abbreviation: string
+  display_name: string
+}
+
+export type ListPartsOk = { status: 'ok'; parts: PartInfo[] }
+
+export type ListPartsErr = { status: 'err'; diagnostics: Diagnostic[] }
+
+export type ListPartsResult = ListPartsOk | ListPartsErr
+
 /** @deprecated Use Diagnostic[] from RenderErr instead. */
 export type RenderError = Diagnostic
 
