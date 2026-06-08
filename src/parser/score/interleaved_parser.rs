@@ -301,8 +301,8 @@ fn process_column_line(
                 ));
             }
             let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
-            let events = token_parser::parse_tokens(tokens)?;
-            validate_beats(&events, beats_expected, bar)?;
+            let events =
+                validate_and_pad_beats(token_parser::parse_tokens(tokens)?, beats_expected)?;
             if let Some(tie_state) = ctx.lyric_tie_states.get_mut(*track_index) {
                 let slots = count_lyric_slots_in_events(&events, tie_state);
                 if let Some(bar_slot) = ctx.bar_lyric_slots.get_mut(*track_index) {
@@ -646,20 +646,39 @@ fn beats_per_measure(num: u8, den: u8) -> u32 {
     (num as u32) * (16 / den as u32)
 }
 
-fn validate_beats(
-    events: &[Spanned<ScoreEvent>],
+fn timed_beats(event: &ScoreEvent) -> u32 {
+    match event {
+        ScoreEvent::Note(n) => n.duration,
+        ScoreEvent::Rest(r) => r.duration,
+        ScoreEvent::Extension => 4,
+        _ => 0,
+    }
+}
+
+fn last_timed_event_span(events: &[Spanned<ScoreEvent>]) -> Span {
+    events
+        .iter()
+        .rfind(|e| timed_beats(&e.value) > 0)
+        .map(|e| e.span.clone())
+        // structurally unreachable: a data line always has at least one token
+        .unwrap_or(Span::new(0, 1))
+}
+
+fn has_extendable_note_or_rest(events: &[Spanned<ScoreEvent>]) -> bool {
+    events
+        .iter()
+        .any(|e| matches!(&e.value, ScoreEvent::Note(_) | ScoreEvent::Rest(_)))
+}
+
+/// Validates measure capacity and pads omitted trailing `-` extensions when possible.
+fn validate_and_pad_beats(
+    mut events: Vec<Spanned<ScoreEvent>>,
     expected: u32,
-    _bar: usize,
-) -> Result<(), JianPuError> {
+) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
     let mut total = 0u32;
 
-    for e in events {
-        let beats = match &e.value {
-            ScoreEvent::Note(n) => n.duration,
-            ScoreEvent::Rest(r) => r.duration,
-            ScoreEvent::Extension => 4,
-            _ => 0,
-        };
+    for e in &events {
+        let beats = timed_beats(&e.value);
         if beats > 0 {
             total += beats;
             if total > expected {
@@ -674,24 +693,23 @@ fn validate_beats(
     }
 
     if total < expected {
-        let span = events
-            .iter()
-            .rfind(|e| {
-                matches!(
-                    &e.value,
-                    ScoreEvent::Note(_) | ScoreEvent::Rest(_) | ScoreEvent::Extension
-                )
-            })
-            .map(|e| e.span.clone())
-            // structurally unreachable: a data line always has at least one token
-            .unwrap_or(Span::new(0, 1));
-        return Err(JianPuError::new(
-            span,
-            format!("incomplete measure: expected {expected} quarter-beats, got {total}"),
-        ));
+        let deficit = expected - total;
+        if deficit % 4 != 0 || !has_extendable_note_or_rest(&events) {
+            return Err(JianPuError::new(
+                last_timed_event_span(&events),
+                format!("incomplete measure: expected {expected} quarter-beats, got {total}"),
+            ));
+        }
+        let pad_end = last_timed_event_span(&events).end;
+        for _ in 0..(deficit / 4) {
+            events.push(Spanned::new(
+                ScoreEvent::Extension,
+                Span::new(pad_end, pad_end),
+            ));
+        }
     }
 
-    Ok(())
+    Ok(events)
 }
 
 #[cfg(test)]
@@ -981,8 +999,49 @@ mod tests {
     }
 
     #[test]
-    fn rejects_underfull_measure() {
-        let content = "(time=4/4 key=C4 bpm=120)\n1 2 3\n";
+    fn implicit_trailing_extensions_match_explicit() {
+        let declarations = vec![decl("", PartKind::Notes)];
+        let explicit = "(time=4/4 key=C4 bpm=120)\n1 - - -\n";
+        let implicit = "(time=4/4 key=C4 bpm=120)\n1\n";
+        let explicit_parsed = parse(explicit, 0, &declarations).unwrap();
+        let implicit_parsed = parse(implicit, 0, &declarations).unwrap();
+        let explicit_track = notes_track(&explicit_parsed, "");
+        let implicit_track = notes_track(&implicit_parsed, "");
+        assert_eq!(
+            explicit_track.score.events.len(),
+            implicit_track.score.events.len()
+        );
+        for (a, b) in explicit_track
+            .score
+            .events
+            .iter()
+            .zip(implicit_track.score.events.iter())
+        {
+            assert_eq!(
+                std::mem::discriminant(&a.value),
+                std::mem::discriminant(&b.value)
+            );
+        }
+    }
+
+    #[test]
+    fn implicit_trailing_extensions_after_partial_fill() {
+        let declarations = vec![decl("", PartKind::Notes)];
+        let explicit = "(time=4/4 key=C4 bpm=120)\n1 2 - -\n";
+        let implicit = "(time=4/4 key=C4 bpm=120)\n1 2\n";
+        let explicit_parsed = parse(explicit, 0, &declarations).unwrap();
+        let implicit_parsed = parse(implicit, 0, &declarations).unwrap();
+        let explicit_track = notes_track(&explicit_parsed, "");
+        let implicit_track = notes_track(&implicit_parsed, "");
+        assert_eq!(
+            explicit_track.score.events.len(),
+            implicit_track.score.events.len()
+        );
+    }
+
+    #[test]
+    fn rejects_underfull_measure_that_cannot_be_padded_with_extensions() {
+        let content = "(time=4/4 key=C4 bpm=120)\n_4\n";
         let declarations = vec![decl("", PartKind::Notes)];
         let err = parse(content, 0, &declarations).unwrap_err();
         assert!(err.message.contains("incomplete measure"));

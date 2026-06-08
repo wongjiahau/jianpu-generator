@@ -220,6 +220,8 @@ The tokenizer splits on `~`, so `4~3~3` becomes three tokens: `4~`, `3~`, `3`.
 
 Example: `1 - - -` is a whole note in 4/4 (one quarter-note token plus three extensions).
 
+Trailing `-` tokens may be omitted when the remaining measure beats are all extensions of the last note or rest. In 4/4, `1` is equivalent to `1 - - -`; `1 2` is equivalent to `1 2 - -`. Middle extensions cannot be skipped (`1 - 2` must keep the `-`). If the missing duration is not a whole number of beats, or there is no note/rest to extend, the measure is still an error.
+
 ### Inline directives (notes row)
 
 These tokens may also appear in a notes line (uncommon; usually placed in `(...)` directive rows instead):
@@ -232,13 +234,13 @@ These tokens may also appear in a notes line (uncommon; usually placed in `(...)
 
 ### Measure validation
 
-All note and rest durations in a row must sum to exactly the measure capacity. For time signature `N/D`:
+Note and rest durations in a row must fill the measure capacity. For time signature `N/D`:
 
 ```
 measure capacity = N × (16 / D) quarter-beats
 ```
 
-(e.g. 4/4 → 16, 3/4 → 12). Too few or too many quarter-beats is a parse error.
+(e.g. 4/4 → 16, 3/4 → 12). Too many quarter-beats is a parse error. A shortfall is filled with implicit trailing `-` extensions when possible (see [Extension](#extension)); otherwise it is a parse error.
 
 ### Examples
 
