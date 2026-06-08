@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useFileStore } from './hooks/useFileStore'
 import { Editor } from './components/Editor'
 import { ErrorPanel } from './components/ErrorPanel'
 import { FileList } from './components/FileList'
@@ -10,13 +9,19 @@ import {
   deleteFile,
   duplicateFile,
   fileContent,
+  fileIdForName,
   isReadOnlyFile,
   renameFile,
   restoreFile,
   selectFile,
   updateActiveContent,
 } from './fileStore'
+import { useFileStore } from './hooks/useFileStore'
 import { useJianpuWorker } from './hooks/useJianpuWorker'
+import {
+  readPartTogglesForFile,
+  writePartTogglesForFile,
+} from './partToggleCache'
 import type { EditorHandle } from './types'
 import './App.css'
 
@@ -24,14 +29,18 @@ export default function App() {
   const [store, setStore] = useFileStore()
   const source = fileContent(store, store.active)
   const readOnly = isReadOnlyFile(store.active)
+  const fileId = fileIdForName(store, store.active)
 
-  const [disabledParts, setDisabledParts] = useState<Set<string>>(
-    () => new Set(),
-  )
-  const [disabledLyrics, setDisabledLyrics] = useState<Set<string>>(
-    () => new Set(),
-  )
+  const [disabledParts, setDisabledParts] = useState<Set<string>>(() => {
+    const cached = readPartTogglesForFile(fileId)
+    return new Set(cached?.disabledParts ?? [])
+  })
+  const [disabledLyrics, setDisabledLyrics] = useState<Set<string>>(() => {
+    const cached = readPartTogglesForFile(fileId)
+    return new Set(cached?.disabledLyrics ?? [])
+  })
   const editorRef = useRef<EditorHandle>(null)
+  const skipToggleSaveRef = useRef(false)
   const {
     parts,
     partsLoading,
@@ -46,6 +55,26 @@ export default function App() {
   } = useJianpuWorker(source, disabledParts, disabledLyrics, store.active)
 
   useEffect(() => {
+    skipToggleSaveRef.current = true
+    const cached = readPartTogglesForFile(fileId)
+    setDisabledParts(new Set(cached?.disabledParts ?? []))
+    setDisabledLyrics(new Set(cached?.disabledLyrics ?? []))
+  }, [fileId])
+
+  useEffect(() => {
+    if (skipToggleSaveRef.current) {
+      skipToggleSaveRef.current = false
+      return
+    }
+    writePartTogglesForFile(fileId, {
+      disabledParts: [...disabledParts],
+      disabledLyrics: [...disabledLyrics],
+    })
+  }, [fileId, disabledParts, disabledLyrics])
+
+  useEffect(() => {
+    if (parts.length === 0) return
+
     const abbreviations = new Set(parts.map((part) => part.abbreviation))
     setDisabledParts((prev) => {
       const next = new Set(
@@ -56,10 +85,10 @@ export default function App() {
   }, [parts])
 
   useEffect(() => {
+    if (parts.length === 0) return
+
     const lyricAbbreviations = new Set(
-      parts
-        .filter((part) => part.has_lyrics)
-        .map((part) => part.abbreviation),
+      parts.filter((part) => part.has_lyrics).map((part) => part.abbreviation),
     )
     setDisabledLyrics((prev) => {
       const next = new Set(
