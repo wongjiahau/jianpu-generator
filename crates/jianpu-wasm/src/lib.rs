@@ -121,6 +121,26 @@ mod tests {
     }
 
     #[test]
+    fn demo_jianpu_renders() {
+        let source = include_str!("../../../demo.jianpu");
+        let resp = render_response(source);
+        match resp {
+            RenderResponse::Ok { svgs } => {
+                assert!(
+                    !svgs.is_empty(),
+                    "demo.jianpu should render in the wasm path used by the web editor"
+                );
+            }
+            RenderResponse::Err { diagnostics } => {
+                panic!(
+                    "demo.jianpu failed in wasm render path: {}",
+                    diagnostics[0].message
+                );
+            }
+        }
+    }
+
+    #[test]
     fn err_span_is_utf8_byte_offset() {
         let source = concat!(
             "[metadata]\n",

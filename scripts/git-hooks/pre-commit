@@ -7,7 +7,7 @@ cargo fmt -- --check
 echo "Running cargo clippy..."
 cargo clippy --all-targets -- -D warnings
 
-echo "Running cargo test..."
+echo "Running cargo test (includes demo.jianpu + web editor default source checks)..."
 cargo test
 
 echo "Running biome check..."
