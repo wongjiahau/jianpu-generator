@@ -352,8 +352,11 @@ fn process_column_line(
                     "'_' is only valid on lyrics lines".to_string(),
                 ));
             }
-            let events =
-                crate::parser::score::chord_parser::parse(line, ctx.base_offset + line_offset)?;
+            let events = validate_and_pad_chord_beats(
+                crate::parser::score::chord_parser::parse(line, ctx.base_offset + line_offset)?,
+                beats_expected,
+                &line_span,
+            )?;
             let acc = ctx.accumulators.get_mut(*track_index).ok_or_else(|| {
                 JianPuError::new(
                     line_span,
@@ -731,6 +734,65 @@ fn validate_and_pad_beats(
                 ScoreEvent::Rest(r) => r.duration += deficit,
                 _ => {}
             }
+        }
+    }
+
+    Ok(events)
+}
+
+fn chord_timed_beats(event: &ParsedChordEvent) -> u32 {
+    match event {
+        ParsedChordEvent::Chord(_) | ParsedChordEvent::Rest | ParsedChordEvent::Extend(_) => 4,
+    }
+}
+
+fn has_extendable_chord_event(events: &[ParsedChordEvent]) -> bool {
+    events
+        .iter()
+        .any(|e| matches!(e, ParsedChordEvent::Chord(_) | ParsedChordEvent::Rest))
+}
+
+fn last_chord_event_span(events: &[ParsedChordEvent], line_span: &Span) -> Span {
+    events
+        .iter()
+        .rev()
+        .find_map(|e| match e {
+            ParsedChordEvent::Extend(span) => Some(span.clone()),
+            _ => None,
+        })
+        .unwrap_or_else(|| line_span.clone())
+}
+
+/// Validates measure capacity and pads omitted trailing `-` extensions when possible.
+fn validate_and_pad_chord_beats(
+    mut events: Vec<ParsedChordEvent>,
+    expected: u32,
+    line_span: &Span,
+) -> Result<Vec<ParsedChordEvent>, JianPuError> {
+    let mut total = 0u32;
+
+    for event in &events {
+        total += chord_timed_beats(event);
+        if total > expected {
+            return Err(JianPuError::new(
+                last_chord_event_span(&events, &line_span),
+                format!(
+                    "chord exceeds measure boundary: measure has {expected} quarter-beats, cumulative is now {total}"
+                ),
+            ));
+        }
+    }
+
+    if total < expected {
+        let deficit = expected - total;
+        if deficit % 4 != 0 || !has_extendable_chord_event(&events) {
+            return Err(JianPuError::new(
+                last_chord_event_span(&events, &line_span),
+                format!("incomplete measure: expected {expected} quarter-beats, got {total}"),
+            ));
+        }
+        for _ in 0..(deficit / 4) {
+            events.push(ParsedChordEvent::Extend(line_span.clone()));
         }
     }
 
@@ -1116,6 +1178,76 @@ mod tests {
             explicit_track.score.events.len(),
             implicit_track.score.events.len()
         );
+    }
+
+    #[test]
+    fn implicit_trailing_chord_extensions_match_explicit() {
+        use crate::grouper;
+        use crate::parser;
+        let explicit = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\n",
+            "chord = chord\nMelody = notes\n\n[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n1 - - -\n1\n",
+        );
+        let implicit = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\n",
+            "chord = chord\nMelody = notes\n\n[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n1\n1\n",
+        );
+        let explicit_score = grouper::group(parser::parse(explicit, "t.jianpu").unwrap()).unwrap();
+        let implicit_score = grouper::group(parser::parse(implicit, "t.jianpu").unwrap()).unwrap();
+        fn chord_duration(score: &crate::ast::grouped::Score) -> u32 {
+            use crate::ast::grouped::{GroupedChordEvent, PartRow};
+            let chord = score.measures[0]
+                .parts
+                .iter()
+                .find_map(|p| match p {
+                    PartRow::Chord(c) => Some(c),
+                    _ => None,
+                })
+                .unwrap();
+            match &chord.events[0] {
+                GroupedChordEvent::Chord(c) => c.duration,
+                GroupedChordEvent::Rest(d) => *d,
+            }
+        }
+        assert_eq!(chord_duration(&explicit_score), 16);
+        assert_eq!(chord_duration(&implicit_score), 16);
+    }
+
+    #[test]
+    fn implicit_trailing_chord_extensions_after_partial_fill() {
+        use crate::grouper;
+        use crate::parser;
+        let explicit = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\n",
+            "chord = chord\nMelody = notes\n\n[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n1m 2m - -\n1 2\n",
+        );
+        let implicit = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\n",
+            "chord = chord\nMelody = notes\n\n[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n1m 2m\n1 2\n",
+        );
+        let explicit_score = grouper::group(parser::parse(explicit, "t.jianpu").unwrap()).unwrap();
+        let implicit_score = grouper::group(parser::parse(implicit, "t.jianpu").unwrap()).unwrap();
+        fn last_chord_duration(score: &crate::ast::grouped::Score) -> u32 {
+            use crate::ast::grouped::{GroupedChordEvent, PartRow};
+            let chord = score.measures[0]
+                .parts
+                .iter()
+                .find_map(|p| match p {
+                    PartRow::Chord(c) => Some(c),
+                    _ => None,
+                })
+                .unwrap();
+            match chord.events.last().unwrap() {
+                GroupedChordEvent::Chord(c) => c.duration,
+                GroupedChordEvent::Rest(d) => *d,
+            }
+        }
+        assert_eq!(last_chord_duration(&explicit_score), 12);
+        assert_eq!(last_chord_duration(&implicit_score), 12);
     }
 
     #[test]
