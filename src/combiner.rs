@@ -1,55 +1,52 @@
 use crate::ast::grouped::{
-    GroupedChordPart, GroupedMeasure, GroupedPart, Lyrics, MultiPartMeasure, NoteEvent, Notes,
-    PartRow, PartSlice,
+    GroupedMeasure, GroupedTrack, Lyrics, MultiPartMeasure, NoteEvent, Notes, PartRow, PartSlice,
 };
-use crate::ast::parsed::{JianPuPitch, PartColumn, Syllable};
+use crate::ast::parsed::{JianPuPitch, Syllable};
 use crate::error::{JianPuError, Span};
 
-pub fn combine(
-    parts: &[GroupedPart],
-    chord_parts: &[GroupedChordPart],
-    parts_ordering: &[PartColumn],
-) -> Result<Vec<MultiPartMeasure>, JianPuError> {
-    if parts.is_empty() && chord_parts.is_empty() {
+pub fn combine(grouped_tracks: &[GroupedTrack]) -> Result<Vec<MultiPartMeasure>, JianPuError> {
+    if grouped_tracks.is_empty() {
         return Ok(Vec::new());
     }
 
-    let expected_len = parts.first().map(|p| p.measures.len()).unwrap_or(0);
-    validate_measure_counts(parts, chord_parts, expected_len)?;
+    let expected_len = grouped_tracks
+        .first()
+        .map(GroupedTrack::measure_count)
+        .unwrap_or(0);
+    validate_measure_counts(grouped_tracks, expected_len)?;
 
-    let lyrics_per_part: Vec<Vec<Vec<Syllable>>> = parts
+    let lyrics_per_track: Vec<Vec<Vec<Syllable>>> = grouped_tracks
         .iter()
-        .map(|p| {
-            p.lyrics
+        .map(|track| match track {
+            GroupedTrack::Notes(part) => part
+                .lyrics
                 .as_deref()
-                .map(|lyrics| distribute_lyrics(&p.measures, lyrics))
-                .unwrap_or_else(|| vec![vec![]; p.measures.len()])
+                .map(|lyrics| distribute_lyrics(&part.measures, lyrics))
+                .unwrap_or_else(|| vec![vec![]; part.measures.len()]),
+            GroupedTrack::Chord(_) => vec![vec![]; expected_len],
         })
         .collect();
 
     let mut combined = Vec::with_capacity(expected_len);
     for measure_idx in 0..expected_len {
-        let first = parts
-            .first()
-            .and_then(|p| p.measures.get(measure_idx))
+        let first_notes_measure = grouped_tracks
+            .iter()
+            .find_map(|track| match track {
+                GroupedTrack::Notes(part) => part.measures.get(measure_idx),
+                GroupedTrack::Chord(_) => None,
+            })
             .ok_or_else(|| {
                 JianPuError::new(
                     Span::new(0, 0),
-                    "internal invariant: first part measure missing",
+                    "internal invariant: no notes track for measure metadata",
                 )
             })?;
-        let part_rows = build_part_rows(
-            parts,
-            chord_parts,
-            parts_ordering,
-            measure_idx,
-            &lyrics_per_part,
-        )?;
+        let part_rows = build_part_rows(grouped_tracks, measure_idx, &lyrics_per_track)?;
         combined.push(MultiPartMeasure {
-            time_signature: first.time_signature.clone(),
-            bpm: first.bpm,
-            key: first.key.clone(),
-            label: first.label.clone(),
+            time_signature: first_notes_measure.time_signature.clone(),
+            bpm: first_notes_measure.bpm,
+            key: first_notes_measure.key.clone(),
+            label: first_notes_measure.label.clone(),
             parts: part_rows,
         });
     }
@@ -58,29 +55,17 @@ pub fn combine(
 }
 
 fn validate_measure_counts(
-    parts: &[GroupedPart],
-    chord_parts: &[GroupedChordPart],
+    grouped_tracks: &[GroupedTrack],
     expected_len: usize,
 ) -> Result<(), JianPuError> {
-    for part in parts.iter().skip(1) {
-        if part.measures.len() != expected_len {
+    for track in grouped_tracks.iter().skip(1) {
+        if track.measure_count() != expected_len {
             return Err(JianPuError::new(
                 Span::new(0, 1),
                 format!(
                     "part {:?} has {} measures but the first part has {}; all parts must have the same number of measures",
-                    part.name, part.measures.len(), expected_len
-                ),
-            ));
-        }
-    }
-    for cp in chord_parts {
-        if cp.measures.len() != expected_len {
-            return Err(JianPuError::new(
-                Span::new(0, 1),
-                format!(
-                    "chord part {:?} has {} measures but notes parts have {}",
-                    cp.name,
-                    cp.measures.len(),
+                    track.track_name(),
+                    track.measure_count(),
                     expected_len
                 ),
             ));
@@ -90,63 +75,52 @@ fn validate_measure_counts(
 }
 
 fn build_part_rows(
-    parts: &[GroupedPart],
-    chord_parts: &[GroupedChordPart],
-    parts_ordering: &[PartColumn],
+    grouped_tracks: &[GroupedTrack],
     measure_idx: usize,
-    lyrics_per_part: &[Vec<Vec<Syllable>>],
+    lyrics_per_track: &[Vec<Vec<Syllable>>],
 ) -> Result<Vec<PartRow>, JianPuError> {
-    let mut notes_idx = 0usize;
-    let mut chord_idx = 0usize;
     let mut part_rows = Vec::new();
 
-    for col in parts_ordering {
-        match col {
-            PartColumn::Notes { .. } => {
-                if let Some(part) = parts.get(notes_idx) {
-                    let measure = part.measures.get(measure_idx).ok_or_else(|| {
+    for (track_idx, track) in grouped_tracks.iter().enumerate() {
+        match track {
+            GroupedTrack::Notes(part) => {
+                let measure = part.measures.get(measure_idx).ok_or_else(|| {
+                    JianPuError::new(
+                        Span::new(0, 0),
+                        "internal invariant: notes part measure missing",
+                    )
+                })?;
+                let syllables = lyrics_per_track
+                    .get(track_idx)
+                    .and_then(|lyrics| lyrics.get(measure_idx))
+                    .ok_or_else(|| {
                         JianPuError::new(
                             Span::new(0, 0),
-                            "internal invariant: notes part measure missing",
+                            "internal invariant: lyrics distribution missing",
                         )
-                    })?;
-                    let syllables = lyrics_per_part
-                        .get(notes_idx)
-                        .and_then(|lyrics| lyrics.get(measure_idx))
-                        .ok_or_else(|| {
-                            JianPuError::new(
-                                Span::new(0, 0),
-                                "internal invariant: lyrics distribution missing",
-                            )
-                        })?
-                        .clone();
-                    let lyrics = if part.lyrics.is_some() {
-                        Some(Lyrics { syllables })
-                    } else {
-                        None
-                    };
-                    part_rows.push(PartRow::Notes(PartSlice {
-                        name: part.name.clone(),
-                        notes: Notes {
-                            events: measure.notes.events.clone(),
-                        },
-                        lyrics,
-                    }));
-                    notes_idx += 1;
-                }
+                    })?
+                    .clone();
+                let lyrics = if part.lyrics.is_some() {
+                    Some(Lyrics { syllables })
+                } else {
+                    None
+                };
+                part_rows.push(PartRow::Notes(PartSlice {
+                    name: part.name.clone(),
+                    notes: Notes {
+                        events: measure.notes.events.clone(),
+                    },
+                    lyrics,
+                }));
             }
-            PartColumn::Lyrics { .. } => {}
-            PartColumn::Chord { .. } => {
-                if let Some(cp) = chord_parts.get(chord_idx) {
-                    let chord_measure = cp.measures.get(measure_idx).ok_or_else(|| {
-                        JianPuError::new(
-                            Span::new(0, 0),
-                            "internal invariant: chord part measure missing",
-                        )
-                    })?;
-                    part_rows.push(PartRow::Chord(chord_measure.clone()));
-                    chord_idx += 1;
-                }
+            GroupedTrack::Chord(part) => {
+                let chord_measure = part.measures.get(measure_idx).ok_or_else(|| {
+                    JianPuError::new(
+                        Span::new(0, 0),
+                        "internal invariant: chord part measure missing",
+                    )
+                })?;
+                part_rows.push(PartRow::Chord(chord_measure.clone()));
             }
         }
     }
@@ -192,7 +166,7 @@ mod tests {
 
     fn make_two_part_score(soprano: &str, alto: &str) -> Vec<MultiPartMeasure> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{soprano}\n{alto}\n"
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nSoprano = notes\nAlto = notes\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{soprano}\n{alto}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap().measures
@@ -214,10 +188,8 @@ mod tests {
 
     #[test]
     fn rejects_parts_with_different_measure_counts() {
-        // Both parts in one group must have the same beat count.
-        // Alto row has too many beats — interleaved parser rejects it.
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nSoprano = notes\nAlto = notes\n\n",
             "[score]\n",
             "(time=4/4 key=C4 bpm=120)\n",
             "1 2 3 4\n",

@@ -1,31 +1,37 @@
 use crate::ast::parsed::{
-    Accidental, KeyChange, Note, NoteName, ParsedChordEvent, ParsedChordPart, ParsedLyrics,
-    ParsedPart, ParsedScore, PartColumn, ScoreEvent,
+    flatten_score_line_slots, Accidental, KeyChange, Note, NoteName, ParsedChordEvent,
+    ParsedChordTrack, ParsedLyrics, ParsedNotesTrack, ParsedScore, ParsedTrack, PartDecl, PartKind,
+    ScoreEvent, ScoreLineRole, ScoreLineSlot,
 };
 use crate::error::{JianPuError, Span, Spanned};
 use crate::parser::score::{token_parser, tokenizer};
 use crate::utils::{count_lyric_slots_in_events, tokenize_lyrics, LyricTieState};
 
-enum ColAction {
-    Notes(usize),
-    Lyrics(usize),
-    Chord(usize),
+enum SlotAction {
+    Chord { track_index: usize },
+    Notes { track_index: usize },
+    Lyrics { track_index: usize },
 }
 
-struct ParseAccumulators {
-    events_acc: Vec<Vec<Spanned<ScoreEvent>>>,
-    syllables_acc: Vec<Option<Vec<crate::ast::parsed::Syllable>>>,
-    chord_events_acc: Vec<Vec<Vec<ParsedChordEvent>>>,
+enum TrackAccumulator {
+    Notes {
+        events: Vec<Spanned<ScoreEvent>>,
+        syllables: Option<Vec<crate::ast::parsed::Syllable>>,
+    },
+    Chord {
+        events_per_measure: Vec<Vec<ParsedChordEvent>>,
+    },
 }
 
 struct BarGroupContext<'a> {
     base_offset: usize,
-    parts: &'a [PartColumn],
-    notes_names: &'a [String],
-    col_actions: &'a [ColAction],
+    declarations: &'a [PartDecl],
+    slots: &'a [ScoreLineSlot],
+    slot_actions: &'a [SlotAction],
+    first_notes_track_index: usize,
     time_num: &'a mut u8,
     time_den: &'a mut u8,
-    accumulators: &'a mut ParseAccumulators,
+    accumulators: &'a mut [TrackAccumulator],
     lyric_tie_states: &'a mut [LyricTieState],
     bar_lyric_slots: &'a mut [Option<u32>],
 }
@@ -33,47 +39,36 @@ struct BarGroupContext<'a> {
 pub fn parse(
     content: &str,
     base_offset: usize,
-    parts: &[PartColumn],
-) -> Result<(Vec<ParsedPart>, Vec<ParsedChordPart>), JianPuError> {
+    declarations: &[PartDecl],
+) -> Result<Vec<ParsedTrack>, JianPuError> {
     let groups = collect_groups(content);
-    let groups = crate::desugar::desugar_groups(groups, parts)?;
+    let groups = crate::desugar::desugar_groups(groups, declarations)?;
 
-    let notes_names: Vec<String> = parts
+    let first_notes_track_index = declarations
         .iter()
-        .filter_map(|p| match p {
-            PartColumn::Notes { name } => Some(name.clone()),
-            _ => None,
-        })
-        .collect();
+        .position(|d| matches!(d.kind, PartKind::Notes | PartKind::NotesWithLyrics))
+        .ok_or_else(|| {
+            JianPuError::new(
+                Span::new(base_offset, base_offset + content.len()),
+                "parts declaration has no notes track",
+            )
+        })?;
 
-    if notes_names.is_empty() {
-        return Err(JianPuError::new(
-            Span::new(base_offset, base_offset + content.len()),
-            "parts declaration has no 'notes:' columns",
-        ));
-    }
-
-    let chord_names: Vec<String> = parts
-        .iter()
-        .filter_map(|p| match p {
-            PartColumn::Chord { name } => Some(name.clone()),
-            _ => None,
-        })
-        .collect();
-
-    let col_actions = build_col_actions(parts, &notes_names, base_offset, content.len())?;
-    let mut accumulators = init_accumulators(&notes_names, &chord_names, parts);
+    let slots = flatten_score_line_slots(declarations);
+    let slot_actions = build_slot_actions(&slots);
+    let mut accumulators = init_accumulators(declarations);
 
     let mut time_num: u8 = 4;
     let mut time_den: u8 = 4;
-    let mut lyric_tie_states = vec![LyricTieState::default(); notes_names.len()];
-    let mut bar_lyric_slots = vec![None; notes_names.len()];
+    let mut lyric_tie_states = vec![LyricTieState::default(); declarations.len()];
+    let mut bar_lyric_slots = vec![None; declarations.len()];
 
     let mut ctx = BarGroupContext {
         base_offset,
-        parts,
-        notes_names: &notes_names,
-        col_actions: &col_actions,
+        declarations,
+        slots: &slots,
+        slot_actions: &slot_actions,
+        first_notes_track_index,
         time_num: &mut time_num,
         time_den: &mut time_den,
         accumulators: &mut accumulators,
@@ -85,78 +80,43 @@ pub fn parse(
         process_bar_group(group_lines, bar_idx + 1, &mut ctx)?;
     }
 
-    build_parse_result(
-        base_offset,
-        content.len(),
-        &notes_names,
-        chord_names,
-        accumulators,
-    )
+    build_parse_result(declarations, accumulators)
 }
 
-fn build_col_actions(
-    parts: &[PartColumn],
-    notes_names: &[String],
-    base_offset: usize,
-    content_len: usize,
-) -> Result<Vec<ColAction>, JianPuError> {
-    let mut chord_name_idx = 0usize;
-    let mut col_actions = Vec::with_capacity(parts.len());
-    let parts_span = Span::new(base_offset, base_offset + content_len);
-
-    for p in parts {
-        match p {
-            PartColumn::Notes { name } => {
-                let idx = notes_names.iter().position(|n| n == name).ok_or_else(|| {
-                    JianPuError::new(
-                        parts_span.clone(),
-                        format!("notes column '{name}' is not declared in parts"),
-                    )
-                })?;
-                col_actions.push(ColAction::Notes(idx));
-            }
-            PartColumn::Lyrics { name } => {
-                let idx = notes_names.iter().position(|n| n == name).ok_or_else(|| {
-                    JianPuError::new(
-                        parts_span.clone(),
-                        format!("lyrics column '{name}' has no matching notes column"),
-                    )
-                })?;
-                col_actions.push(ColAction::Lyrics(idx));
-            }
-            PartColumn::Chord { .. } => {
-                col_actions.push(ColAction::Chord(chord_name_idx));
-                chord_name_idx += 1;
-            }
-        }
-    }
-
-    Ok(col_actions)
+fn build_slot_actions(slots: &[ScoreLineSlot]) -> Vec<SlotAction> {
+    slots
+        .iter()
+        .map(|slot| match slot.role {
+            ScoreLineRole::Chord => SlotAction::Chord {
+                track_index: slot.track_index,
+            },
+            ScoreLineRole::Notes => SlotAction::Notes {
+                track_index: slot.track_index,
+            },
+            ScoreLineRole::Lyrics => SlotAction::Lyrics {
+                track_index: slot.track_index,
+            },
+        })
+        .collect()
 }
 
-fn init_accumulators(
-    notes_names: &[String],
-    chord_names: &[String],
-    parts: &[PartColumn],
-) -> ParseAccumulators {
-    let mut syllables_acc: Vec<Option<Vec<crate::ast::parsed::Syllable>>> =
-        (0..notes_names.len()).map(|_| None).collect();
-
-    for p in parts {
-        if let PartColumn::Lyrics { name } = p {
-            if let Some(idx) = notes_names.iter().position(|n| n == name) {
-                if let Some(slot) = syllables_acc.get_mut(idx) {
-                    *slot = Some(Vec::new());
-                }
-            }
-        }
-    }
-
-    ParseAccumulators {
-        events_acc: (0..notes_names.len()).map(|_| Vec::new()).collect(),
-        syllables_acc,
-        chord_events_acc: (0..chord_names.len()).map(|_| Vec::new()).collect(),
-    }
+fn init_accumulators(declarations: &[PartDecl]) -> Vec<TrackAccumulator> {
+    declarations
+        .iter()
+        .map(|decl| match decl.kind {
+            PartKind::Chord => TrackAccumulator::Chord {
+                events_per_measure: Vec::new(),
+            },
+            PartKind::Notes => TrackAccumulator::Notes {
+                events: Vec::new(),
+                syllables: None,
+            },
+            PartKind::NotesWithLyrics => TrackAccumulator::Notes {
+                events: Vec::new(),
+                syllables: Some(Vec::new()),
+            },
+        })
+        .collect()
 }
 
 fn process_bar_group(
@@ -178,24 +138,64 @@ fn process_bar_group(
     }
 
     let padded_data =
-        validate_and_pad_group_lines(group_lines, data_lines, ctx.parts, ctx.base_offset)?;
+        validate_and_pad_group_lines(group_lines, data_lines, ctx.slots, ctx.base_offset)?;
 
     for slot in ctx.bar_lyric_slots.iter_mut() {
         *slot = None;
     }
 
     if !directive_events.is_empty() {
-        let events_acc = ctx.accumulators.events_acc.get_mut(0).ok_or_else(|| {
-            JianPuError::new(
-                Span::new(ctx.base_offset, ctx.base_offset + 1),
-                "internal error: missing notes accumulator for directive events",
-            )
-        })?;
+        let events_acc = notes_events_mut(
+            ctx.accumulators
+                .get_mut(ctx.first_notes_track_index)
+                .ok_or_else(|| {
+                    JianPuError::new(
+                        Span::new(ctx.base_offset, ctx.base_offset + 1),
+                        "internal error: missing notes accumulator for directive events",
+                    )
+                })?,
+        )?;
         events_acc.extend(directive_events);
     }
 
     let beats_expected = beats_per_measure(*ctx.time_num, *ctx.time_den);
     process_padded_columns(&padded_data, bar, beats_expected, ctx)
+}
+
+fn notes_events_mut(
+    acc: &mut TrackAccumulator,
+) -> Result<&mut Vec<Spanned<ScoreEvent>>, JianPuError> {
+    match acc {
+        TrackAccumulator::Notes { events, .. } => Ok(events),
+        TrackAccumulator::Chord { .. } => Err(JianPuError::new(
+            Span::new(0, 0),
+            "internal error: expected notes accumulator",
+        )),
+    }
+}
+
+fn notes_syllables_mut(
+    acc: &mut TrackAccumulator,
+) -> Result<Option<&mut Vec<crate::ast::parsed::Syllable>>, JianPuError> {
+    match acc {
+        TrackAccumulator::Notes { syllables, .. } => Ok(syllables.as_mut()),
+        TrackAccumulator::Chord { .. } => Err(JianPuError::new(
+            Span::new(0, 0),
+            "internal error: expected notes accumulator",
+        )),
+    }
+}
+
+fn chord_events_mut(
+    acc: &mut TrackAccumulator,
+) -> Result<&mut Vec<Vec<ParsedChordEvent>>, JianPuError> {
+    match acc {
+        TrackAccumulator::Chord { events_per_measure } => Ok(events_per_measure),
+        TrackAccumulator::Notes { .. } => Err(JianPuError::new(
+            Span::new(0, 0),
+            "internal error: expected chord accumulator",
+        )),
+    }
 }
 
 fn process_padded_columns(
@@ -212,12 +212,12 @@ fn process_padded_columns(
 
 fn validate_lyrics_syllable_count(
     bar: usize,
-    part_idx: usize,
+    track_index: usize,
     syllable_count: usize,
     line_span: Span,
     ctx: &BarGroupContext<'_>,
 ) -> Result<(), JianPuError> {
-    let Some(expected_slots) = ctx.bar_lyric_slots.get(part_idx).and_then(|s| *s) else {
+    let Some(expected_slots) = ctx.bar_lyric_slots.get(track_index).and_then(|s| *s) else {
         return Ok(());
     };
     let expected = expected_slots as usize;
@@ -225,11 +225,10 @@ fn validate_lyrics_syllable_count(
         return Ok(());
     }
     let part_label = ctx
-        .notes_names
-        .get(part_idx)
-        .filter(|name| !name.is_empty())
-        .map(|name| name.as_str())
-        .unwrap_or("unnamed part");
+        .declarations
+        .get(track_index)
+        .map(|d| d.abbreviation.as_str())
+        .unwrap_or("unknown");
     Err(JianPuError::new(
         line_span,
         format!(
@@ -240,7 +239,7 @@ fn validate_lyrics_syllable_count(
 }
 
 fn process_lyrics_column_line(
-    part_idx: usize,
+    track_index: usize,
     line: &str,
     line_span: Span,
     bar: usize,
@@ -256,24 +255,30 @@ fn process_lyrics_column_line(
         return Ok(());
     }
     let syllables = tokenize_lyrics(line);
-    validate_lyrics_syllable_count(bar, part_idx, syllables.len(), line_span.clone(), ctx)?;
-    let Some(acc) = ctx
-        .accumulators
-        .syllables_acc
-        .get_mut(part_idx)
-        .and_then(|slot| slot.as_mut())
-    else {
+    validate_lyrics_syllable_count(bar, track_index, syllables.len(), line_span.clone(), ctx)?;
+    let acc = ctx.accumulators.get_mut(track_index).ok_or_else(|| {
+        JianPuError::new(
+            line_span.clone(),
+            "internal error: track accumulator index out of range",
+        )
+    })?;
+    let Some(syllables_acc) = notes_syllables_mut(acc)? else {
+        let abbrev = ctx
+            .declarations
+            .get(track_index)
+            .map(|d| d.abbreviation.as_str())
+            .unwrap_or("unknown");
         return Err(JianPuError::new(
             line_span,
-            "lyrics column has no matching notes column",
+            format!("lyrics line for '{abbrev}' has no matching notes track"),
         ));
     };
-    acc.extend(syllables);
+    syllables_acc.extend(syllables);
     Ok(())
 }
 
 fn process_column_line(
-    col_idx: usize,
+    slot_idx: usize,
     line: &str,
     line_offset: usize,
     bar: usize,
@@ -284,14 +289,11 @@ fn process_column_line(
         ctx.base_offset + line_offset,
         ctx.base_offset + line_offset + line.len(),
     );
-    let col_action = ctx.col_actions.get(col_idx).ok_or_else(|| {
-        JianPuError::new(
-            line_span.clone(),
-            "internal error: column index out of range",
-        )
+    let slot_action = ctx.slot_actions.get(slot_idx).ok_or_else(|| {
+        JianPuError::new(line_span.clone(), "internal error: slot index out of range")
     })?;
-    match col_action {
-        ColAction::Notes(idx) => {
+    match slot_action {
+        SlotAction::Notes { track_index } => {
             if line == "_" {
                 return Err(JianPuError::new(
                     line_span,
@@ -301,24 +303,24 @@ fn process_column_line(
             let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
             let events = token_parser::parse_tokens(tokens)?;
             validate_beats(&events, beats_expected, bar)?;
-            if let Some(tie_state) = ctx.lyric_tie_states.get_mut(*idx) {
+            if let Some(tie_state) = ctx.lyric_tie_states.get_mut(*track_index) {
                 let slots = count_lyric_slots_in_events(&events, tie_state);
-                if let Some(bar_slot) = ctx.bar_lyric_slots.get_mut(*idx) {
+                if let Some(bar_slot) = ctx.bar_lyric_slots.get_mut(*track_index) {
                     *bar_slot = Some(slots);
                 }
             }
-            let events_acc = ctx.accumulators.events_acc.get_mut(*idx).ok_or_else(|| {
+            let acc = ctx.accumulators.get_mut(*track_index).ok_or_else(|| {
                 JianPuError::new(
                     line_span.clone(),
                     "internal error: notes accumulator index out of range",
                 )
             })?;
-            events_acc.extend(events);
+            notes_events_mut(acc)?.extend(events);
         }
-        ColAction::Lyrics(idx) => {
-            process_lyrics_column_line(*idx, line, line_span, bar, ctx)?;
+        SlotAction::Lyrics { track_index } => {
+            process_lyrics_column_line(*track_index, line, line_span, bar, ctx)?;
         }
-        ColAction::Chord(chord_idx) => {
+        SlotAction::Chord { track_index } => {
             if line == "_" {
                 return Err(JianPuError::new(
                     line_span,
@@ -327,17 +329,13 @@ fn process_column_line(
             }
             let events =
                 crate::parser::score::chord_parser::parse(line, ctx.base_offset + line_offset)?;
-            let chord_acc = ctx
-                .accumulators
-                .chord_events_acc
-                .get_mut(*chord_idx)
-                .ok_or_else(|| {
-                    JianPuError::new(
-                        line_span,
-                        "internal error: chord accumulator index out of range",
-                    )
-                })?;
-            chord_acc.push(events);
+            let acc = ctx.accumulators.get_mut(*track_index).ok_or_else(|| {
+                JianPuError::new(
+                    line_span,
+                    "internal error: chord accumulator index out of range",
+                )
+            })?;
+            chord_events_mut(acc)?.push(events);
         }
     }
     Ok(())
@@ -346,7 +344,7 @@ fn process_column_line(
 fn validate_and_pad_group_lines(
     group_lines: &[(String, usize)],
     data_lines: &[(String, usize)],
-    parts: &[PartColumn],
+    slots: &[ScoreLineSlot],
     base_offset: usize,
 ) -> Result<Vec<(String, usize)>, JianPuError> {
     let group_first_span = group_lines
@@ -360,22 +358,12 @@ fn validate_and_pad_group_lines(
             "expected at least one data line in measure group".to_string(),
         ));
     }
-    if data_lines.len() > parts.len() {
+    if data_lines.len() != slots.len() {
         return Err(JianPuError::new(
             group_first_span,
             format!(
-                "expected at most {} lines (one per parts column), got {}",
-                parts.len(),
-                data_lines.len()
-            ),
-        ));
-    }
-    if data_lines.len() < parts.len() {
-        return Err(JianPuError::new(
-            group_first_span,
-            format!(
-                "expected {} lines (one per parts column), got {}",
-                parts.len(),
+                "expected {} lines (one per score line), got {}",
+                slots.len(),
                 data_lines.len()
             ),
         ));
@@ -385,57 +373,42 @@ fn validate_and_pad_group_lines(
 }
 
 fn build_parse_result(
-    base_offset: usize,
-    content_len: usize,
-    notes_names: &[String],
-    chord_names: Vec<String>,
-    mut accumulators: ParseAccumulators,
-) -> Result<(Vec<ParsedPart>, Vec<ParsedChordPart>), JianPuError> {
-    let internal_span = Span::new(base_offset, base_offset + content_len);
-    let mut notes_result = Vec::new();
-    for (i, name) in notes_names.iter().enumerate() {
-        let events = accumulators
-            .events_acc
-            .get_mut(i)
-            .ok_or_else(|| {
-                JianPuError::new(
-                    internal_span.clone(),
-                    "internal error: notes accumulator index out of range",
-                )
-            })
-            .map(std::mem::take)?;
-        let lyrics = accumulators
-            .syllables_acc
-            .get_mut(i)
-            .ok_or_else(|| {
-                JianPuError::new(
-                    internal_span.clone(),
-                    "internal error: lyrics accumulator index out of range",
-                )
-            })?
-            .take()
-            .map(|s| ParsedLyrics { syllables: s });
-        notes_result.push(ParsedPart {
-            name: if name.is_empty() {
-                None
-            } else {
-                Some(name.clone())
-            },
-            score: ParsedScore { events },
-            lyrics,
-        });
+    declarations: &[PartDecl],
+    accumulators: Vec<TrackAccumulator>,
+) -> Result<Vec<ParsedTrack>, JianPuError> {
+    if declarations.len() != accumulators.len() {
+        return Err(JianPuError::new(
+            Span::new(0, 0),
+            "internal error: declaration/accumulator count mismatch",
+        ));
     }
 
-    let chord_parts: Vec<ParsedChordPart> = chord_names
-        .into_iter()
-        .zip(accumulators.chord_events_acc)
-        .map(|(name, events_per_measure)| ParsedChordPart {
-            name: if name.is_empty() { None } else { Some(name) },
-            events_per_measure,
+    declarations
+        .iter()
+        .zip(accumulators)
+        .map(|(decl, acc)| match (&decl.kind, acc) {
+            (PartKind::Chord, TrackAccumulator::Chord { events_per_measure }) => {
+                Ok(ParsedTrack::Chord(ParsedChordTrack {
+                    abbreviation: decl.abbreviation.clone(),
+                    display_name: decl.display_name.clone(),
+                    events_per_measure,
+                }))
+            }
+            (
+                PartKind::Notes | PartKind::NotesWithLyrics,
+                TrackAccumulator::Notes { events, syllables },
+            ) => Ok(ParsedTrack::Notes(ParsedNotesTrack {
+                abbreviation: decl.abbreviation.clone(),
+                display_name: decl.display_name.clone(),
+                score: ParsedScore { events },
+                lyrics: syllables.map(|s| ParsedLyrics { syllables: s }),
+            })),
+            _ => Err(JianPuError::new(
+                Span::new(0, 0),
+                "internal error: track kind/accumulator mismatch",
+            )),
         })
-        .collect();
-
-    Ok((notes_result, chord_parts))
+        .collect()
 }
 
 /// Returns groups of `(trimmed_line, byte_offset_within_content)` pairs.
@@ -724,42 +697,45 @@ fn validate_beats(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::parsed::PartColumn;
+    use crate::ast::parsed::{Accidental, JianPuPitch, ParsedChordSymbol, TriadQuality};
 
-    fn notes_col(name: &str) -> PartColumn {
-        PartColumn::Notes {
-            name: name.to_string(),
+    fn decl(name: &str, kind: PartKind) -> PartDecl {
+        PartDecl {
+            abbreviation: name.into(),
+            display_name: name.into(),
+            kind,
         }
     }
-    fn lyrics_col(name: &str) -> PartColumn {
-        PartColumn::Lyrics {
-            name: name.to_string(),
-        }
+
+    fn notes_track<'a>(tracks: &'a [ParsedTrack], abbrev: &str) -> &'a ParsedNotesTrack {
+        tracks
+            .iter()
+            .find_map(|t| match t {
+                ParsedTrack::Notes(n) if n.abbreviation == abbrev => Some(n),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("notes track '{abbrev}' not found"))
     }
-    fn chord_col(name: &str) -> PartColumn {
-        PartColumn::Chord {
-            name: name.to_string(),
-        }
+
+    fn chord_track<'a>(tracks: &'a [ParsedTrack], abbrev: &str) -> &'a ParsedChordTrack {
+        tracks
+            .iter()
+            .find_map(|t| match t {
+                ParsedTrack::Chord(c) if c.abbreviation == abbrev => Some(c),
+                _ => None,
+            })
+            .unwrap_or_else(|| panic!("chord track '{abbrev}' not found"))
     }
 
     #[test]
     fn chord_column_events_are_parsed() {
-        use crate::ast::parsed::{
-            Accidental, JianPuPitch, ParsedChordEvent, ParsedChordSymbol, PartColumn, TriadQuality,
-        };
-        let parts = vec![
-            PartColumn::Chord {
-                name: "main".to_string(),
-            },
-            PartColumn::Notes {
-                name: "main".to_string(),
-            },
-        ];
+        let declarations = vec![decl("main", PartKind::Chord), decl("main", PartKind::Notes)];
         let content = "(time=4/4 key=C4 bpm=120)\n1 - - -\n1 - - -\n";
-        let (note_parts, chord_parts) = parse(content, 0, &parts).unwrap();
-        assert_eq!(chord_parts.len(), 1);
-        assert_eq!(chord_parts[0].events_per_measure.len(), 1);
-        let events = &chord_parts[0].events_per_measure[0];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(tracks.len(), 2);
+        let chord = chord_track(&tracks, "main");
+        assert_eq!(chord.events_per_measure.len(), 1);
+        let events = &chord.events_per_measure[0];
         assert_eq!(
             events[0],
             ParsedChordEvent::Chord(ParsedChordSymbol {
@@ -771,29 +747,29 @@ mod tests {
             })
         );
         assert!(matches!(events[1], ParsedChordEvent::Extend(_)));
-        // note_parts should contain the notes column
-        assert_eq!(note_parts.len(), 1);
+        assert_eq!(notes_track(&tracks, "main").score.events.len(), 7);
     }
 
     #[test]
     fn single_unnamed_part_no_lyrics() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].name, None);
-        assert!(result[0].lyrics.is_none());
-        assert_eq!(result[0].score.events.len(), 7);
+        let declarations = vec![decl("", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(tracks.len(), 1);
+        let notes = notes_track(&tracks, "");
+        assert!(notes.lyrics.is_none());
+        assert_eq!(notes.score.events.len(), 7);
     }
 
     #[test]
     fn single_part_with_lyrics() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\ndo re mi fa\n";
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert!(result[0].lyrics.is_some());
-        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(tracks.len(), 1);
+        let notes = notes_track(&tracks, "");
+        assert!(notes.lyrics.is_some());
+        assert_eq!(notes.lyrics.as_ref().unwrap().syllables.len(), 4);
     }
 
     #[test]
@@ -806,21 +782,21 @@ mod tests {
             "1 2 3 4\n",
             "5 6 7 1\n",
         );
-        let parts = vec![notes_col("Soprano"), notes_col("Alto")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result.len(), 2);
-        assert_eq!(result[0].name, Some("Soprano".to_string()));
-        assert_eq!(result[1].name, Some("Alto".to_string()));
-        assert_eq!(result[0].score.events.len(), 11);
-        assert_eq!(result[1].score.events.len(), 8);
+        let declarations = vec![
+            decl("Soprano", PartKind::Notes),
+            decl("Alto", PartKind::Notes),
+        ];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(notes_track(&tracks, "Soprano").score.events.len(), 11);
+        assert_eq!(notes_track(&tracks, "Alto").score.events.len(), 8);
     }
 
     #[test]
     fn rejects_too_many_lines_in_group() {
-        // 3 lines for 2-column parts declaration → error
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\nextra line\n";
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert!(err.message.contains("expected") && err.message.contains("got"));
     }
 
@@ -832,17 +808,24 @@ mod tests {
             "5 6 7 1\n",
             "_\n",
         );
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(
+            notes_track(&tracks, "")
+                .lyrics
+                .as_ref()
+                .unwrap()
+                .syllables
+                .len(),
+            4
+        );
     }
 
     #[test]
     fn rejects_too_few_lyrics_syllables_for_notes() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c\n";
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert!(
             err.message
                 .contains("lyrics has 3 syllables but notes need 4"),
@@ -854,8 +837,8 @@ mod tests {
     #[test]
     fn rejects_too_many_lyrics_syllables_for_notes() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d e\n";
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert!(
             err.message
                 .contains("lyrics has 5 syllables but notes need 4"),
@@ -867,9 +850,17 @@ mod tests {
     #[test]
     fn tied_notes_share_one_lyric_slot_in_bar() {
         let content = "(time=4/4 key=C4 bpm=120)\n3~3 1 2\na b c\n";
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 3);
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(
+            notes_track(&tracks, "")
+                .lyrics
+                .as_ref()
+                .unwrap()
+                .syllables
+                .len(),
+            3
+        );
     }
 
     #[test]
@@ -880,9 +871,17 @@ mod tests {
             "3 0 0 0\n",
             "_\n",
         );
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 1);
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(
+            notes_track(&tracks, "")
+                .lyrics
+                .as_ref()
+                .unwrap()
+                .syllables
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -892,8 +891,8 @@ mod tests {
             "\n",
             "5 6 7 1\n",
         );
-        let parts = vec![notes_col(""), lyrics_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::NotesWithLyrics)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert!(
             err.message.contains("expected lyrics line"),
             "got: {}",
@@ -903,7 +902,6 @@ mod tests {
 
     #[test]
     fn partial_measure_still_needs_ditto_before_diverging_middle_columns() {
-        // A2 lyrics ditto must stay explicit when S1/S2 lines follow with real content.
         let content = concat!(
             "(time=4/4 key=C4 bpm=120)\n",
             "1 - 6m -\n",
@@ -914,22 +912,15 @@ mod tests {
             "6 - 5 -\n",
             "alto lyrics\n",
         );
-        let parts = vec![
-            chord_col("main"),
-            notes_col("A1"),
-            lyrics_col("A1"),
-            notes_col("A2"),
-            lyrics_col("A2"),
-            notes_col("S1"),
-            lyrics_col("S1"),
-            notes_col("S2"),
-            lyrics_col("S2"),
+        let declarations = vec![
+            decl("main", PartKind::Chord),
+            decl("A1", PartKind::NotesWithLyrics),
+            decl("A2", PartKind::NotesWithLyrics),
+            decl("S1", PartKind::NotesWithLyrics),
+            decl("S2", PartKind::NotesWithLyrics),
         ];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        let s1 = result
-            .iter()
-            .find(|p| p.name.as_deref() == Some("S1"))
-            .unwrap();
+        let tracks = parse(content, 0, &declarations).unwrap();
+        let s1 = notes_track(&tracks, "S1");
         assert_eq!(s1.lyrics.as_ref().unwrap().syllables[0].text, "alto");
     }
 
@@ -949,49 +940,42 @@ mod tests {
             "1 2 3 4\n",
             "do re mi fa\n",
         );
-        let parts = vec![
-            chord_col("main"),
-            notes_col("A"),
-            lyrics_col("A"),
-            notes_col("B"),
-            lyrics_col("B"),
+        let declarations = vec![
+            decl("main", PartKind::Chord),
+            decl("A", PartKind::NotesWithLyrics),
+            decl("B", PartKind::NotesWithLyrics),
         ];
-        let (explicit_result, _) = parse(explicit, 0, &parts).unwrap();
-        let (implicit_result, _) = parse(implicit, 0, &parts).unwrap();
+        let explicit_tracks = parse(explicit, 0, &declarations).unwrap();
+        let implicit_tracks = parse(implicit, 0, &declarations).unwrap();
+        let explicit_a = notes_track(&explicit_tracks, "A");
+        let implicit_a = notes_track(&implicit_tracks, "A");
+        let explicit_b = notes_track(&explicit_tracks, "B");
+        let implicit_b = notes_track(&implicit_tracks, "B");
+        assert_eq!(explicit_a.score.events.len(), implicit_a.score.events.len());
+        assert_eq!(explicit_b.score.events.len(), implicit_b.score.events.len());
         assert_eq!(
-            explicit_result[0].score.events.len(),
-            implicit_result[0].score.events.len()
+            explicit_a.lyrics.as_ref().unwrap().syllables.len(),
+            implicit_a.lyrics.as_ref().unwrap().syllables.len()
         );
         assert_eq!(
-            explicit_result[1].score.events.len(),
-            implicit_result[1].score.events.len()
-        );
-        assert_eq!(
-            explicit_result[0].lyrics.as_ref().unwrap().syllables.len(),
-            implicit_result[0].lyrics.as_ref().unwrap().syllables.len()
-        );
-        assert_eq!(
-            explicit_result[1].lyrics.as_ref().unwrap().syllables.len(),
-            implicit_result[1].lyrics.as_ref().unwrap().syllables.len()
+            explicit_b.lyrics.as_ref().unwrap().syllables.len(),
+            implicit_b.lyrics.as_ref().unwrap().syllables.len()
         );
     }
 
     #[test]
     fn rejects_overfull_measure() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4 5\n";
-        let parts = vec![notes_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::Notes)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert!(err.message.contains("note exceeds measure boundary"));
     }
 
     #[test]
     fn overfull_measure_span_points_to_offending_note() {
-        // "(time=4/4 key=C4 bpm=120)\n" = 26 bytes
-        // "1 2 3 4 5" → '5' is at byte offset 8 within the line
-        // global offset: 26 + 8 = 34
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4 5\n";
-        let parts = vec![notes_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::Notes)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert_eq!(err.span.start, 34, "span must point to the offending '5'");
         assert_eq!(err.span.end, 35);
     }
@@ -999,32 +983,25 @@ mod tests {
     #[test]
     fn rejects_underfull_measure() {
         let content = "(time=4/4 key=C4 bpm=120)\n1 2 3\n";
-        let parts = vec![notes_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::Notes)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert!(err.message.contains("incomplete measure"));
     }
 
     #[test]
     fn underfull_measure_span_points_to_last_note() {
-        // "(time=4/4 key=C4 bpm=120)\n" = 26 bytes
-        // "4 4 4 _4" → '_4' starts at byte offset 6 within the line
-        // global offset: 26 + 6 = 32
         let content = "(time=4/4 key=C4 bpm=120)\n4 4 4 _4\n";
-        let parts = vec![notes_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::Notes)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert_eq!(err.span.start, 32, "span must point to the last note '_4'");
         assert_eq!(err.span.end, 34);
     }
 
     #[test]
     fn underfull_measure_in_second_bar_span_points_to_last_note() {
-        // "(time=4/4 key=C4 bpm=120)\n" = 26 bytes
-        // "5 5 5 5\n"                   =  8 bytes
-        // "\n"                          =  1 byte  (blank separator)
-        // "4 4 4 _4" → '_4' at offset 6 within line → global 26+8+1+6 = 41
         let content = "(time=4/4 key=C4 bpm=120)\n5 5 5 5\n\n4 4 4 _4\n";
-        let parts = vec![notes_col("")];
-        let err = parse(content, 0, &parts).unwrap_err();
+        let declarations = vec![decl("", PartKind::Notes)];
+        let err = parse(content, 0, &declarations).unwrap_err();
         assert_eq!(
             err.span.start, 41,
             "span must point to the last note '_4' in the second bar"
@@ -1035,9 +1012,9 @@ mod tests {
     #[test]
     fn directive_row_is_optional() {
         let content = concat!("(time=4/4 key=C4 bpm=120)\n1 2 3 4\n", "\n", "5 6 7 1\n",);
-        let parts = vec![notes_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result[0].score.events.len(), 11);
+        let declarations = vec![decl("", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(notes_track(&tracks, "").score.events.len(), 11);
     }
 
     #[test]
@@ -1047,25 +1024,24 @@ mod tests {
             "\n",
             "(time=3/4)\n1 2 3\n",
         );
-        let parts = vec![notes_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert!(!result[0].score.events.is_empty());
+        let declarations = vec![decl("", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert!(!notes_track(&tracks, "").score.events.is_empty());
     }
 
     #[test]
     fn rejects_unknown_directive() {
         let content = "(foo=bar)\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        assert!(parse(content, 0, &parts).is_err());
+        let declarations = vec![decl("", PartKind::Notes)];
+        assert!(parse(content, 0, &declarations).is_err());
     }
 
     #[test]
     fn key_directive_parses_flat() {
         let content = "(time=4/4 key=Bb4 bpm=120)\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        use crate::ast::parsed::{Accidental, ScoreEvent};
-        let key_event = result[0]
+        let declarations = vec![decl("", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        let key_event = notes_track(&tracks, "")
             .score
             .events
             .iter()
@@ -1079,10 +1055,9 @@ mod tests {
     #[test]
     fn label_directive_parsed() {
         let content = "(time=4/4 key=C4 bpm=120 label=\"Verse 1\")\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        use crate::ast::parsed::ScoreEvent;
-        let label_event = result[0]
+        let declarations = vec![decl("", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        let label_event = notes_track(&tracks, "")
             .score
             .events
             .iter()
@@ -1096,29 +1071,26 @@ mod tests {
     #[test]
     fn label_directive_rejects_unclosed_quote() {
         let content = "(label=\"Verse 1)\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        assert!(parse(content, 0, &parts).is_err());
+        let declarations = vec![decl("", PartKind::Notes)];
+        assert!(parse(content, 0, &declarations).is_err());
     }
 
     #[test]
     fn label_directive_rejects_empty_label() {
         let content = "(label=\"\")\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        assert!(parse(content, 0, &parts).is_err());
+        let declarations = vec![decl("", PartKind::Notes)];
+        assert!(parse(content, 0, &declarations).is_err());
     }
 
     #[test]
     fn notes_ditto_resolves_in_full_parse() {
-        // Second part's notes line is `"` — should resolve to first part's notes.
         let content = concat!("(time=4/4 key=C4 bpm=120)\n", "1 2 3 4\n", "\"\n",);
-        let parts = vec![notes_col("S"), notes_col("A")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result.len(), 2);
-        // Soprano gets 3 directive events + 4 notes = 7.
-        // Alto gets 4 notes only (directives are added to the first notes part only).
-        assert_eq!(result[0].score.events.len(), 7);
+        let declarations = vec![decl("S", PartKind::Notes), decl("A", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        assert_eq!(tracks.len(), 2);
+        assert_eq!(notes_track(&tracks, "S").score.events.len(), 7);
         assert_eq!(
-            result[1].score.events.len(),
+            notes_track(&tracks, "A").score.events.len(),
             4,
             "Alto should have 4 note events after ditto resolution"
         );
@@ -1133,15 +1105,13 @@ mod tests {
             "\"\n",
             "\"\n",
         );
-        let parts = vec![
-            notes_col("S"),
-            lyrics_col("S"),
-            notes_col("A"),
-            lyrics_col("A"),
+        let declarations = vec![
+            decl("S", PartKind::NotesWithLyrics),
+            decl("A", PartKind::NotesWithLyrics),
         ];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        let s_lyrics = result[0].lyrics.as_ref().unwrap();
-        let a_lyrics = result[1].lyrics.as_ref().unwrap();
+        let tracks = parse(content, 0, &declarations).unwrap();
+        let s_lyrics = notes_track(&tracks, "S").lyrics.as_ref().unwrap();
+        let a_lyrics = notes_track(&tracks, "A").lyrics.as_ref().unwrap();
         assert_eq!(s_lyrics.syllables.len(), 4);
         assert_eq!(a_lyrics.syllables.len(), 4);
         assert_eq!(s_lyrics.syllables[0].text, a_lyrics.syllables[0].text);
@@ -1150,10 +1120,9 @@ mod tests {
     #[test]
     fn key_directive_parses_sharp() {
         let content = "(time=4/4 key=F#3 bpm=120)\n1 2 3 4\n";
-        let parts = vec![notes_col("")];
-        let (result, _) = parse(content, 0, &parts).unwrap();
-        use crate::ast::parsed::{Accidental, ScoreEvent};
-        let key_event = result[0]
+        let declarations = vec![decl("", PartKind::Notes)];
+        let tracks = parse(content, 0, &declarations).unwrap();
+        let key_event = notes_track(&tracks, "")
             .score
             .events
             .iter()

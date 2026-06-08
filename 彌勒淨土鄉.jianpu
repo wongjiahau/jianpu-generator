@@ -6,7 +6,13 @@ max columns = 42
 row height = 20
 max columns = 42
 note number width = 8
-parts = chord:main notes:A1&T lyrics:A1&T notes:A2 lyrics:A2 notes:S1 lyrics:S1 notes:S2 lyrics:S2
+
+[parts]
+main = chord
+Alto 1 & Tenor (A1&T) = notes lyrics
+Alto 2 (A2) = notes lyrics
+Soprano 1 (S1) = notes lyrics
+Soprano 2 (S2) = notes lyrics
 
 [score]
 

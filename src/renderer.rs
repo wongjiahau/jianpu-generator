@@ -472,7 +472,7 @@ mod tests {
 
     fn render_score(score_str: &str, lyrics_str: &str) -> Vec<String> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{score_str}\n{lyrics_str}\n"
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{score_str}\n{lyrics_str}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();
@@ -487,7 +487,7 @@ mod tests {
     #[test]
     fn section_label_renders_in_svg() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n",
             "[score]\n(time=4/4 key=C4 bpm=120 label=\"Verse 1\")\n1 2 3 4\na b c d\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
@@ -594,7 +594,7 @@ mod tests {
     #[test]
     fn time_signature_label_renders_numerator_and_denominator_text() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n",
             "[score]\n(time=2/4 key=C4 bpm=120)\n3 5\na b\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
@@ -619,7 +619,7 @@ mod tests {
     #[test]
     fn bpm_label_renders_beats_per_minute_text() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n",
             "[score]\n(time=4/4 key=C4 bpm=75)\n1 2 3 4\na b c d\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
@@ -640,7 +640,7 @@ mod tests {
     #[test]
     fn multi_part_svg_contains_both_part_labels() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano lyrics:Soprano notes:Alto lyrics:Alto\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nSoprano = notes lyrics\nAlto = notes lyrics\n\n",
             "[score]\n(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n5 6 7 1\ne f g h\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
@@ -695,7 +695,7 @@ mod tests {
     #[test]
     fn section_label_escapes_xml_special_chars() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n",
             "[score]\n(time=4/4 key=C4 bpm=120 label=\"A&B\")\n1 2 3 4\na b c d\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
@@ -716,7 +716,7 @@ mod tests {
     #[test]
     fn bar_number_renders_as_small_text_above_left_bar() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n",
             "[score]\n(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n\n5 6 7 1\ne f g h\n",
         );
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
@@ -745,7 +745,7 @@ mod tests {
 
     #[test]
     fn chord_symbol_renders_as_svg_text() {
-        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = chord: notes:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1m7 - 4 5\n1 - 1 1\n";
+        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nchord = chord\nMelody = notes\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1m7 - 4 5\n1 - 1 1\n";
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);
@@ -762,7 +762,7 @@ mod tests {
 
     #[test]
     fn chord_symbol_with_sharp_renders_unicode() {
-        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = chord: notes:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1# - - -\n1 - - -\n";
+        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nchord = chord\nMelody = notes\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1# - - -\n1 - - -\n";
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = crate::layout::layout(&score, A4_W, A4_H);

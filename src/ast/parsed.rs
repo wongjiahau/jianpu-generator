@@ -10,11 +10,74 @@ pub struct ParsedLyrics {
     pub syllables: Vec<Syllable>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PartDecl {
+    pub abbreviation: String,
+    pub display_name: String,
+    pub kind: PartKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum PartKind {
+    Chord,
+    Notes,
+    NotesWithLyrics,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ScoreLineRole {
+    Chord,
+    Notes,
+    Lyrics,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScoreLineSlot {
+    pub track_index: usize,
+    pub role: ScoreLineRole,
+}
+
+impl PartDecl {
+    pub fn score_line_roles(&self) -> &'static [ScoreLineRole] {
+        match self.kind {
+            PartKind::Chord => &[ScoreLineRole::Chord],
+            PartKind::Notes => &[ScoreLineRole::Notes],
+            PartKind::NotesWithLyrics => &[ScoreLineRole::Notes, ScoreLineRole::Lyrics],
+        }
+    }
+}
+
+pub fn flatten_score_line_slots(declarations: &[PartDecl]) -> Vec<ScoreLineSlot> {
+    let mut slots = Vec::new();
+    for (track_index, decl) in declarations.iter().enumerate() {
+        for &role in decl.score_line_roles() {
+            slots.push(ScoreLineSlot { track_index, role });
+        }
+    }
+    slots
+}
+
 #[derive(Debug)]
-pub struct ParsedPart {
-    pub name: Option<String>,
+pub struct ParsedNotesTrack {
+    pub abbreviation: String,
+    #[allow(dead_code)] // reserved for future legend rendering
+    pub display_name: String,
     pub score: ParsedScore,
     pub lyrics: Option<ParsedLyrics>,
+}
+
+#[derive(Debug)]
+pub struct ParsedChordTrack {
+    pub abbreviation: String,
+    #[allow(dead_code)] // reserved for future legend rendering
+    pub display_name: String,
+    pub events_per_measure: Vec<Vec<ParsedChordEvent>>,
+}
+
+#[derive(Debug)]
+pub enum ParsedTrack {
+    Chord(ParsedChordTrack),
+    Notes(ParsedNotesTrack),
 }
 
 #[derive(Debug)]
@@ -22,23 +85,9 @@ pub struct ParsedDocument {
     #[allow(dead_code)]
     pub filename: String,
     pub metadata: ParsedMetadata,
-    pub parts: Vec<ParsedPart>,
-    #[allow(dead_code)]
-    pub chord_parts: Vec<ParsedChordPart>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum PartColumn {
-    Notes {
-        name: String,
-    },
-    Lyrics {
-        name: String,
-    },
-    #[allow(dead_code)]
-    Chord {
-        name: String,
-    },
+    #[allow(dead_code)] // reserved for future legend rendering
+    pub declarations: Vec<PartDecl>,
+    pub tracks: Vec<ParsedTrack>,
 }
 
 #[allow(dead_code)]
@@ -80,13 +129,6 @@ pub enum ParsedChordEvent {
     Extend(crate::error::Span),
 }
 
-#[allow(dead_code)]
-#[derive(Debug)]
-pub struct ParsedChordPart {
-    pub name: Option<String>,
-    pub events_per_measure: Vec<Vec<ParsedChordEvent>>,
-}
-
 #[derive(Debug)]
 pub struct ParsedMetadata {
     pub title: String,
@@ -96,7 +138,6 @@ pub struct ParsedMetadata {
     pub max_columns: Option<u32>,
     pub label_width: Option<u32>,
     pub note_number_width: Option<u32>,
-    pub parts: Vec<PartColumn>,
 }
 
 #[derive(Debug)]

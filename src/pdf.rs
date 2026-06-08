@@ -98,7 +98,7 @@ mod tests {
 
     fn make_pdf(score_str: &str, lyrics_str: &str) -> Vec<u8> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{score_str}\n{lyrics_str}\n"
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{score_str}\n{lyrics_str}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();

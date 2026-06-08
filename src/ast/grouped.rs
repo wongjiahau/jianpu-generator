@@ -90,6 +90,27 @@ pub(crate) struct GroupedChordPart {
     pub(crate) measures: Vec<ChordSlice>,
 }
 
+pub(crate) enum GroupedTrack {
+    Chord(GroupedChordPart),
+    Notes(GroupedPart),
+}
+
+impl GroupedTrack {
+    pub(crate) fn measure_count(&self) -> usize {
+        match self {
+            GroupedTrack::Notes(part) => part.measures.len(),
+            GroupedTrack::Chord(part) => part.measures.len(),
+        }
+    }
+
+    pub(crate) fn track_name(&self) -> &Option<String> {
+        match self {
+            GroupedTrack::Notes(part) => &part.name,
+            GroupedTrack::Chord(part) => &part.name,
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct Score {
     pub metadata: Metadata,

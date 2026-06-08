@@ -294,7 +294,7 @@ mod tests {
             score_content.push('\n'); // blank line separating bar groups
         }
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{score_content}"
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n{score_content}"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -307,7 +307,7 @@ mod tests {
         // lyrics_str is ignored here as it's embedded in score_section.
         let _ = lyrics_str; // lyrics are inline in score_section
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{score_section}"
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n{score_section}"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -324,7 +324,7 @@ mod tests {
             .filter(|e| matches!(e.content, GridContent::TimeSignatureLabel { .. }))
             .collect();
         assert_eq!(labels.len(), 1);
-        assert_eq!(labels[0].position.column, 1);
+        assert_eq!(labels[0].position.column, 3);
         if let GridContent::TimeSignatureLabel {
             numerator,
             denominator,
@@ -348,7 +348,7 @@ mod tests {
             .filter(|e| matches!(e.content, GridContent::BpmLabel { .. }))
             .collect();
         assert_eq!(labels.len(), 1);
-        assert_eq!(labels[0].position.column, 3);
+        assert_eq!(labels[0].position.column, 5);
         if let GridContent::BpmLabel { bpm } = &labels[0].content {
             assert_eq!(*bpm, 120);
         } else {
@@ -366,7 +366,7 @@ mod tests {
             .flat_map(|rg| rg.elements.iter())
             .filter(|e| matches!(e.content, GridContent::NoteHead { .. }))
             .collect();
-        assert_eq!(note_heads[0].position.column, 5);
+        assert_eq!(note_heads[0].position.column, 7);
     }
 
     #[test]
@@ -513,7 +513,7 @@ mod tests {
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert_eq!(curves.len(), 1);
-        assert_eq!(curves[0], (5, 9));
+        assert_eq!(curves[0], (7, 11));
     }
 
     #[test]
@@ -523,7 +523,7 @@ mod tests {
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert_eq!(curves.len(), 1);
-        assert_eq!(curves[0], (5, 13));
+        assert_eq!(curves[0], (7, 15));
     }
 
     #[test]
@@ -536,8 +536,8 @@ mod tests {
         let mut curves = collect_curves(&pages);
         curves.sort();
         assert_eq!(curves.len(), 2);
-        assert_eq!(curves[0], (5, 13)); // slur
-        assert_eq!(curves[1], (9, 13)); // tie
+        assert_eq!(curves[0], (7, 15)); // slur
+        assert_eq!(curves[1], (11, 15)); // tie
     }
 
     #[test]
@@ -547,7 +547,7 @@ mod tests {
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert_eq!(curves.len(), 1);
-        assert_eq!(curves[0], (5, 9));
+        assert_eq!(curves[0], (7, 11));
     }
 
     fn collect_curves(pages: &[Page]) -> Vec<(u32, u32)> {
@@ -598,8 +598,8 @@ mod tests {
         let groups = collect_underline_levels(&pages);
         assert_eq!(groups.len(), 1, "expected one beam group");
         assert_eq!(groups[0].len(), 1, "expected one underline level");
-        assert_eq!(groups[0][0].from_column, 5);
-        assert_eq!(groups[0][0].to_column, 9);
+        assert_eq!(groups[0][0].from_column, 7);
+        assert_eq!(groups[0][0].to_column, 11);
     }
 
     #[test]
@@ -616,11 +616,11 @@ mod tests {
             "expected two underline groups (one per beat)"
         );
         // group[0]: beat 2 — _0 rest + _2 note
-        assert_eq!(groups[0][0].from_column, 9);
-        assert_eq!(groups[0][0].to_column, 13);
+        assert_eq!(groups[0][0].from_column, 11);
+        assert_eq!(groups[0][0].to_column, 15);
         // group[1]: beat 3 — _2 note + _0 rest
-        assert_eq!(groups[1][0].from_column, 13);
-        assert_eq!(groups[1][0].to_column, 17);
+        assert_eq!(groups[1][0].from_column, 15);
+        assert_eq!(groups[1][0].to_column, 19);
     }
 
     #[test]
@@ -633,10 +633,10 @@ mod tests {
         let groups = collect_underline_levels(&pages);
         assert_eq!(groups.len(), 1, "expected one beam group");
         assert_eq!(groups[0].len(), 2, "expected two underline levels");
-        assert_eq!(groups[0][0].from_column, 5);
-        assert_eq!(groups[0][0].to_column, 9);
-        assert_eq!(groups[0][1].from_column, 7);
-        assert_eq!(groups[0][1].to_column, 9);
+        assert_eq!(groups[0][0].from_column, 7);
+        assert_eq!(groups[0][0].to_column, 11);
+        assert_eq!(groups[0][1].from_column, 9);
+        assert_eq!(groups[0][1].to_column, 11);
     }
 
     #[test]
@@ -656,17 +656,17 @@ mod tests {
         assert_eq!(
             groups[0][0],
             UnderlineSpan {
-                from_column: 5,
-                to_column: 9,
-                last_head_column: 8
+                from_column: 7,
+                to_column: 11,
+                last_head_column: 10
             }
         );
         assert_eq!(
             groups[0][1],
             UnderlineSpan {
-                from_column: 5,
-                to_column: 9,
-                last_head_column: 8
+                from_column: 7,
+                to_column: 11,
+                last_head_column: 10
             }
         );
     }
@@ -681,11 +681,11 @@ mod tests {
         assert_eq!(groups.len(), 1, "expected one beam group spanning the beat");
         assert_eq!(groups[0].len(), 2, "expected two underline levels");
         // Level 1 spans all three (col 5–9)
-        assert_eq!(groups[0][0].from_column, 5);
-        assert_eq!(groups[0][0].to_column, 9);
+        assert_eq!(groups[0][0].from_column, 7);
+        assert_eq!(groups[0][0].to_column, 11);
         // Level 2 spans only =1 and =2 (col 7–9)
-        assert_eq!(groups[0][1].from_column, 7);
-        assert_eq!(groups[0][1].to_column, 9);
+        assert_eq!(groups[0][1].from_column, 9);
+        assert_eq!(groups[0][1].to_column, 11);
     }
 
     #[test]
@@ -704,17 +704,17 @@ mod tests {
         assert_eq!(
             groups[0][0],
             UnderlineSpan {
-                from_column: 5,
-                to_column: 9,
-                last_head_column: 8
+                from_column: 7,
+                to_column: 11,
+                last_head_column: 10
             }
         );
         assert_eq!(
             groups[0][1],
             UnderlineSpan {
-                from_column: 5,
-                to_column: 9,
-                last_head_column: 8
+                from_column: 7,
+                to_column: 11,
+                last_head_column: 10
             }
         );
     }
@@ -729,9 +729,9 @@ mod tests {
         assert_eq!(
             collect_lyric_positions(&pages),
             vec![
-                (5, "a".to_string()),
-                (13, "b".to_string()),
-                (17, "c".to_string())
+                (7, "a".to_string()),
+                (15, "b".to_string()),
+                (19, "c".to_string())
             ],
         );
     }
@@ -746,9 +746,9 @@ mod tests {
         assert_eq!(
             collect_lyric_positions(&pages),
             vec![
-                (5, "a".to_string()),
-                (9, "b".to_string()),
-                (17, "c".to_string())
+                (7, "a".to_string()),
+                (11, "b".to_string()),
+                (19, "c".to_string())
             ],
         );
     }
@@ -761,10 +761,10 @@ mod tests {
         assert_eq!(
             collect_lyric_positions(&pages),
             vec![
-                (5, "你".to_string()),
-                (9, "-".to_string()),
-                (13, "好".to_string()),
-                (17, "a".to_string())
+                (7, "你".to_string()),
+                (11, "-".to_string()),
+                (15, "好".to_string()),
+                (19, "a".to_string())
             ],
         );
     }
@@ -892,7 +892,7 @@ mod tests {
 
     fn make_two_part_score(s_notes: &str, a_notes: &str) -> Score {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{s_notes}\n{a_notes}\n"
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nSoprano = notes\nAlto = notes\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{s_notes}\n{a_notes}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -942,7 +942,7 @@ mod tests {
     }
 
     #[test]
-    fn single_unnamed_part_produces_no_part_labels() {
+    fn single_named_part_produces_part_label() {
         let score = make_score("1 2 3 4", "a b c d");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let labels: Vec<_> = pages
@@ -951,14 +951,19 @@ mod tests {
             .flat_map(|rg| rg.elements.iter())
             .filter(|e| matches!(e.content, GridContent::PartLabel { .. }))
             .collect();
-        assert_eq!(labels.len(), 0);
+        assert_eq!(labels.len(), 1);
+        if let GridContent::PartLabel { text } = &labels[0].content {
+            assert_eq!(text, "Melody");
+        } else {
+            panic!("expected PartLabel");
+        }
     }
 
     #[test]
     fn horizontal_bar_variant_exists() {
         let _ = GridContent::HorizontalBar {
             from_column: 0,
-            to_column: 10,
+            to_column: 12,
         };
     }
 
@@ -966,12 +971,12 @@ mod tests {
     fn left_bar_line_emitted_at_start_of_first_system_line() {
         let score = make_score("1 2 3 4", "a b c d");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
-        // label_cols=0 (unnamed single part), header_rows=2 → row = 2+1 = 3
+        // label_cols=2 (named single part), header_rows=2 → row = 2+1 = 3
         let left_bars: Vec<_> = pages
             .iter()
             .flat_map(|p| p.row_groups.iter())
             .flat_map(|rg| rg.elements.iter())
-            .filter(|e| matches!(&e.content, GridContent::BarLine { .. }) && e.position.column == 0)
+            .filter(|e| matches!(&e.content, GridContent::BarLine { .. }) && e.position.column == 2)
             .collect();
         assert_eq!(
             left_bars.len(),
@@ -994,7 +999,7 @@ mod tests {
             .iter()
             .flat_map(|p| p.row_groups.iter())
             .flat_map(|rg| rg.elements.iter())
-            .filter(|e| matches!(&e.content, GridContent::BarLine { .. }) && e.position.column == 0)
+            .filter(|e| matches!(&e.content, GridContent::BarLine { .. }) && e.position.column == 2)
             .collect();
         assert_eq!(left_bars.len(), 2, "expected one left bar per system line");
     }
@@ -1025,9 +1030,9 @@ mod tests {
         } = &bottom_bars[0].content
         {
             assert_eq!(*from_column, 0);
-            // 1 (left bar col) + 4 (directives) + 16 (notes) + 1 (end bar) = 22
+            // 2 (left bar col) + 4 (directives) + 16 (notes) + 1 (end bar) + 1 (label col offset in flush?) = 24
             assert_eq!(
-                *to_column, 22,
+                *to_column, 24,
                 "to_column should equal current_col at flush time"
             );
         } else {
@@ -1091,7 +1096,7 @@ mod tests {
             .iter()
             .flat_map(|p| p.row_groups.iter())
             .flat_map(|rg| rg.elements.iter())
-            .filter(|e| matches!(&e.content, GridContent::BarLine { .. }) && e.position.column == 0)
+            .filter(|e| matches!(&e.content, GridContent::BarLine { .. }) && e.position.column == 2)
             .collect();
         assert_eq!(left_bars.len(), 1);
         if let GridContent::BarLine { height_in_rows } = &left_bars[0].content {
@@ -1121,11 +1126,11 @@ mod tests {
         // One BarNumber per row group (2 row groups total)
         assert_eq!(bar_numbers.len(), 2, "expected one BarNumber per row group");
 
-        // First row group: bar 1, at column 0 (label_cols=0), row = header_rows = 2
+        // First row group: bar 1, at column 2 (label_cols=2), row = header_rows = 2
         if let GridContent::BarNumber { number } = bar_numbers[0].content {
             assert_eq!(number, 1, "first row group must start at bar 1");
         }
-        assert_eq!(bar_numbers[0].position.column, 0);
+        assert_eq!(bar_numbers[0].position.column, 2);
         assert_eq!(bar_numbers[0].position.row, 2, "row = header_rows = 2");
         assert_eq!(
             bar_numbers[0].horizontal_alignment,
@@ -1133,11 +1138,11 @@ mod tests {
         );
         assert_eq!(bar_numbers[0].vertical_alignment, VerticalAlignment::Bottom);
 
-        // Second row group: bar 2, at column 0, row = header_rows + row_group_height = 2 + 4 = 6
+        // Second row group: bar 2, at column 2, row = header_rows + row_group_height = 2 + 4 = 6
         if let GridContent::BarNumber { number } = bar_numbers[1].content {
             assert_eq!(number, 2, "second row group must start at bar 2");
         }
-        assert_eq!(bar_numbers[1].position.column, 0);
+        assert_eq!(bar_numbers[1].position.column, 2);
         assert_eq!(bar_numbers[1].position.row, 6, "row = 2 + 4 = 6");
     }
 
@@ -1163,7 +1168,7 @@ mod tests {
         if let GridContent::BarNumber { number } = bar_numbers[0].content {
             assert_eq!(number, 1, "bar number must be 1 for the first row group");
         }
-        assert_eq!(bar_numbers[0].position.column, 0);
+        assert_eq!(bar_numbers[0].position.column, 2);
         assert_eq!(bar_numbers[0].position.row, 2, "row = header_rows = 2");
         assert_eq!(
             bar_numbers[0].horizontal_alignment,
@@ -1185,10 +1190,10 @@ mod tests {
             !curves.is_empty(),
             "expected right-half tie arc when cross-measure tie wraps to new line"
         );
-        // The right-half arc starts at the tied note (col 17) and ends at the bar line (col 21 = 22-1).
+        // The right-half arc starts at the tied note (col 19) and ends at the bar line (col 23 = 24-1).
         assert!(
-            curves.iter().any(|&(from, to)| from == 17 && to == 21),
-            "expected right-half arc from col 17 to col 21; got: {curves:?}"
+            curves.iter().any(|&(from, to)| from == 19 && to == 23),
+            "expected right-half arc from col 19 to col 23; got: {curves:?}"
         );
     }
 
@@ -1217,7 +1222,7 @@ mod tests {
     #[test]
     fn section_label_element_emitted_at_correct_position() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes\n\n",
             "[score]\n(time=4/4 key=C4 bpm=120 label=\"Verse 1\")\n1 2 3 4\n",
         );
         let pages = parse_and_layout(input);
@@ -1245,7 +1250,7 @@ mod tests {
     #[test]
     fn chord_row_emits_chord_symbol_element() {
         use crate::layout::types::GridContent;
-        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = chord: notes:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1 - - -\n1 - - -\n";
+        let input = "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nchord = chord\nMelody = notes\n\n[score]\n(time=4/4 key=C4 bpm=120)\n1 - - -\n1 - - -\n";
         let doc = crate::parser::parse(input, "test.jianpu").unwrap();
         let score = crate::grouper::group(doc).unwrap();
         let pages = layout(&score, 595.0, 842.0);
@@ -1270,7 +1275,7 @@ mod tests {
     #[test]
     fn no_section_label_when_not_declared() {
         let input = concat!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:\n\n",
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes\n\n",
             "[score]\n(time=4/4 key=C4 bpm=120)\n1 2 3 4\n",
         );
         let pages = parse_and_layout(input);

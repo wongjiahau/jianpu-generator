@@ -1,5 +1,6 @@
 use crate::error::{JianPuError, Span};
 
+#[derive(Clone)]
 pub struct RawSection {
     pub kind: SectionKind,
     pub content: String,
@@ -7,9 +8,10 @@ pub struct RawSection {
     pub content_offset: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum SectionKind {
     Metadata,
+    Parts,
     Score,
 }
 
@@ -35,6 +37,7 @@ pub fn split_sections(input: &str) -> Result<Vec<RawSection>, JianPuError> {
             let kind_str = &line[1..line.len() - 1];
             current_kind = Some(match kind_str {
                 "metadata" => SectionKind::Metadata,
+                "parts" => SectionKind::Parts,
                 "score" => SectionKind::Score,
                 _ => {
                     return Err(JianPuError::new(
@@ -60,21 +63,53 @@ pub fn split_sections(input: &str) -> Result<Vec<RawSection>, JianPuError> {
         });
     }
 
-    Ok(sections)
+    validate_section_order(&sections)
+}
+
+fn validate_section_order(sections: &[RawSection]) -> Result<Vec<RawSection>, JianPuError> {
+    let expected = [
+        SectionKind::Metadata,
+        SectionKind::Parts,
+        SectionKind::Score,
+    ];
+    if sections.len() != expected.len() {
+        return Err(JianPuError::new(
+            Span::new(0, 0),
+            format!(
+                "expected exactly 3 sections ([metadata], [parts], [score]), got {}",
+                sections.len()
+            ),
+        ));
+    }
+    for (section, exp) in sections.iter().zip(expected.iter()) {
+        if &section.kind != exp {
+            return Err(JianPuError::new(
+                Span::new(0, 0),
+                "sections must appear in order: [metadata], [parts], [score]".to_string(),
+            ));
+        }
+    }
+    Ok(sections.to_vec())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn three_section_input(score: &str) -> String {
+        format!("[metadata]\ntitle = \"hi\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n{score}")
+    }
+
     #[test]
-    fn splits_metadata_and_score() {
-        let input = "[metadata]\ntitle = \"hi\"\n\n[score]\n1 2 3\n";
-        let sections = split_sections(input).unwrap();
-        assert_eq!(sections.len(), 2);
+    fn splits_metadata_parts_and_score() {
+        let input = three_section_input("1 2 3\n");
+        let sections = split_sections(&input).unwrap();
+        assert_eq!(sections.len(), 3);
         assert_eq!(sections[0].kind, SectionKind::Metadata);
-        assert_eq!(sections[1].kind, SectionKind::Score);
-        assert_eq!(sections[1].content.trim(), "1 2 3");
+        assert_eq!(sections[1].kind, SectionKind::Parts);
+        assert_eq!(sections[2].kind, SectionKind::Score);
+        assert_eq!(sections[1].content.trim(), "Melody = notes lyrics");
+        assert_eq!(sections[2].content.trim(), "1 2 3");
     }
 
     #[test]
@@ -96,18 +131,30 @@ mod tests {
     }
 
     #[test]
+    fn rejects_parts_after_score() {
+        let input = "[metadata]\nt\n[parts]\nMelody = notes\n[score]\n1\n[parts]\nX = notes\n";
+        assert!(split_sections(input).is_err());
+    }
+
+    #[test]
+    fn rejects_missing_parts_section() {
+        let input = "[metadata]\ntitle=\"t\"\n\n[score]\n1\n";
+        assert!(split_sections(input).is_err());
+    }
+
+    #[test]
     fn content_offset_points_past_header_line() {
-        let input = "[metadata]\ntitle = \"hi\"\n";
+        let input = "[metadata]\ntitle = \"hi\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n";
         let sections = split_sections(input).unwrap();
         assert_eq!(sections[0].content_offset, 11);
     }
 
     #[test]
     fn handles_header_with_no_content() {
-        let input = "[metadata]\ntitle = \"hi\"\n\n[score]\n";
+        let input = "[metadata]\ntitle = \"hi\"\n\n[parts]\nMelody = notes lyrics\n\n[score]\n";
         let sections = split_sections(input).unwrap();
-        assert_eq!(sections.len(), 2);
-        assert_eq!(sections[1].kind, SectionKind::Score);
-        assert_eq!(sections[1].content.trim(), "");
+        assert_eq!(sections.len(), 3);
+        assert_eq!(sections[2].kind, SectionKind::Score);
+        assert_eq!(sections[2].content.trim(), "");
     }
 }

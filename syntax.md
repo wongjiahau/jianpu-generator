@@ -6,18 +6,23 @@ This document describes the input syntax accepted by **jianpu-generator** as imp
 
 ## File structure
 
-A `.jianpu` file has two sections:
+A `.jianpu` file has three sections in fixed order:
 
 ```
 [metadata]
 …key = value fields…
+
+[parts]
+…track declarations…
 
 [score]
 …interleaved score content…
 ```
 
 - `[metadata]` — **required**
+- `[parts]` — **required**
 - `[score]` — **required**
+- Sections must appear in the order above.
 - Legacy `[score:Name]` / `[lyrics:Name]` sections are **not** supported.
 
 Whitespace around `=` in metadata is optional. Metadata values may be quoted with `"`.
@@ -31,36 +36,63 @@ Whitespace around `=` in metadata is optional. Metadata values may be quoted wit
 | `title` | yes | — | Piece title (rendered in header) |
 | `author` | yes | — | Author name (rendered in header) |
 | `subtitle` | no | none | Subtitle line |
-| `parts` | no | `notes:` + `lyrics:` (unnamed single part) | Column order for `[score]` (see below) |
 | `max columns` | no | `28` | Maximum grid columns per system line before wrapping |
 | `row height` | no | `24` | Vertical spacing of one part row (pixels) |
 | `label width` | no | `40` | Horizontal space reserved for part labels (pixels) |
 | `note number width` | no | `8` | Horizontal space per note column (pixels) |
 
-### `parts` declaration
+---
 
-Space-separated column tokens declaring the **positional order** of lines in each measure group:
+## Parts section
+
+One track per line. Blank lines are ignored.
 
 ```
-parts = chord:main notes:Soprano lyrics:Soprano notes:Alto lyrics:Alto
+<display-name> [(<abbreviation>)] = <column> [<column>…]
 ```
 
-| Token | Meaning |
-|-------|---------|
-| `notes:<name>` | A note part (unique name per notes column) |
-| `lyrics:<name>` | Lyrics for the notes part with the same `<name>` |
-| `chord:<name>` | A chord-symbol row (Nashville numbers) |
+### Left-hand side
+
+| Form | Display name | Abbreviation (row label) |
+|------|--------------|----------------------------|
+| `Alto 1 & Tenor (A1&T)` | `Alto 1 & Tenor` | `A1&T` |
+| `Melody` | `Melody` | `Melody` |
+| `main` | `main` | `main` |
+
+- Parentheses denote the **abbreviation** printed at the left of each score row.
+- When parentheses are omitted, the abbreviation equals the full display name.
+- The display name is stored for future legend rendering; row labels use the abbreviation only.
+
+### Right-hand side
+
+| Pattern | Meaning | Score lines per measure |
+|---------|---------|-------------------------|
+| `chord` | Chord-symbol row | 1 |
+| `notes` | Notes only (instrumental) | 1 |
+| `notes lyrics` | Notes + lyrics | 2 (notes, then lyrics) |
 
 Rules:
 
-- Each `lyrics:<name>` must pair with a preceding `notes:<name>` of the same name.
-- A notes part may omit its `lyrics:` entry (instrumental part).
-- Column order in `parts` is the column order in every measure group.
+- `lyrics` without `notes` on the same line is an error.
+- Duplicate abbreviations across tracks are an error.
+- At least one track must be declared.
 
 Example (multi-part vocal score with chords):
 
 ```
-parts = chord:main notes:A1&T lyrics:A1&T notes:A2 lyrics:A2 notes:S1 lyrics:S1 notes:S2 lyrics:S2
+[parts]
+main = chord
+Alto 1 & Tenor (A1&T) = notes lyrics
+Alto 2 (A2) = notes lyrics
+Soprano 1 (S1) = notes lyrics
+Soprano 2 (S2) = notes lyrics
+```
+
+Minimal single-part example:
+
+```
+[parts]
+Melody = notes lyrics
 ```
 
 ---
@@ -83,23 +115,24 @@ _3 _1~1 - _0 =1 =1
 ### Group layout
 
 1. **Optional directive line** — first line starting with `(` and ending with `)`
-2. **Data lines** — one per `parts` column, in declaration order
+2. **Data lines** — one per score line implied by `[parts]`, in track declaration order
 
 Lines are trimmed; leading/trailing spaces on a line are ignored. A completely empty line separates measure groups (it is not a data line).
 
 ### Positional mapping
 
-Data lines map to columns **by position**, not by content type inference:
+Each track expands to one or more data lines per measure. Lines map **by position**:
 
-| Index | `parts` column | Line content |
-|-------|--------------|--------------|
-| 0 | `chord:main` | chord symbols |
-| 1 | `notes:A1&T` | note tokens |
-| 2 | `lyrics:A1&T` | lyric text |
-| 3 | `notes:A2` | note tokens |
-| … | … | … |
+| Track | Lines per measure |
+|-------|-------------------|
+| `main = chord` | chord |
+| `Alto 1 & Tenor (A1&T) = notes lyrics` | notes, lyrics |
+| `Alto 2 (A2) = notes lyrics` | notes, lyrics |
+| … | … |
 
-You cannot skip a column in the middle — only **trailing** lines may be omitted (see [Implicit ditto](#implicit-ditto) below).
+For the example above, nine data lines per measure: 1 chord + 4 × (notes + lyrics).
+
+You cannot skip a line in the middle — only **trailing** lines may be omitted (see [Implicit ditto](#implicit-ditto) below).
 
 ---
 
@@ -379,7 +412,7 @@ Because lines map **positionally**, you can only omit **trailing** columns. If a
 |-----------|--------|
 | Omitted trailing line; same column type exists above | Implicit `"` |
 | Omitted trailing line; no same-type precedent | Error — write content, `"`, or `_` (lyrics) |
-| More data lines than `parts` columns | Error |
+| More data lines than score lines | Error |
 | Fewer than one data line per group | Error |
 
 Explicit `"` lines remain valid (redundant when trailing omission would apply).
@@ -403,7 +436,9 @@ Explicit `"` lines remain valid (redundant when trailing omission would apply).
 [metadata]
 title = "Demo"
 author = "Author"
-parts = chord:main notes:Melody lyrics:Melody
+
+[parts]
+Melody = notes lyrics
 
 [score]
 
