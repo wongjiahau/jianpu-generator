@@ -14,6 +14,7 @@ import { byteOffsetToStringIndex } from '../utils/byteSpan'
 export interface EditorProps {
   value: string
   onChange: (value: string) => void
+  readOnly?: boolean
   diagnostics?: Diagnostic[]
   toolbar?: ReactNode
 }
@@ -42,7 +43,7 @@ function diagnosticRange(
 }
 
 export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
-  { value, onChange, diagnostics = [], toolbar },
+  { value, onChange, readOnly = false, diagnostics = [], toolbar },
   ref,
 ) {
   const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null)
@@ -156,6 +157,7 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
           onChange={(next) => onChange(next ?? '')}
           onMount={handleMount}
           options={{
+            readOnly,
             minimap: { enabled: false },
             fontFamily: 'var(--mono)',
             fontSize: 14,

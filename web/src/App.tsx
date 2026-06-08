@@ -1,33 +1,32 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Editor } from './components/Editor'
 import { ErrorPanel } from './components/ErrorPanel'
+import { FileList } from './components/FileList'
 import { PartToggles } from './components/PartToggles'
 import { Preview } from './components/Preview'
-import { DEFAULT_SOURCE, STORAGE_KEY } from './defaultSource'
+import {
+  createFile,
+  deleteFile,
+  duplicateFile,
+  fileContent,
+  isReadOnlyFile,
+  loadFileStore,
+  renameFile,
+  restoreFile,
+  saveFileStore,
+  selectFile,
+  updateActiveContent,
+  type FileStoreState,
+} from './fileStore'
 import { useJianpuWorker } from './hooks/useJianpuWorker'
 import type { EditorHandle } from './types'
 import './App.css'
 
-function loadSource(): string {
-  try {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored != null) return stored
-  } catch {
-    // private browsing / disabled storage
-  }
-  return DEFAULT_SOURCE
-}
-
-function saveSource(source: string) {
-  try {
-    localStorage.setItem(STORAGE_KEY, source)
-  } catch {
-    // ignore
-  }
-}
-
 export default function App() {
-  const [source, setSource] = useState(loadSource)
+  const [store, setStore] = useState<FileStoreState>(loadFileStore)
+  const source = fileContent(store, store.active)
+  const readOnly = isReadOnlyFile(store.active)
+
   const [disabledParts, setDisabledParts] = useState<Set<string>>(
     () => new Set(),
   )
@@ -63,8 +62,36 @@ export default function App() {
   )
 
   useEffect(() => {
-    saveSource(source)
-  }, [source])
+    saveFileStore(store)
+  }, [store])
+
+  const handleSourceChange = useCallback((value: string) => {
+    setStore((prev) => updateActiveContent(prev, value))
+  }, [])
+
+  const handleSelect = useCallback((name: string) => {
+    setStore((prev) => selectFile(prev, name))
+  }, [])
+
+  const handleCreate = useCallback(() => {
+    setStore((prev) => createFile(prev))
+  }, [])
+
+  const handleDuplicate = useCallback(() => {
+    setStore((prev) => duplicateFile(prev))
+  }, [])
+
+  const handleRename = useCallback((from: string, to: string) => {
+    setStore((prev) => renameFile(prev, from, to))
+  }, [])
+
+  const handleDelete = useCallback((name: string) => {
+    setStore((prev) => deleteFile(prev, name))
+  }, [])
+
+  const handleRestore = useCallback((name: string) => {
+    setStore((prev) => restoreFile(prev, name))
+  }, [])
 
   const noPartsSelected =
     parts.length > 0 &&
@@ -78,21 +105,35 @@ export default function App() {
       </header>
       <main className="workspace">
         <section className="pane pane--editor">
-          <Editor
-            ref={editorRef}
-            value={source}
-            onChange={setSource}
-            diagnostics={diagnostics}
-            toolbar={
-              <PartToggles
-                parts={parts}
-                disabledParts={disabledParts}
-                onToggle={handlePartToggle}
-                loading={partsLoading}
+          <div className="editor-layout">
+            <FileList
+              store={store}
+              onSelect={handleSelect}
+              onCreate={handleCreate}
+              onDuplicate={handleDuplicate}
+              onRename={handleRename}
+              onDelete={handleDelete}
+              onRestore={handleRestore}
+            />
+            <div className="editor-main">
+              <Editor
+                ref={editorRef}
+                value={source}
+                onChange={handleSourceChange}
+                readOnly={readOnly}
+                diagnostics={diagnostics}
+                toolbar={
+                  <PartToggles
+                    parts={parts}
+                    disabledParts={disabledParts}
+                    onToggle={handlePartToggle}
+                    loading={partsLoading}
+                  />
+                }
               />
-            }
-          />
-          <ErrorPanel diagnostics={diagnostics} />
+              <ErrorPanel diagnostics={diagnostics} />
+            </div>
+          </div>
         </section>
         <div className="pane-divider" aria-hidden="true" />
         <section className="pane pane--preview">

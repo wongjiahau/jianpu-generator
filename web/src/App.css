@@ -44,6 +44,191 @@
   background: var(--editor-bg);
 }
 
+.editor-layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.editor-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* File list */
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  width: 11rem;
+  flex-shrink: 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  min-height: 0;
+}
+
+.file-list-actions {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.file-list-btn {
+  flex: 1;
+  font-size: 0.75rem;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--editor-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.file-list-btn:hover {
+  background: var(--preview-bg);
+}
+
+.file-list-items {
+  list-style: none;
+  margin: 0;
+  padding: 0.35rem 0;
+  overflow: auto;
+  flex: 1;
+}
+
+.file-list-item {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0 0.35rem;
+}
+
+.file-list-item--active .file-list-name {
+  background: var(--editor-bg);
+  font-weight: 500;
+}
+
+.file-list-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  padding: 0.3rem 0.35rem;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+}
+
+.file-list-name:focus {
+  outline: none;
+  border-color: var(--border);
+  background: var(--editor-bg);
+}
+
+.file-list-name[readonly] {
+  cursor: default;
+}
+
+.file-list-item:not(.file-list-item--active) .file-list-name[readonly] {
+  cursor: pointer;
+}
+
+.file-list-delete {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.file-list-delete:hover {
+  color: var(--error);
+  background: var(--error-bg);
+}
+
+.file-list-hint {
+  margin: 0;
+  padding: 0.5rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+.file-list-bin {
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+  max-height: 40%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.file-list-bin-title {
+  margin: 0;
+  padding: 0.4rem 0.5rem 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.file-list-bin-items {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0.35rem;
+  overflow: auto;
+}
+
+.file-list-bin-item {
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0 0.35rem;
+}
+
+.file-list-bin-name {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  padding: 0.25rem 0.35rem;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-list-restore {
+  flex-shrink: 0;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.file-list-restore:hover {
+  color: var(--text);
+  background: var(--preview-bg);
+}
+
 .pane--preview {
   background: var(--preview-bg);
 }

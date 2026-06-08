@@ -1,4 +1,6 @@
 /** Shipped demo score — also available as `demo.jianpu` in the repo root. */
+export const DEMO_FILE_NAME = 'demo.jianpu'
+
 export const DEFAULT_SOURCE = `[metadata]
 title = "Twinkle Twinkle Little Star"
 author = "Mozart"
@@ -59,4 +61,5 @@ how I won- der
 what you are
 `
 
+/** @deprecated Migrated to multi-file store in `fileStore.ts`. */
 export const STORAGE_KEY = 'jianpu:source:v5'
