@@ -4,7 +4,7 @@ use crate::ast::parsed::{
 };
 use crate::error::{JianPuError, Span, Spanned};
 use crate::parser::score::{token_parser, tokenizer};
-use crate::utils::tokenize_lyrics;
+use crate::utils::{count_lyric_slots_in_events, tokenize_lyrics, LyricTieState};
 
 enum ColAction {
     Notes(usize),
@@ -21,10 +21,13 @@ struct ParseAccumulators {
 struct BarGroupContext<'a> {
     base_offset: usize,
     parts: &'a [PartColumn],
+    notes_names: &'a [String],
     col_actions: &'a [ColAction],
     time_num: &'a mut u8,
     time_den: &'a mut u8,
     accumulators: &'a mut ParseAccumulators,
+    lyric_tie_states: &'a mut [LyricTieState],
+    bar_lyric_slots: &'a mut [Option<u32>],
 }
 
 pub fn parse(
@@ -63,14 +66,19 @@ pub fn parse(
 
     let mut time_num: u8 = 4;
     let mut time_den: u8 = 4;
+    let mut lyric_tie_states = vec![LyricTieState::default(); notes_names.len()];
+    let mut bar_lyric_slots = vec![None; notes_names.len()];
 
     let mut ctx = BarGroupContext {
         base_offset,
         parts,
+        notes_names: &notes_names,
         col_actions: &col_actions,
         time_num: &mut time_num,
         time_den: &mut time_den,
         accumulators: &mut accumulators,
+        lyric_tie_states: &mut lyric_tie_states,
+        bar_lyric_slots: &mut bar_lyric_slots,
     };
 
     for (bar_idx, group_lines) in groups.iter().enumerate() {
@@ -172,6 +180,10 @@ fn process_bar_group(
     let padded_data =
         validate_and_pad_group_lines(group_lines, data_lines, ctx.parts, ctx.base_offset)?;
 
+    for slot in ctx.bar_lyric_slots.iter_mut() {
+        *slot = None;
+    }
+
     if !directive_events.is_empty() {
         let events_acc = ctx.accumulators.events_acc.get_mut(0).ok_or_else(|| {
             JianPuError::new(
@@ -195,6 +207,68 @@ fn process_padded_columns(
     for (i, (line, line_offset)) in padded_data.iter().enumerate() {
         process_column_line(i, line, *line_offset, bar, beats_expected, ctx)?;
     }
+    Ok(())
+}
+
+fn validate_lyrics_syllable_count(
+    bar: usize,
+    part_idx: usize,
+    syllable_count: usize,
+    line_span: Span,
+    ctx: &BarGroupContext<'_>,
+) -> Result<(), JianPuError> {
+    let Some(expected_slots) = ctx.bar_lyric_slots.get(part_idx).and_then(|s| *s) else {
+        return Ok(());
+    };
+    let expected = expected_slots as usize;
+    if syllable_count == expected {
+        return Ok(());
+    }
+    let part_label = ctx
+        .notes_names
+        .get(part_idx)
+        .filter(|name| !name.is_empty())
+        .map(|name| name.as_str())
+        .unwrap_or("unnamed part");
+    Err(JianPuError::new(
+        line_span,
+        format!(
+            "bar {bar}: lyrics has {syllable_count} syllable{} but notes need {expected} in part '{part_label}'",
+            if syllable_count == 1 { "" } else { "s" }
+        ),
+    ))
+}
+
+fn process_lyrics_column_line(
+    part_idx: usize,
+    line: &str,
+    line_span: Span,
+    bar: usize,
+    ctx: &mut BarGroupContext<'_>,
+) -> Result<(), JianPuError> {
+    if line.is_empty() {
+        return Err(JianPuError::new(
+            line_span,
+            "lyrics line cannot be empty; use '_' for no lyrics".to_string(),
+        ));
+    }
+    if line == "_" {
+        return Ok(());
+    }
+    let syllables = tokenize_lyrics(line);
+    validate_lyrics_syllable_count(bar, part_idx, syllables.len(), line_span.clone(), ctx)?;
+    let Some(acc) = ctx
+        .accumulators
+        .syllables_acc
+        .get_mut(part_idx)
+        .and_then(|slot| slot.as_mut())
+    else {
+        return Err(JianPuError::new(
+            line_span,
+            "lyrics column has no matching notes column",
+        ));
+    };
+    acc.extend(syllables);
     Ok(())
 }
 
@@ -227,6 +301,12 @@ fn process_column_line(
             let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
             let events = token_parser::parse_tokens(tokens)?;
             validate_beats(&events, beats_expected, bar)?;
+            if let Some(tie_state) = ctx.lyric_tie_states.get_mut(*idx) {
+                let slots = count_lyric_slots_in_events(&events, tie_state);
+                if let Some(bar_slot) = ctx.bar_lyric_slots.get_mut(*idx) {
+                    *bar_slot = Some(slots);
+                }
+            }
             let events_acc = ctx.accumulators.events_acc.get_mut(*idx).ok_or_else(|| {
                 JianPuError::new(
                     line_span.clone(),
@@ -236,28 +316,7 @@ fn process_column_line(
             events_acc.extend(events);
         }
         ColAction::Lyrics(idx) => {
-            if line.is_empty() {
-                return Err(JianPuError::new(
-                    line_span,
-                    "lyrics line cannot be empty; use '_' for no lyrics".to_string(),
-                ));
-            }
-            let Some(acc) = ctx
-                .accumulators
-                .syllables_acc
-                .get_mut(*idx)
-                .and_then(|slot| slot.as_mut())
-            else {
-                return Err(JianPuError::new(
-                    line_span,
-                    "lyrics column has no matching notes column",
-                ));
-            };
-            if line == "_" {
-                return Ok(());
-            }
-            let syllables = tokenize_lyrics(line);
-            acc.extend(syllables);
+            process_lyrics_column_line(*idx, line, line_span, bar, ctx)?;
         }
         ColAction::Chord(chord_idx) => {
             if line == "_" {
@@ -780,6 +839,53 @@ mod tests {
     }
 
     #[test]
+    fn rejects_too_few_lyrics_syllables_for_notes() {
+        let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c\n";
+        let parts = vec![notes_col(""), lyrics_col("")];
+        let err = parse(content, 0, &parts).unwrap_err();
+        assert!(
+            err.message
+                .contains("lyrics has 3 syllables but notes need 4"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn rejects_too_many_lyrics_syllables_for_notes() {
+        let content = "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d e\n";
+        let parts = vec![notes_col(""), lyrics_col("")];
+        let err = parse(content, 0, &parts).unwrap_err();
+        assert!(
+            err.message
+                .contains("lyrics has 5 syllables but notes need 4"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn tied_notes_share_one_lyric_slot_in_bar() {
+        let content = "(time=4/4 key=C4 bpm=120)\n3~3 1 2\na b c\n";
+        let parts = vec![notes_col(""), lyrics_col("")];
+        let (result, _) = parse(content, 0, &parts).unwrap();
+        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 3);
+    }
+
+    #[test]
+    fn cross_measure_tie_continuation_needs_fewer_lyrics() {
+        let content = concat!(
+            "(time=4/4 key=C4 bpm=120)\n0 0 0 3~\na\n",
+            "\n",
+            "3 0 0 0\n",
+            "_\n",
+        );
+        let parts = vec![notes_col(""), lyrics_col("")];
+        let (result, _) = parse(content, 0, &parts).unwrap();
+        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 1);
+    }
+
+    #[test]
     fn rejects_omitted_trailing_lyrics_without_precedent() {
         let content = concat!(
             "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n",
@@ -802,7 +908,7 @@ mod tests {
             "(time=4/4 key=C4 bpm=120)\n",
             "1 - 6m -\n",
             "6* =6 =6 _6 _5 =3 =2~_2\n",
-            "lead lyrics\n",
+            "a b c d e f g\n",
             "4* =4 =4 _4 _3 =1 =2~_2\n",
             "\"\n",
             "6 - 5 -\n",

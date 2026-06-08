@@ -424,7 +424,7 @@ mod tests {
     fn extension_adds_to_previous_note_duration() {
         let score = parse_and_group(concat!(
             "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n",
-            "[score]\n(time=4/4 key=C4 bpm=120)\n1 - 3 4\na - b c\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n1 - 3 4\na - b\n",
         ));
         match &first_part_notes(&score, 0)[0] {
             NoteEvent::Note(n) => assert_eq!(n.duration, 8),

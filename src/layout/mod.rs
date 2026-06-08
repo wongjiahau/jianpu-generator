@@ -247,26 +247,49 @@ mod tests {
     use crate::grouper;
     use crate::parser;
 
+    fn syllables_to_line(syllables: &[crate::ast::parsed::Syllable]) -> String {
+        syllables
+            .iter()
+            .map(|s| s.text.as_str())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     /// Build a single-part score with lyrics from bar-separated notes (use `|` to separate bars).
-    /// All lyrics syllables are placed in the first bar's lyrics row; the grouper distributes them
-    /// across measures. Subsequent bars use '_' on the lyrics line for no lyrics in that bar.
+    /// `lyrics_str` syllables are allocated per bar to match each bar's lyric-slot count.
     fn make_score(score_str: &str, lyrics_str: &str) -> Score {
+        use crate::parser::score::{token_parser, tokenizer};
+        use crate::utils::{count_lyric_slots_in_events, LyricTieState};
+
         let bars: Vec<&str> = score_str
             .split('|')
             .map(str::trim)
             .filter(|s| !s.is_empty())
             .collect();
+        let all_syllables = crate::utils::tokenize_lyrics(lyrics_str);
+        let mut syllable_idx = 0usize;
+        let mut tie_state = LyricTieState::default();
         let mut score_content = String::new();
         score_content.push_str("(time=4/4 key=C4 bpm=120)\n");
-        for (i, bar) in bars.iter().enumerate() {
+        for bar in bars {
             score_content.push_str(bar);
             score_content.push('\n');
-            if i == 0 {
-                // Place all lyrics in first bar; grouper distributes across measures
-                score_content.push_str(lyrics_str);
-                score_content.push('\n');
-            } else {
+            let tokens = tokenizer::tokenize(bar, 0);
+            let events = token_parser::parse_tokens(tokens).expect("test score tokens");
+            let slots = count_lyric_slots_in_events(&events, &mut tie_state) as usize;
+            if slots == 0 {
                 score_content.push_str("_\n");
+            } else {
+                let end = (syllable_idx + slots).min(all_syllables.len());
+                let bar_syllables = &all_syllables[syllable_idx..end];
+                assert_eq!(
+                    bar_syllables.len(),
+                    slots,
+                    "make_score: not enough lyrics for bar {bar:?} (need {slots})"
+                );
+                syllable_idx = end;
+                score_content.push_str(&syllables_to_line(bar_syllables));
+                score_content.push('\n');
             }
             score_content.push('\n'); // blank line separating bar groups
         }
@@ -1174,7 +1197,7 @@ mod tests {
         // The continuation note (3 in measure 2) must NOT consume a lyric syllable
         // because prev_tie is preserved across the line boundary.
         // Only the 3~ note in measure 1 should consume a lyric.
-        let score = make_score("0 0 0 3~ | 3 0 0 0", "a b");
+        let score = make_score("0 0 0 3~ | 3 0 0 0", "a");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let lyrics = collect_lyric_positions(&pages);
         assert_eq!(

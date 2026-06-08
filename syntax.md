@@ -263,6 +263,16 @@ _
 
 Empty lyrics lines are **not** allowed. Whitespace-only lines are treated as measure separators, not as empty lyrics. To express silence, write `_`.
 
+### Lyrics–notes tally
+
+In each measure, the number of lyric syllables must match the number of notes that take lyrics in the paired notes row:
+
+- Each non-rest note head counts, except a **tie continuation** (same pitch immediately after a tied note, including across a bar line).
+- Held-syllable markers (`-`) count as their own syllables — e.g. `你 - 好` is three syllables for three lyric slots.
+- The `_` no-lyrics marker skips this check (zero syllables allowed regardless of notes).
+
+Mismatch is a parse error, e.g. `lyrics has 3 syllables but notes need 4 in part 'Soprano'`.
+
 ---
 
 ## Chord syntax

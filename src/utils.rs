@@ -1,4 +1,42 @@
-use crate::ast::parsed::Syllable;
+use crate::ast::parsed::{JianPuPitch, ScoreEvent, Syllable};
+use crate::error::Spanned;
+
+/// Tracks tie state across measure boundaries for lyric-slot counting.
+#[derive(Debug, Clone, Default)]
+pub struct LyricTieState {
+    pub prev_tie: bool,
+    pub prev_pitch: Option<JianPuPitch>,
+}
+
+/// Count note heads in `events` that consume a lyric syllable (non-tie-continuation notes).
+/// Updates `state` so the next measure can continue cross-bar ties.
+pub fn count_lyric_slots_in_events(
+    events: &[Spanned<ScoreEvent>],
+    state: &mut LyricTieState,
+) -> u32 {
+    let mut count = 0u32;
+    for spanned in events {
+        match &spanned.value {
+            ScoreEvent::Note(note) => {
+                let is_continuation =
+                    state.prev_tie && state.prev_pitch.as_ref() == Some(&note.pitch);
+                if !is_continuation {
+                    count += 1;
+                }
+                state.prev_tie = note.tie;
+                state.prev_pitch = Some(note.pitch.clone());
+            }
+            ScoreEvent::Rest(_) => {
+                state.prev_tie = false;
+            }
+            ScoreEvent::TieMarker => {
+                state.prev_tie = true;
+            }
+            _ => {}
+        }
+    }
+    count
+}
 
 /// Returns true if `c` is a CJK or Japanese/Korean character.
 /// Covers Hiragana, Katakana, CJK Extension A, CJK Unified Ideographs, Hangul.
@@ -163,6 +201,79 @@ mod tests {
         assert!(syllables[0].held);
         assert_eq!(syllables[1].text, "-");
         assert!(!syllables[1].held);
+    }
+
+    #[test]
+    fn count_lyric_slots_skips_tie_continuation() {
+        use crate::ast::parsed::{JianPuPitch, ParsedNote, ScoreEvent};
+        use crate::error::{Span, Spanned};
+
+        let events = vec![
+            Spanned::new(
+                ScoreEvent::Note(ParsedNote {
+                    pitch: JianPuPitch::Three,
+                    octave: 0,
+                    duration: 4,
+                    tie: true,
+                    dotted: false,
+                }),
+                Span::new(0, 1),
+            ),
+            Spanned::new(
+                ScoreEvent::Note(ParsedNote {
+                    pitch: JianPuPitch::Three,
+                    octave: 0,
+                    duration: 4,
+                    tie: false,
+                    dotted: false,
+                }),
+                Span::new(1, 2),
+            ),
+            Spanned::new(
+                ScoreEvent::Note(ParsedNote {
+                    pitch: JianPuPitch::One,
+                    octave: 0,
+                    duration: 4,
+                    tie: false,
+                    dotted: false,
+                }),
+                Span::new(2, 3),
+            ),
+        ];
+        let mut state = LyricTieState::default();
+        assert_eq!(count_lyric_slots_in_events(&events, &mut state), 2);
+        assert!(!state.prev_tie);
+        assert_eq!(state.prev_pitch, Some(JianPuPitch::One));
+    }
+
+    #[test]
+    fn count_lyric_slots_carries_tie_across_bars() {
+        use crate::ast::parsed::{JianPuPitch, ParsedNote, ScoreEvent};
+        use crate::error::{Span, Spanned};
+
+        let bar1 = vec![Spanned::new(
+            ScoreEvent::Note(ParsedNote {
+                pitch: JianPuPitch::Three,
+                octave: 0,
+                duration: 4,
+                tie: true,
+                dotted: false,
+            }),
+            Span::new(0, 1),
+        )];
+        let bar2 = vec![Spanned::new(
+            ScoreEvent::Note(ParsedNote {
+                pitch: JianPuPitch::Three,
+                octave: 0,
+                duration: 4,
+                tie: false,
+                dotted: false,
+            }),
+            Span::new(0, 1),
+        )];
+        let mut state = LyricTieState::default();
+        assert_eq!(count_lyric_slots_in_events(&bar1, &mut state), 1);
+        assert_eq!(count_lyric_slots_in_events(&bar2, &mut state), 0);
     }
 
     #[test]
