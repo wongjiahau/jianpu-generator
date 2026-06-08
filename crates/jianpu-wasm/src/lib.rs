@@ -3,7 +3,7 @@ use jianpu_generator::{
     render_svgs_from_source_filtered_with_lyrics,
 };
 #[cfg(feature = "pdf")]
-use jianpu_generator::write_pdf_from_source_filtered_with_lyrics;
+use jianpu_generator::{write_pdf_from_source_filtered_with_lyrics, write_split_pdfs_from_source, zip_split_pdfs};
 #[cfg(feature = "wav")]
 use jianpu_generator::write_wav_from_source_filtered;
 use serde::Serialize;
@@ -68,6 +68,14 @@ enum GenerateWavResponse {
 #[serde(tag = "status", rename_all = "camelCase")]
 enum GeneratePdfResponse {
     Ok { pdf: Vec<u8> },
+    Err { diagnostics: Vec<DiagnosticOut> },
+}
+
+#[cfg(feature = "pdf")]
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+#[serde(tag = "status", rename_all = "camelCase")]
+enum GenerateSplitPdfsResponse {
+    Ok { zip: Vec<u8> },
     Err { diagnostics: Vec<DiagnosticOut> },
 }
 
@@ -139,6 +147,21 @@ fn generate_pdf_response(
     match write_pdf_from_source_filtered_with_lyrics(source, "input.jianpu", tracks, lyrics) {
         Ok(pdf) => GeneratePdfResponse::Ok { pdf },
         Err(e) => GeneratePdfResponse::Err {
+            diagnostics: vec![diagnostic_from_error(source, e)],
+        },
+    }
+}
+
+#[cfg(feature = "pdf")]
+fn generate_split_pdfs_response(source: &str, base_name: &str) -> GenerateSplitPdfsResponse {
+    match write_split_pdfs_from_source(source, "input.jianpu", base_name, &[]) {
+        Ok(entries) => match zip_split_pdfs(&entries) {
+            Ok(zip) => GenerateSplitPdfsResponse::Ok { zip },
+            Err(e) => GenerateSplitPdfsResponse::Err {
+                diagnostics: vec![diagnostic_from_error(source, e)],
+            },
+        },
+        Err(e) => GenerateSplitPdfsResponse::Err {
             diagnostics: vec![diagnostic_from_error(source, e)],
         },
     }
@@ -278,6 +301,51 @@ pub fn generate_pdf(
     disabled_lyrics: Option<Vec<String>>,
 ) -> JsValue {
     generate_pdf_to_js(source, enabled_tracks, disabled_lyrics)
+}
+
+#[cfg(feature = "pdf")]
+fn generate_split_pdfs_to_js(source: &str, base_name: &str) -> JsValue {
+    use js_sys::{Object, Reflect, Uint8Array};
+
+    match generate_split_pdfs_response(source, base_name) {
+        GenerateSplitPdfsResponse::Ok { zip } => {
+            let obj = Object::new();
+            if Reflect::set(
+                &obj,
+                &JsValue::from_str("status"),
+                &JsValue::from_str("ok"),
+            )
+            .is_err()
+            {
+                return JsValue::from_str("failed to build split pdf response");
+            }
+            if Reflect::set(
+                &obj,
+                &JsValue::from_str("zip"),
+                &Uint8Array::from(zip.as_slice()),
+            )
+            .is_err()
+            {
+                return JsValue::from_str("failed to attach zip bytes");
+            }
+            obj.into()
+        }
+        GenerateSplitPdfsResponse::Err { diagnostics } => {
+            to_js_value(&GenerateSplitPdfsResponse::Err { diagnostics })
+        }
+    }
+}
+
+/// Parse `.jianpu` source and write one PDF per part as a ZIP archive.
+///
+/// Available only when the `pdf` feature is enabled at build time.
+/// Returns:
+/// - `{ "status": "ok", "zip": Uint8Array }`
+/// - `{ "status": "err", "diagnostics": [...] }`
+#[cfg(feature = "pdf")]
+#[wasm_bindgen]
+pub fn generate_split_pdfs(source: &str, base_name: &str) -> JsValue {
+    generate_split_pdfs_to_js(source, base_name)
 }
 
 #[cfg(test)]
@@ -446,6 +514,42 @@ mod tests {
             GeneratePdfResponse::Err { diagnostics } => {
                 panic!(
                     "demo.jianpu failed in wasm pdf path: {}",
+                    diagnostics[0].message
+                );
+            }
+        }
+    }
+
+    #[cfg(feature = "pdf")]
+    #[test]
+    fn demo_jianpu_generates_split_pdf_zip() {
+        use std::io::Read;
+        use zip::ZipArchive;
+
+        let source = include_str!("../../../demo.jianpu");
+        let resp = generate_split_pdfs_response(source, "demo");
+        match resp {
+            GenerateSplitPdfsResponse::Ok { zip } => {
+                assert!(zip.len() > 4);
+                assert_eq!(&zip[0..2], b"PK");
+                let cursor = std::io::Cursor::new(zip);
+                let mut archive = ZipArchive::new(cursor).unwrap();
+                assert!(archive.len() >= 1);
+                for i in 0..archive.len() {
+                    let mut file = archive.by_index(i).unwrap();
+                    let name = file.name().to_string();
+                    assert!(
+                        name.starts_with("demo - ") && name.ends_with(".pdf"),
+                        "unexpected zip entry: {name}"
+                    );
+                    let mut buf = [0u8; 4];
+                    file.read_exact(&mut buf).unwrap();
+                    assert_eq!(&buf, b"%PDF");
+                }
+            }
+            GenerateSplitPdfsResponse::Err { diagnostics } => {
+                panic!(
+                    "demo.jianpu failed in wasm split pdf path: {}",
                     diagnostics[0].message
                 );
             }

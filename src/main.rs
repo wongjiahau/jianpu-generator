@@ -101,10 +101,6 @@ fn output_stem(input: &Path, tracks: &[String], output: Option<&Path>) -> PathBu
     }
 }
 
-fn sanitize_track_name(name: &str) -> String {
-    name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "-")
-}
-
 struct GenerateInput {
     input: PathBuf,
     output: Option<PathBuf>,
@@ -114,7 +110,7 @@ struct GenerateInput {
 
 fn effective_tracks(tracks: &[String], score: &jg::ast::grouped::Score) -> Vec<String> {
     if tracks.is_empty() {
-        collect_track_names(score)
+        jg::collect_track_names(score)
     } else {
         tracks.to_vec()
     }
@@ -131,8 +127,12 @@ fn split_track_base(input: &Path, output: Option<&Path>) -> (PathBuf, String) {
 }
 
 fn track_output_path(base: &Path, base_name: &str, track: &str, extension: &str) -> PathBuf {
-    base.with_file_name(format!("{} - {}", base_name, sanitize_track_name(track)))
-        .with_extension(extension)
+    base.with_file_name(format!(
+        "{} - {}",
+        base_name,
+        jg::sanitize_track_name(track)
+    ))
+    .with_extension(extension)
 }
 
 /// Returns `true` when split-track output was written and the caller should return early.
@@ -177,27 +177,37 @@ fn write_svgs_to_path(svgs: &[String], output_path: &Path) -> Result<(), jg::err
 }
 
 fn generate_pdf(opts: &GenerateInput) -> Result<(), jg::error::JianPuError> {
-    let score = parse_and_group(&opts.input)?;
     if opts.split_tracks {
-        let split = try_split_tracks(
-            &score,
-            &opts.input,
-            opts.output.as_deref(),
+        let content = std::fs::read_to_string(&opts.input).map_err(|e| {
+            jg::error::JianPuError::new(
+                jg::error::Span::new(0, 0),
+                format!("could not read {:?}: {e}", opts.input),
+            )
+        })?;
+        let filename = opts.input.to_string_lossy();
+        let (_, base_name) = split_track_base(&opts.input, opts.output.as_deref());
+        let entries = jg::write_split_pdfs_from_source(
+            &content,
+            &filename,
+            &base_name,
             &opts.tracks,
-            |score_clone, track, base, base_name| {
-                let svgs = jg::render_svgs(score_clone);
-                let pdf_bytes = jg::pdf::write_pdf(&svgs)?;
-                let track_path = track_output_path(base, base_name, track, "pdf");
-                write_file(&track_path, &pdf_bytes)?;
-                println!("written to {track_path:?}");
-                Ok(())
-            },
         )?;
-        if split {
+        if entries.is_empty() {
+            eprintln!(
+                "warning: --split-tracks given but score has no named tracks; generating single file"
+            );
+        } else {
+            let (base, _) = split_track_base(&opts.input, opts.output.as_deref());
+            for entry in &entries {
+                let track_path = base.with_file_name(&entry.filename);
+                write_file(&track_path, &entry.pdf)?;
+                println!("written to {track_path:?}");
+            }
             return Ok(());
         }
     }
 
+    let score = parse_and_group(&opts.input)?;
     let mut score = score;
     jg::filter_tracks(&mut score, &opts.tracks);
     let svgs = jg::render_svgs(&score);
@@ -219,8 +229,11 @@ fn generate_svg(opts: &GenerateInput) -> Result<(), jg::error::JianPuError> {
             &opts.tracks,
             |score_clone, track, base, base_name| {
                 let svgs = jg::render_svgs(score_clone);
-                let track_base =
-                    base.with_file_name(format!("{} - {}", base_name, sanitize_track_name(track)));
+                let track_base = base.with_file_name(format!(
+                    "{} - {}",
+                    base_name,
+                    jg::sanitize_track_name(track)
+                ));
                 for (i, svg) in svgs.iter().enumerate() {
                     let path = if svgs.len() == 1 {
                         track_base.with_extension("svg")
@@ -369,21 +382,6 @@ fn parse_and_group(input: &Path) -> Result<jg::ast::grouped::Score, jg::error::J
     let filename = input.to_string_lossy().to_string();
     let doc = jg::parser::parse(&content, &filename).map_err(|e| e.with_path(input))?;
     jg::grouper::group(doc).map_err(|e| e.with_path(input))
-}
-
-fn collect_track_names(score: &jg::ast::grouped::Score) -> Vec<String> {
-    let mut seen = std::collections::HashSet::new();
-    let mut names = Vec::new();
-    for measure in &score.measures {
-        for part in &measure.parts {
-            if let Some(name) = part.name() {
-                if seen.insert(name.clone()) {
-                    names.push(name.clone());
-                }
-            }
-        }
-    }
-    names
 }
 
 fn write_file(path: &Path, data: &[u8]) -> Result<(), jg::error::JianPuError> {

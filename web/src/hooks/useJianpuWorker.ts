@@ -35,9 +35,11 @@ interface JianpuWorkerState {
   audioAvailable: boolean
   pdfAvailable: boolean
   pdfExporting: boolean
+  splitPdfExporting: boolean
   diagnostics: Diagnostic[]
   rendering: boolean
   exportPdf: () => void
+  exportSplitPdf: () => void
 }
 
 function downloadPdf(bytes: ArrayBuffer, filename: string) {
@@ -58,6 +60,31 @@ function pdfFilenameFromActiveFile(activeFile: string): string {
   return `${activeFile}.pdf`
 }
 
+function zipFilenameFromActiveFile(activeFile: string): string {
+  if (activeFile.endsWith('.jianpu')) {
+    return activeFile.replace(/\.jianpu$/, '.zip')
+  }
+  return `${activeFile}.zip`
+}
+
+function baseNameFromActiveFile(activeFile: string): string {
+  if (activeFile.endsWith('.jianpu')) {
+    return activeFile.replace(/\.jianpu$/, '')
+  }
+  return activeFile
+}
+
+function downloadZip(bytes: ArrayBuffer, filename: string) {
+  const url = URL.createObjectURL(
+    new Blob([bytes], { type: 'application/zip' }),
+  )
+  const anchor = document.createElement('a')
+  anchor.href = url
+  anchor.download = filename
+  anchor.click()
+  URL.revokeObjectURL(url)
+}
+
 export function useJianpuWorker(
   source: string,
   disabledParts: ReadonlySet<string>,
@@ -72,6 +99,7 @@ export function useJianpuWorker(
   const [audioAvailable, setAudioAvailable] = useState(false)
   const [pdfAvailable, setPdfAvailable] = useState(false)
   const [pdfExporting, setPdfExporting] = useState(false)
+  const [splitPdfExporting, setSplitPdfExporting] = useState(false)
   const [diagnostics, setDiagnostics] = useState<Diagnostic[]>([])
   const [rendering, setRendering] = useState(false)
 
@@ -80,9 +108,11 @@ export function useJianpuWorker(
   const partsRequestIdRef = useRef(0)
   const renderRequestIdRef = useRef(0)
   const pdfRequestIdRef = useRef(0)
+  const splitPdfRequestIdRef = useRef(0)
   const latestPartsIdRef = useRef(0)
   const latestRenderIdRef = useRef(0)
   const latestPdfIdRef = useRef(0)
+  const latestSplitPdfIdRef = useRef(0)
   const sourceRef = useRef(source)
   const activeFileRef = useRef(activeFile)
   const enabledTracksRef = useRef<string[] | undefined>(undefined)
@@ -142,6 +172,20 @@ export function useJianpuWorker(
       if (msg.type === 'pdfErr') {
         if (msg.id !== latestPdfIdRef.current) return
         setPdfExporting(false)
+        setDiagnostics(msg.diagnostics)
+        return
+      }
+
+      if (msg.type === 'splitPdf') {
+        if (msg.id !== latestSplitPdfIdRef.current) return
+        setSplitPdfExporting(false)
+        downloadZip(msg.zip, zipFilenameFromActiveFile(activeFileRef.current))
+        return
+      }
+
+      if (msg.type === 'splitPdfErr') {
+        if (msg.id !== latestSplitPdfIdRef.current) return
+        setSplitPdfExporting(false)
         setDiagnostics(msg.diagnostics)
         return
       }
@@ -216,7 +260,7 @@ export function useJianpuWorker(
 
   const exportPdf = useCallback(() => {
     const worker = workerRef.current
-    if (!worker || pdfExporting) return
+    if (!worker || pdfExporting || splitPdfExporting) return
 
     const id = ++pdfRequestIdRef.current
     latestPdfIdRef.current = id
@@ -230,7 +274,24 @@ export function useJianpuWorker(
       disabledLyrics: disabledLyricsRef.current,
     }
     worker.postMessage(payload)
-  }, [pdfExporting])
+  }, [pdfExporting, splitPdfExporting])
+
+  const exportSplitPdf = useCallback(() => {
+    const worker = workerRef.current
+    if (!worker || pdfExporting || splitPdfExporting) return
+
+    const id = ++splitPdfRequestIdRef.current
+    latestSplitPdfIdRef.current = id
+    setSplitPdfExporting(true)
+
+    const payload: WorkerRequest = {
+      type: 'generateSplitPdf',
+      source: sourceRef.current,
+      id,
+      baseName: baseNameFromActiveFile(activeFileRef.current),
+    }
+    worker.postMessage(payload)
+  }, [pdfExporting, splitPdfExporting])
 
   return {
     parts,
@@ -240,8 +301,10 @@ export function useJianpuWorker(
     audioAvailable,
     pdfAvailable,
     pdfExporting,
+    splitPdfExporting,
     diagnostics,
     rendering,
     exportPdf,
+    exportSplitPdf,
   }
 }

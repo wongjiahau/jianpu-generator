@@ -142,6 +142,116 @@ pub fn apply_lyrics_filter(score: &mut Score, disabled_lyrics: Option<&[String]>
     }
 }
 
+/// Sanitize a track name for use in filenames (mirrors CLI).
+pub fn sanitize_track_name(name: &str) -> String {
+    name.replace(['/', '\\', ':', '*', '?', '"', '<', '>', '|'], "-")
+}
+
+/// Collect unique part names from score measures (order of first appearance).
+pub fn collect_track_names(score: &Score) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    let mut names = Vec::new();
+    for measure in &score.measures {
+        for part in &measure.parts {
+            if let Some(name) = part.name() {
+                if seen.insert(name.clone()) {
+                    names.push(name.clone());
+                }
+            }
+        }
+    }
+    names
+}
+
+/// Build a split-track PDF filename: `{base_name} - {track}.pdf`.
+pub fn split_pdf_filename(base_name: &str, track: &str) -> String {
+    format!("{} - {}.pdf", base_name, sanitize_track_name(track))
+}
+
+/// Track list for split export. Empty `tracks_filter` → all score tracks;
+/// falls back to `[parts]` declaration abbreviations when score has no named parts.
+pub fn split_track_names(
+    source: &str,
+    filename: &str,
+    score: &Score,
+    tracks_filter: &[String],
+) -> Result<Vec<String>, JianPuError> {
+    let mut names = if tracks_filter.is_empty() {
+        collect_track_names(score)
+    } else {
+        tracks_filter.to_vec()
+    };
+    if names.is_empty() {
+        names = list_parts_from_source(source, filename)?
+            .into_iter()
+            .map(|part| part.abbreviation)
+            .collect();
+    }
+    Ok(names)
+}
+
+/// One PDF produced by split-track export.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplitPdfEntry {
+    pub track_name: String,
+    pub filename: String,
+    pub pdf: Vec<u8>,
+}
+
+/// Parse once, render one PDF per track (CLI `--split-tracks` semantics).
+///
+/// `tracks_filter`: empty → all tracks; non-empty → only listed abbreviations.
+/// Lyrics are always included (no lyrics filter).
+#[cfg(feature = "pdf")]
+pub fn write_split_pdfs_from_source(
+    source: &str,
+    filename: &str,
+    base_name: &str,
+    tracks_filter: &[String],
+) -> Result<Vec<SplitPdfEntry>, JianPuError> {
+    let score = compile(source, filename)?;
+    let track_names = split_track_names(source, filename, &score, tracks_filter)?;
+    let mut entries = Vec::with_capacity(track_names.len());
+    for track in track_names {
+        let mut score_clone = score.clone();
+        filter_tracks(&mut score_clone, std::slice::from_ref(&track));
+        let svgs = render_svgs(&score_clone);
+        let pdf = pdf::write_pdf(&svgs)?;
+        entries.push(SplitPdfEntry {
+            track_name: track.clone(),
+            filename: split_pdf_filename(base_name, &track),
+            pdf,
+        });
+    }
+    Ok(entries)
+}
+
+#[cfg(feature = "pdf")]
+pub fn zip_split_pdfs(entries: &[SplitPdfEntry]) -> Result<Vec<u8>, JianPuError> {
+    use std::io::Write;
+    use zip::write::SimpleFileOptions;
+    use zip::ZipWriter;
+
+    let mut buffer = Vec::new();
+    {
+        let mut writer = ZipWriter::new(std::io::Cursor::new(&mut buffer));
+        let options =
+            SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
+        for entry in entries {
+            writer.start_file(&entry.filename, options).map_err(|e| {
+                JianPuError::new(error::Span::new(0, 0), format!("zip start_file: {e}"))
+            })?;
+            writer.write_all(&entry.pdf).map_err(|e| {
+                JianPuError::new(error::Span::new(0, 0), format!("zip write: {e}"))
+            })?;
+        }
+        writer.finish().map_err(|e| {
+            JianPuError::new(error::Span::new(0, 0), format!("zip finish: {e}"))
+        })?;
+    }
+    Ok(buffer)
+}
+
 /// Parse, group, optionally filter tracks, and synthesize WAV bytes.
 ///
 /// When `enabled_tracks` is `None`, all parts are included.
@@ -324,5 +434,140 @@ mod tests {
         assert_eq!(svgs.len(), 1);
         assert!(svgs[0].starts_with("<svg"));
         assert!(svgs[0].ends_with("</svg>"));
+    }
+
+    #[test]
+    fn split_track_names_falls_back_to_part_declarations() {
+        let input = concat!(
+            "[metadata]\n",
+            "title = \"t\"\n",
+            "author = \"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Melody = notes lyrics\n",
+            "\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "a b c d\n",
+        );
+        let score = compile(input, "test.jianpu").unwrap();
+        let names = split_track_names(input, "test.jianpu", &score, &[]).unwrap();
+        assert_eq!(names, vec!["Melody"]);
+    }
+
+    #[test]
+    fn split_pdf_filename_sanitizes_track_name() {
+        assert_eq!(split_pdf_filename("song", "A1&T"), "song - A1&T.pdf");
+        assert_eq!(
+            split_pdf_filename("song", "bad/name"),
+            "song - bad-name.pdf"
+        );
+    }
+
+    #[cfg(feature = "pdf")]
+    mod split_pdf_tests {
+        use super::*;
+        use std::io::Read;
+        use zip::ZipArchive;
+
+        fn multi_track_input() -> &'static str {
+            concat!(
+                "[metadata]\n",
+                "title = \"test score\"\n",
+                "author = \"tester\"\n",
+                "\n",
+                "[parts]\n",
+                "Soprano 1 (S1) = notes lyrics\n",
+                "Soprano 2 (S2) = notes lyrics\n",
+                "\n",
+                "[score]\n",
+                "(time=4/4 key=C4 bpm=120)\n",
+                "1 2 3 4\n",
+                "do re mi fa\n",
+                "5 6 7 1\n",
+                "sol la ti do\n",
+            )
+        }
+
+        #[test]
+        fn write_split_pdfs_from_source_produces_one_pdf_per_track() {
+            let entries = write_split_pdfs_from_source(
+                multi_track_input(),
+                "test.jianpu",
+                "test_split",
+                &[],
+            )
+            .unwrap();
+            assert_eq!(entries.len(), 2);
+            assert_eq!(entries[0].track_name, "S1");
+            assert_eq!(entries[0].filename, "test_split - S1.pdf");
+            assert_eq!(entries[1].track_name, "S2");
+            assert_eq!(entries[1].filename, "test_split - S2.pdf");
+            assert_eq!(&entries[0].pdf[0..4], b"%PDF");
+            assert_eq!(&entries[1].pdf[0..4], b"%PDF");
+        }
+
+        #[test]
+        fn write_split_pdfs_from_source_single_part_uses_split_naming() {
+            let input = concat!(
+                "[metadata]\n",
+                "title = \"t\"\n",
+                "author = \"a\"\n",
+                "\n",
+                "[parts]\n",
+                "Melody = notes lyrics\n",
+                "\n",
+                "[score]\n",
+                "(time=4/4 key=C4 bpm=120)\n",
+                "1 2 3 4\n",
+                "a b c d\n",
+            );
+            let entries =
+                write_split_pdfs_from_source(input, "test.jianpu", "song", &[]).unwrap();
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].filename, "song - Melody.pdf");
+            assert_eq!(&entries[0].pdf[0..4], b"%PDF");
+        }
+
+        #[test]
+        fn write_split_pdfs_from_source_invalid_source_errors() {
+            let err =
+                write_split_pdfs_from_source("not valid", "test.jianpu", "song", &[]).unwrap_err();
+            assert!(!err.message.is_empty());
+        }
+
+        #[test]
+        fn zip_split_pdfs_contains_named_entries() {
+            let entries = write_split_pdfs_from_source(
+                multi_track_input(),
+                "test.jianpu",
+                "test_split",
+                &[],
+            )
+            .unwrap();
+            let zip_bytes = zip_split_pdfs(&entries).unwrap();
+            assert_eq!(&zip_bytes[0..2], b"PK");
+
+            let cursor = std::io::Cursor::new(zip_bytes);
+            let mut archive = ZipArchive::new(cursor).unwrap();
+            assert_eq!(archive.len(), 2);
+            let mut names: Vec<String> = (0..archive.len())
+                .map(|i| archive.by_index(i).unwrap().name().to_string())
+                .collect();
+            names.sort();
+            assert_eq!(
+                names,
+                vec![
+                    "test_split - S1.pdf".to_string(),
+                    "test_split - S2.pdf".to_string()
+                ]
+            );
+
+            let mut first = archive.by_name("test_split - S1.pdf").unwrap();
+            let mut buf = Vec::new();
+            first.read_to_end(&mut buf).unwrap();
+            assert_eq!(&buf[0..4], b"%PDF");
+        }
     }
 }

@@ -6,6 +6,9 @@ interface PreviewProps {
   pdfAvailable?: boolean
   pdfExporting?: boolean
   onExportPdf?: () => void
+  splitPdfExporting?: boolean
+  onExportSplitPdf?: () => void
+  partsCount?: number
   emptyMessage?: string
 }
 
@@ -17,10 +20,16 @@ export function Preview({
   pdfAvailable = false,
   pdfExporting = false,
   onExportPdf,
+  splitPdfExporting = false,
+  onExportSplitPdf,
+  partsCount = 0,
   emptyMessage = 'No preview yet.',
 }: PreviewProps) {
+  const exporting = pdfExporting || splitPdfExporting
   const canExportPdf =
-    pdfAvailable && svgs.length > 0 && !rendering && !pdfExporting
+    pdfAvailable && svgs.length > 0 && !rendering && !exporting
+  const canExportSplitPdf =
+    pdfAvailable && partsCount > 0 && !rendering && !exporting
 
   return (
     <div className="preview">
@@ -35,6 +44,16 @@ export function Preview({
               onClick={onExportPdf}
             >
               {pdfExporting ? 'Exporting PDF…' : 'Export PDF'}
+            </button>
+          ) : null}
+          {pdfAvailable ? (
+            <button
+              type="button"
+              className="preview-export-btn"
+              disabled={!canExportSplitPdf}
+              onClick={onExportSplitPdf}
+            >
+              {splitPdfExporting ? 'Exporting parts…' : 'Export parts (ZIP)'}
             </button>
           ) : null}
           {rendering ? (

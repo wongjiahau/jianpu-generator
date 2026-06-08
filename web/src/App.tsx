@@ -52,6 +52,8 @@ export default function App() {
     diagnostics,
     rendering,
     exportPdf,
+    splitPdfExporting,
+    exportSplitPdf,
   } = useJianpuWorker(source, disabledParts, disabledLyrics, store.active)
 
   useEffect(() => {
@@ -212,6 +214,9 @@ export default function App() {
             pdfAvailable={pdfAvailable}
             pdfExporting={pdfExporting}
             onExportPdf={exportPdf}
+            splitPdfExporting={splitPdfExporting}
+            onExportSplitPdf={exportSplitPdf}
+            partsCount={parts.length}
             emptyMessage={
               noPartsSelected ? 'No parts selected.' : 'No preview yet.'
             }

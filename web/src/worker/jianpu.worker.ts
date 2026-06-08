@@ -26,6 +26,18 @@ const generatePdf =
       ) => GeneratePdfResult)
     : null
 
+type GenerateSplitPdfResult =
+  | { status: 'ok'; zip: Uint8Array | number[] }
+  | { status: 'err'; diagnostics: Diagnostic[] }
+
+const generateSplitPdfs =
+  'generate_split_pdfs' in jianpuWasm
+    ? (jianpuWasm.generate_split_pdfs as (
+        source: string,
+        baseName: string,
+      ) => GenerateSplitPdfResult)
+    : null
+
 export type WorkerRequest =
   | {
       type: 'render'
@@ -42,6 +54,12 @@ export type WorkerRequest =
       enabledTracks?: string[]
       disabledLyrics?: string[]
     }
+  | {
+      type: 'generateSplitPdf'
+      source: string
+      id: number
+      baseName: string
+    }
 
 export type WorkerResponse =
   | { type: 'ready'; audioAvailable: boolean; pdfAvailable: boolean }
@@ -50,6 +68,8 @@ export type WorkerResponse =
   | { type: 'parts'; id: number; parts: PartInfo[] }
   | { type: 'pdf'; id: number; pdf: ArrayBuffer }
   | { type: 'pdfErr'; id: number; diagnostics: Diagnostic[] }
+  | { type: 'splitPdf'; id: number; zip: ArrayBuffer }
+  | { type: 'splitPdfErr'; id: number; diagnostics: Diagnostic[] }
 
 let initialized = false
 
@@ -135,6 +155,44 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
     postMessage({
       type: 'pdfErr',
+      id: msg.id,
+      diagnostics: result.diagnostics,
+    } satisfies WorkerResponse)
+    return
+  }
+
+  if (msg.type === 'generateSplitPdf') {
+    if (!generateSplitPdfs) {
+      postMessage({
+        type: 'splitPdfErr',
+        id: msg.id,
+        diagnostics: [
+          {
+            severity: 'error',
+            message: 'Split PDF export is not available in this build.',
+            span: { start: 0, end: 0 },
+          },
+        ],
+      } satisfies WorkerResponse)
+      return
+    }
+
+    const result = generateSplitPdfs(msg.source, msg.baseName)
+    if (result.status === 'ok') {
+      const zipBuffer = binaryBufferFromResult(result.zip)
+      postMessage(
+        {
+          type: 'splitPdf',
+          id: msg.id,
+          zip: zipBuffer,
+        } satisfies WorkerResponse,
+        { transfer: [zipBuffer] },
+      )
+      return
+    }
+
+    postMessage({
+      type: 'splitPdfErr',
       id: msg.id,
       diagnostics: result.diagnostics,
     } satisfies WorkerResponse)
