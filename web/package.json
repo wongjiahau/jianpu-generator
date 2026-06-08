@@ -10,6 +10,7 @@
     "dev": "vite",
     "prebuild": "wasm-pack build ../crates/jianpu-wasm --target web --out-dir pkg",
     "build": "tsc -b && vite build",
+    "check": "knip --include files,dependencies",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
@@ -19,7 +20,8 @@
     "@monaco-editor/react": "^4.7.0",
     "monaco-editor": "^0.55.1",
     "react": "^19.2.4",
-    "react-dom": "^19.2.4"
+    "react-dom": "^19.2.4",
+    "usehooks-ts": "^3.1.1"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
@@ -27,6 +29,7 @@
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
+    "knip": "^6.16.1",
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
     "wasm-pack": "^0.15.0"

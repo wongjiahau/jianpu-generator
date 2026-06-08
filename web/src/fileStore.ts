@@ -2,8 +2,14 @@ import { DEFAULT_SOURCE, DEMO_FILE_NAME } from './defaultSource'
 
 export { DEMO_FILE_NAME }
 
-const STORAGE_KEY = 'jianpu:files:v1'
-const LEGACY_STORAGE_KEY = 'jianpu:source:v5'
+export const FILE_STORE_KEY = 'jianpu:files:v1'
+const STORAGE_KEY = 'jianpu:source:v5'
+
+const DEFAULT_FILE_STORE: FileStoreState = {
+  active: DEMO_FILE_NAME,
+  userFiles: {},
+  bin: {},
+}
 
 const NEW_FILE_TEMPLATE = `[metadata]
 title = "Untitled"
@@ -79,24 +85,24 @@ function normalizeState(parsed: Partial<FileStoreState>): FileStoreState {
   }
 }
 
-function loadFromStorage(): FileStoreState {
+function parseStoredFileStore(raw: string): FileStoreState | null {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw != null) {
-      const parsed = JSON.parse(raw) as Partial<FileStoreState>
-      if (parsed && typeof parsed.active === 'string' && parsed.userFiles) {
-        return normalizeState({
-          ...parsed,
-          bin: parsed.bin ?? {},
-        })
-      }
+    const parsed = JSON.parse(raw) as Partial<FileStoreState>
+    if (parsed && typeof parsed.active === 'string' && parsed.userFiles) {
+      return normalizeState({
+        ...parsed,
+        bin: parsed.bin ?? {},
+      })
     }
   } catch {
     // ignore corrupt storage
   }
+  return null
+}
 
+function readLegacyFileStore(): FileStoreState | null {
   try {
-    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+    const legacy = localStorage.getItem(STORAGE_KEY)
     if (legacy != null) {
       return {
         active: 'untitled.jianpu',
@@ -107,20 +113,25 @@ function loadFromStorage(): FileStoreState {
   } catch {
     // ignore
   }
-
-  return { active: DEMO_FILE_NAME, userFiles: {}, bin: {} }
+  return null
 }
 
-export function loadFileStore(): FileStoreState {
-  return loadFromStorage()
-}
-
-export function saveFileStore(state: FileStoreState): void {
+export function readInitialFileStore(): FileStoreState {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
+    const raw = localStorage.getItem(FILE_STORE_KEY)
+    if (raw != null) {
+      const parsed = parseStoredFileStore(raw)
+      if (parsed) return parsed
+    }
   } catch {
-    // private browsing / quota
+    // ignore
   }
+
+  return readLegacyFileStore() ?? DEFAULT_FILE_STORE
+}
+
+export function deserializeFileStore(raw: string): FileStoreState {
+  return parseStoredFileStore(raw) ?? readLegacyFileStore() ?? DEFAULT_FILE_STORE
 }
 
 export function updateActiveContent(

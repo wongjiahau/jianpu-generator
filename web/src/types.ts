@@ -1,7 +1,7 @@
-export type DiagnosticSeverity = 'error' | 'warning'
+type DiagnosticSeverity = 'error' | 'warning'
 
 /** UTF-8 byte offsets into the source string. */
-export interface ByteSpan {
+interface ByteSpan {
   start: number
   end: number
 }
@@ -13,9 +13,9 @@ export interface Diagnostic {
   report?: string
 }
 
-export type RenderOk = { status: 'ok'; svgs: string[] }
+type RenderOk = { status: 'ok'; svgs: string[] }
 
-export type RenderErr = { status: 'err'; diagnostics: Diagnostic[] }
+type RenderErr = { status: 'err'; diagnostics: Diagnostic[] }
 
 export type RenderResult = RenderOk | RenderErr
 
@@ -24,16 +24,13 @@ export interface PartInfo {
   display_name: string
 }
 
-export type ListPartsOk = { status: 'ok'; parts: PartInfo[] }
+type ListPartsOk = { status: 'ok'; parts: PartInfo[] }
 
-export type ListPartsErr = { status: 'err'; diagnostics: Diagnostic[] }
+type ListPartsErr = { status: 'err'; diagnostics: Diagnostic[] }
 
 export type ListPartsResult = ListPartsOk | ListPartsErr
 
-/** @deprecated Use Diagnostic[] from RenderErr instead. */
-export type RenderError = Diagnostic
-
-export interface EditorSelection {
+interface EditorSelection {
   start: number
   end: number
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useFileStore } from './hooks/useFileStore'
 import { Editor } from './components/Editor'
 import { ErrorPanel } from './components/ErrorPanel'
 import { FileList } from './components/FileList'
@@ -10,20 +11,17 @@ import {
   duplicateFile,
   fileContent,
   isReadOnlyFile,
-  loadFileStore,
   renameFile,
   restoreFile,
-  saveFileStore,
   selectFile,
   updateActiveContent,
-  type FileStoreState,
 } from './fileStore'
 import { useJianpuWorker } from './hooks/useJianpuWorker'
 import type { EditorHandle } from './types'
 import './App.css'
 
 export default function App() {
-  const [store, setStore] = useState<FileStoreState>(loadFileStore)
+  const [store, setStore] = useFileStore()
   const source = fileContent(store, store.active)
   const readOnly = isReadOnlyFile(store.active)
 
@@ -60,10 +58,6 @@ export default function App() {
     },
     [],
   )
-
-  useEffect(() => {
-    saveFileStore(store)
-  }, [store])
 
   const handleSourceChange = useCallback((value: string) => {
     setStore((prev) => updateActiveContent(prev, value))

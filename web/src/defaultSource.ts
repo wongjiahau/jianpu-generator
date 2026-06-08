@@ -60,6 +60,3 @@ how I won- der
 2 2 1 -
 what you are
 `
-
-/** @deprecated Migrated to multi-file store in `fileStore.ts`. */
-export const STORAGE_KEY = 'jianpu:source:v5'
