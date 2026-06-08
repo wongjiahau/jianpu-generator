@@ -218,6 +218,12 @@ fn process_column_line(
     })?;
     match col_action {
         ColAction::Notes(idx) => {
+            if line == "_" {
+                return Err(JianPuError::new(
+                    line_span,
+                    "'_' is only valid on lyrics lines; use '-' for rests in notes".to_string(),
+                ));
+            }
             let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
             let events = token_parser::parse_tokens(tokens)?;
             validate_beats(&events, beats_expected, bar)?;
@@ -230,7 +236,12 @@ fn process_column_line(
             events_acc.extend(events);
         }
         ColAction::Lyrics(idx) => {
-            let syllables = tokenize_lyrics(line);
+            if line.is_empty() {
+                return Err(JianPuError::new(
+                    line_span,
+                    "lyrics line cannot be empty; use '_' for no lyrics".to_string(),
+                ));
+            }
             let Some(acc) = ctx
                 .accumulators
                 .syllables_acc
@@ -242,9 +253,19 @@ fn process_column_line(
                     "lyrics column has no matching notes column",
                 ));
             };
+            if line == "_" {
+                return Ok(());
+            }
+            let syllables = tokenize_lyrics(line);
             acc.extend(syllables);
         }
         ColAction::Chord(chord_idx) => {
+            if line == "_" {
+                return Err(JianPuError::new(
+                    line_span,
+                    "'_' is only valid on lyrics lines".to_string(),
+                ));
+            }
             let events =
                 crate::parser::score::chord_parser::parse(line, ctx.base_offset + line_offset)?;
             let chord_acc = ctx
@@ -269,25 +290,28 @@ fn validate_and_pad_group_lines(
     parts: &[PartColumn],
     base_offset: usize,
 ) -> Result<Vec<(String, usize)>, JianPuError> {
-    let notes_cols_count = parts
-        .iter()
-        .filter(|p| matches!(p, PartColumn::Notes { .. }))
-        .count();
     let group_first_span = group_lines
         .first()
         .map(|(line, off)| Span::new(base_offset + off, base_offset + off + line.len()))
         .unwrap_or_else(|| Span::new(base_offset, base_offset));
-    if data_lines.len() < notes_cols_count {
+
+    if data_lines.is_empty() {
+        return Err(JianPuError::new(
+            group_first_span,
+            "expected at least one data line in measure group".to_string(),
+        ));
+    }
+    if data_lines.len() > parts.len() {
         return Err(JianPuError::new(
             group_first_span,
             format!(
-                "expected {} lines (one per parts column), got {}",
+                "expected at most {} lines (one per parts column), got {}",
                 parts.len(),
                 data_lines.len()
             ),
         ));
     }
-    if data_lines.len() > parts.len() {
+    if data_lines.len() < parts.len() {
         return Err(JianPuError::new(
             group_first_span,
             format!(
@@ -298,9 +322,7 @@ fn validate_and_pad_group_lines(
         ));
     }
 
-    Ok((0..parts.len())
-        .map(|i| data_lines.get(i).cloned().unwrap_or_default())
-        .collect())
+    Ok(data_lines.to_vec())
 }
 
 fn build_parse_result(
@@ -655,6 +677,11 @@ mod tests {
             name: name.to_string(),
         }
     }
+    fn chord_col(name: &str) -> PartColumn {
+        PartColumn::Chord {
+            name: name.to_string(),
+        }
+    }
 
     #[test]
     fn chord_column_events_are_parsed() {
@@ -739,17 +766,108 @@ mod tests {
     }
 
     #[test]
-    fn allows_missing_trailing_lyrics_line_in_subsequent_bars() {
-        // Bar 2 has no lyrics line — it should be padded with empty.
+    fn underscore_on_lyrics_line_means_no_lyrics_for_that_bar() {
+        let content = concat!(
+            "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n",
+            "\n",
+            "5 6 7 1\n",
+            "_\n",
+        );
+        let parts = vec![notes_col(""), lyrics_col("")];
+        let (result, _) = parse(content, 0, &parts).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
+    }
+
+    #[test]
+    fn rejects_omitted_trailing_lyrics_without_precedent() {
         let content = concat!(
             "(time=4/4 key=C4 bpm=120)\n1 2 3 4\na b c d\n",
             "\n",
             "5 6 7 1\n",
         );
         let parts = vec![notes_col(""), lyrics_col("")];
+        let err = parse(content, 0, &parts).unwrap_err();
+        assert!(
+            err.message.contains("expected lyrics line"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn partial_measure_still_needs_ditto_before_diverging_middle_columns() {
+        // A2 lyrics ditto must stay explicit when S1/S2 lines follow with real content.
+        let content = concat!(
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 - 6m -\n",
+            "6* =6 =6 _6 _5 =3 =2~_2\n",
+            "lead lyrics\n",
+            "4* =4 =4 _4 _3 =1 =2~_2\n",
+            "\"\n",
+            "6 - 5 -\n",
+            "alto lyrics\n",
+        );
+        let parts = vec![
+            chord_col("main"),
+            notes_col("A1"),
+            lyrics_col("A1"),
+            notes_col("A2"),
+            lyrics_col("A2"),
+            notes_col("S1"),
+            lyrics_col("S1"),
+            notes_col("S2"),
+            lyrics_col("S2"),
+        ];
         let (result, _) = parse(content, 0, &parts).unwrap();
-        assert_eq!(result.len(), 1);
-        assert_eq!(result[0].lyrics.as_ref().unwrap().syllables.len(), 4);
+        let s1 = result
+            .iter()
+            .find(|p| p.name.as_deref() == Some("S1"))
+            .unwrap();
+        assert_eq!(s1.lyrics.as_ref().unwrap().syllables[0].text, "alto");
+    }
+
+    #[test]
+    fn implicit_trailing_ditto_matches_explicit_ditto() {
+        let explicit = concat!(
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 - - -\n",
+            "1 2 3 4\n",
+            "do re mi fa\n",
+            "\"\n",
+            "\"\n",
+        );
+        let implicit = concat!(
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 - - -\n",
+            "1 2 3 4\n",
+            "do re mi fa\n",
+        );
+        let parts = vec![
+            chord_col("main"),
+            notes_col("A"),
+            lyrics_col("A"),
+            notes_col("B"),
+            lyrics_col("B"),
+        ];
+        let (explicit_result, _) = parse(explicit, 0, &parts).unwrap();
+        let (implicit_result, _) = parse(implicit, 0, &parts).unwrap();
+        assert_eq!(
+            explicit_result[0].score.events.len(),
+            implicit_result[0].score.events.len()
+        );
+        assert_eq!(
+            explicit_result[1].score.events.len(),
+            implicit_result[1].score.events.len()
+        );
+        assert_eq!(
+            explicit_result[0].lyrics.as_ref().unwrap().syllables.len(),
+            implicit_result[0].lyrics.as_ref().unwrap().syllables.len()
+        );
+        assert_eq!(
+            explicit_result[1].lyrics.as_ref().unwrap().syllables.len(),
+            implicit_result[1].lyrics.as_ref().unwrap().syllables.len()
+        );
     }
 
     #[test]

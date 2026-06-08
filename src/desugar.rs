@@ -14,8 +14,92 @@ pub fn desugar_groups(
 ) -> Result<Vec<Vec<(String, usize)>>, JianPuError> {
     groups
         .into_iter()
-        .map(|group| desugar_group(&group, parts))
+        .map(|group| {
+            let padded = pad_implicit_ditto_group(&group, parts)?;
+            desugar_group(&padded, parts)
+        })
         .collect()
+}
+
+/// Pads omitted trailing data lines with implicit `"` ditto markers.
+fn pad_implicit_ditto_group(
+    group: &[(String, usize)],
+    parts: &[PartColumn],
+) -> Result<Vec<(String, usize)>, JianPuError> {
+    let directive_count = if group
+        .first()
+        .map(|(l, _)| l.starts_with('('))
+        .unwrap_or(false)
+    {
+        1
+    } else {
+        0
+    };
+
+    let directive_lines = group.get(..directive_count).unwrap_or(&[]);
+    let data_lines = group.get(directive_count..).unwrap_or(&[]);
+
+    let span = data_lines
+        .last()
+        .or(group.last())
+        .map(|(_, off)| Span::new(*off, *off + 1))
+        .unwrap_or(Span::new(0, 1));
+
+    if data_lines.is_empty() {
+        return Err(JianPuError::new(
+            span,
+            "expected at least one data line in measure group".to_string(),
+        ));
+    }
+
+    if data_lines.len() > parts.len() {
+        return Err(JianPuError::new(
+            span,
+            format!(
+                "expected at most {} lines (one per parts column), got {}",
+                parts.len(),
+                data_lines.len()
+            ),
+        ));
+    }
+
+    let pad_offset = data_lines.last().map(|(_, off)| *off).unwrap_or(0);
+    let mut result_data: Vec<(String, usize)> = data_lines.to_vec();
+
+    for i in data_lines.len()..parts.len() {
+        let col = parts.get(i).ok_or_else(|| {
+            JianPuError::new(
+                Span::new(0, 0),
+                "internal invariant: part column missing for implicit ditto padding",
+            )
+        })?;
+        let col_type = column_type(col);
+        let has_precedent = (0..result_data.len()).any(|j| {
+            parts
+                .get(j)
+                .map(|p| column_type(p) == col_type)
+                .unwrap_or(false)
+        });
+
+        if has_precedent {
+            result_data.push(("\"".to_string(), pad_offset));
+        } else {
+            let name = part_display_name(col);
+            let hint = if matches!(col, PartColumn::Lyrics { .. }) {
+                "write content, '\"' ditto, or '_' for no lyrics"
+            } else {
+                "write content or '\"' ditto"
+            };
+            return Err(JianPuError::new(
+                Span::new(pad_offset, pad_offset + 1),
+                format!("expected {} line for '{name}'; {hint}", col_type_name(col)),
+            ));
+        }
+    }
+
+    let mut result = directive_lines.to_vec();
+    result.extend(result_data);
+    Ok(result)
 }
 
 fn desugar_group(
@@ -106,6 +190,14 @@ fn col_type_name(col: &PartColumn) -> &'static str {
         PartColumn::Notes { .. } => "notes",
         PartColumn::Lyrics { .. } => "lyrics",
         PartColumn::Chord { .. } => "chord",
+    }
+}
+
+fn part_display_name(col: &PartColumn) -> &str {
+    match col {
+        PartColumn::Notes { name } | PartColumn::Lyrics { name } | PartColumn::Chord { name } => {
+            name
+        }
     }
 }
 
@@ -252,5 +344,49 @@ mod tests {
             "got: {}",
             err.message
         );
+    }
+
+    #[test]
+    fn omitted_trailing_notes_line_is_padded_as_implicit_ditto() {
+        let groups = vec![group(&["1 2 3 4"])];
+        let parts = vec![notes("A"), notes("B")];
+        let result = desugar_groups(groups, &parts).unwrap();
+        assert_eq!(result[0][0].0, "1 2 3 4");
+        assert_eq!(result[0][1].0, "1 2 3 4");
+    }
+
+    #[test]
+    fn omitted_trailing_lines_pad_as_ditto_when_precedent_exists() {
+        let groups = vec![group(&["1 - - -", "1 2 3 4", "hello"])];
+        let parts = vec![
+            chord("main"),
+            notes("A"),
+            lyrics("A"),
+            notes("B"),
+            lyrics("B"),
+        ];
+        let result = desugar_groups(groups, &parts).unwrap();
+        assert_eq!(result[0][3].0, "1 2 3 4");
+        assert_eq!(result[0][4].0, "hello");
+    }
+
+    #[test]
+    fn omitted_trailing_lyrics_without_precedent_is_an_error() {
+        let groups = vec![group(&["1 2 3 4"])];
+        let parts = vec![notes("A"), lyrics("A")];
+        let err = desugar_groups(groups, &parts).unwrap_err();
+        assert!(
+            err.message.contains("expected lyrics line"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn ditto_can_copy_underscore_no_lyrics_marker() {
+        let groups = vec![group(&["1 2 3 4", "_", "\""])];
+        let parts = vec![notes("A"), lyrics("A"), lyrics("B")];
+        let result = desugar_groups(groups, &parts).unwrap();
+        assert_eq!(result[0][2].0, "_");
     }
 }

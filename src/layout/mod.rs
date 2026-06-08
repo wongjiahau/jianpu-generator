@@ -249,7 +249,7 @@ mod tests {
 
     /// Build a single-part score with lyrics from bar-separated notes (use `|` to separate bars).
     /// All lyrics syllables are placed in the first bar's lyrics row; the grouper distributes them
-    /// across measures. Subsequent bars omit the lyrics line (parser pads with empty).
+    /// across measures. Subsequent bars use '_' on the lyrics line for no lyrics in that bar.
     fn make_score(score_str: &str, lyrics_str: &str) -> Score {
         let bars: Vec<&str> = score_str
             .split('|')
@@ -265,8 +265,9 @@ mod tests {
                 // Place all lyrics in first bar; grouper distributes across measures
                 score_content.push_str(lyrics_str);
                 score_content.push('\n');
+            } else {
+                score_content.push_str("_\n");
             }
-            // Subsequent bars omit the lyrics line; interleaved parser pads with empty string
             score_content.push('\n'); // blank line separating bar groups
         }
         let input = format!(
