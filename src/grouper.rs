@@ -613,11 +613,11 @@ mod tests {
 
     #[test]
     fn standalone_tie_marker_after_extension_that_flushes_measure() {
-        // `(6---)` fills a 4/4 measure exactly; `7 0 0 0` starts the next group.
+        // `(6---` fills a 4/4 measure exactly; `7)` closes the cross-measure group.
         // The outgoing tie on 6 must carry into the next measure.
         let score = parse_and_group(concat!(
             "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n[parts]\nMelody = notes\n\n",
-            "[score]\n(time=4/4 key=C4 bpm=120)\n(6---)\n\n7 0 0 0\n",
+            "[score]\n(time=4/4 key=C4 bpm=120)\n(6---\n\n7) 0 0 0\n",
         ));
         let notes_m0 = first_part_notes(&score, 0);
         match notes_m0.last().unwrap() {

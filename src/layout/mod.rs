@@ -275,13 +275,14 @@ mod tests {
         let all_syllables = crate::utils::tokenize_lyrics(lyrics_str);
         let mut syllable_idx = 0usize;
         let mut tie_state = LyricTieState::default();
+        let mut group_state = token_parser::GroupParseState::default();
         let mut score_content = String::new();
         score_content.push_str("(time=4/4 key=C4 bpm=120)\n");
         for bar in bars {
             score_content.push_str(bar);
             score_content.push('\n');
             let tokens = tokenizer::tokenize(bar, 0);
-            let events = token_parser::parse_tokens(tokens, &mut token_parser::GroupParseState::default())
+            let events = token_parser::parse_tokens(tokens, &mut group_state)
                 .expect("test score tokens");
             let slots = count_lyric_slots_in_events(&events, &mut tie_state) as usize;
             if slots == 0 {
@@ -1190,7 +1191,7 @@ mod tests {
         // Measure 1: 1 (left bar col) + 4 (directives) + 16 (notes) + 1 (end bar) = 22 cols
         // Measure 2: 1 (left bar col) + 0 + 16 + 1 = 18 cols → 22+16=38 > 28 → wraps to new line
         // 3~ at col 17 in measure 1 should produce a right-half arc ending at the bar line (col 21 = 22-1).
-        let score = make_score("0 0 0 (3) | 3 0 0 0", "a");
+        let score = make_score("0 0 0 (3 | 3) 0 0 0", "a");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let curves = collect_curves(&pages);
         assert!(
@@ -1209,7 +1210,7 @@ mod tests {
         // The continuation note (3 in measure 2) must NOT consume a lyric syllable
         // because prev_tie is preserved across the line boundary.
         // Only the 3~ note in measure 1 should consume a lyric.
-        let score = make_score("0 0 0 (3) | 3 0 0 0", "a");
+        let score = make_score("0 0 0 (3 | 3) 0 0 0", "a");
         let pages = layout(&score, A4_WIDTH, A4_HEIGHT);
         let lyrics = collect_lyric_positions(&pages);
         assert_eq!(

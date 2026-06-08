@@ -8,6 +8,17 @@ use crate::parser::score::tokenizer::RawToken;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct GroupParseState {
     pub open: bool,
+    pub open_note_count: usize,
+}
+
+fn validate_group_note_count(count: usize, span: &Span) -> Result<(), JianPuError> {
+    if count < 2 {
+        return Err(JianPuError::new(
+            span.clone(),
+            "tie/slur group `(…)` must contain at least 2 notes".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 pub fn parse_tokens(
@@ -98,7 +109,8 @@ fn parse_note_token(
         if text.contains(')') {
             i = parse_closing_group_segment(&mut events, &chars, text, i, &span, group_state)?;
         } else {
-            parse_open_group_continuation(&mut events, &chars, text, i, &span)?;
+            let added = parse_open_group_continuation(&mut events, &chars, text, i, &span)?;
+            group_state.open_note_count += added;
             return Ok(events);
         }
     }
@@ -112,7 +124,9 @@ fn parse_note_token(
                 i = inner_end + 1;
             } else {
                 let inner: String = chars[inner_start..].iter().collect();
-                events.extend(parse_open_group(&inner, &span)?);
+                let group_events = parse_open_group(&inner, &span)?;
+                group_state.open_note_count = group_events.len();
+                events.extend(group_events);
                 group_state.open = true;
                 break;
             }
@@ -165,12 +179,16 @@ fn parse_closing_group_segment(
     }
 
     apply_closing_group_ties(&mut atoms);
+    let atom_count = atoms.len();
     events.extend(atoms.into_iter().map(atom_to_event));
 
     if i < chars.len() && chars[i] == ')' {
+        validate_group_note_count(group_state.open_note_count + atom_count, span)?;
         group_state.open = false;
+        group_state.open_note_count = 0;
         i += 1;
     } else {
+        group_state.open_note_count += atom_count;
         group_state.open = true;
     }
 
@@ -206,9 +224,10 @@ fn parse_open_group_continuation(
     }
 
     apply_open_group_ties(&mut atoms);
+    let added = atoms.len();
     events.extend(atoms.into_iter().map(atom_to_event));
 
-    Ok(i)
+    Ok(added)
 }
 
 fn find_closing_paren(chars: &[char], start: usize) -> Option<usize> {
@@ -259,6 +278,7 @@ fn parse_atoms_from_text(text: &str, span: &Span) -> Result<Vec<ParsedAtom>, Jia
 
 fn parse_closed_group(inner: &str, span: &Span) -> Result<Vec<ScoreEvent>, JianPuError> {
     let mut atoms = parse_atoms_from_text(inner, span)?;
+    validate_group_note_count(atoms.len(), span)?;
     apply_closed_group_ties(&mut atoms);
     Ok(atoms.into_iter().map(atom_to_event).collect())
 }
@@ -738,10 +758,16 @@ mod tests {
     }
 
     #[test]
-    fn single_note_group_ties_to_next() {
-        let events = parse("(3)").unwrap();
-        assert_eq!(events.len(), 1);
-        assert!(note(&events, 0).tie);
+    fn rejects_single_note_group() {
+        assert!(parse("(3)").is_err());
+        assert!(parse("(5)").is_err());
+    }
+
+    #[test]
+    fn rejects_single_note_cross_measure_group() {
+        let mut state = GroupParseState::default();
+        parse_with_state("(1", &mut state).unwrap();
+        assert!(parse_with_state(")", &mut state).is_err());
     }
 
     #[test]
@@ -763,7 +789,10 @@ mod tests {
 
     #[test]
     fn parses_cross_measure_group_continuation() {
-        let mut state = GroupParseState { open: true };
+        let mut state = GroupParseState {
+            open: true,
+            open_note_count: 1,
+        };
         let events = parse_with_state("2)345", &mut state).unwrap();
         assert_eq!(events.len(), 4);
         assert!(!note(&events, 0).tie);

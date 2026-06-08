@@ -223,9 +223,10 @@ Parentheses connect notes with tie/slur arcs (happi123-style 连音符). A group
 |------|---------|
 | `(12)` | Slur/tie from 1 into 2 |
 | `(433)` | Slur chain across 4→3→3 |
-| `(3)` | Outgoing tie/slur to the next note (including across a bar line) |
 | `(6-7)` | Note 6 extended one beat (`6-`), slurred into 7 |
 | `111(1` … `2)345` | Cross-measure slur: `(1` opens in bar 1, `2)` closes in bar 2 |
+
+A group must contain **at least 2 notes** (counting notes across a cross-measure open/close). Single-note groups like `(5)` are invalid.
 
 Adjacent digits without spaces also start new notes: `505` is three quarter notes; `(12)31` is a group plus two more notes.
 

@@ -1028,9 +1028,9 @@ mod tests {
     #[test]
     fn cross_measure_tie_continuation_needs_fewer_lyrics() {
         let content = concat!(
-            "(time=4/4 key=C4 bpm=120)\n0 0 0 (3)\na\n",
+            "(time=4/4 key=C4 bpm=120)\n0 0 0 (3\na\n",
             "\n",
-            "3 0 0 0\n",
+            "3) 0 0 0\n",
             "_\n",
         );
         let declarations = vec![decl("", PartKind::NotesWithLyrics)];
