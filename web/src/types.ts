@@ -22,6 +22,7 @@ export type RenderResult = RenderOk | RenderErr
 export interface PartInfo {
   abbreviation: string
   display_name: string
+  has_lyrics: boolean
 }
 
 type ListPartsOk = { status: 'ok'; parts: PartInfo[] }

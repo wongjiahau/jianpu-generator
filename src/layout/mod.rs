@@ -133,7 +133,13 @@ fn format_chord_symbol(chord: &crate::ast::grouped::GroupedChord) -> String {
 fn part_row_height(row: &crate::ast::grouped::PartRow) -> u32 {
     use crate::ast::grouped::PartRow;
     match row {
-        PartRow::Notes(_) => 4,
+        PartRow::Notes(part) => {
+            if part.lyrics.is_some() {
+                4
+            } else {
+                3
+            }
+        }
         PartRow::Chord(_) => 2,
     }
 }
@@ -1081,8 +1087,8 @@ mod tests {
         );
         if let GridContent::BarLine { height_in_rows } = &left_bars[0].content {
             assert_eq!(
-                *height_in_rows, 7,
-                "left bar height should be row_group_height-1 = 8-1 = 7 for two-part score"
+                *height_in_rows, 5,
+                "left bar height should be row_group_height-1 = 6-1 = 5 for two-part score"
             );
         } else {
             panic!("expected BarLine");

@@ -290,6 +290,12 @@
   list-style: none;
 }
 
+.part-toggle-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .part-toggle {
   display: inline-flex;
   align-items: center;
@@ -305,6 +311,11 @@
 
 .part-toggle-label {
   font-family: var(--mono);
+}
+
+.part-toggle--lyrics .part-toggle-label {
+  font-family: inherit;
+  color: var(--muted);
 }
 
 .editor-surface {

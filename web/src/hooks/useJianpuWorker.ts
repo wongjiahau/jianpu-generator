@@ -14,6 +14,19 @@ function enabledTracksForRender(
   return enabled
 }
 
+function disabledLyricsForRender(
+  parts: PartInfo[],
+  disabledLyrics: ReadonlySet<string>,
+): string[] | undefined {
+  const lyricParts = parts.filter((part) => part.has_lyrics)
+  if (lyricParts.length === 0) return undefined
+  const disabled = lyricParts
+    .filter((part) => disabledLyrics.has(part.abbreviation))
+    .map((part) => part.abbreviation)
+  if (disabled.length === 0) return undefined
+  return disabled
+}
+
 interface JianpuWorkerState {
   parts: PartInfo[]
   partsLoading: boolean
@@ -48,6 +61,7 @@ function pdfFilenameFromActiveFile(activeFile: string): string {
 export function useJianpuWorker(
   source: string,
   disabledParts: ReadonlySet<string>,
+  disabledLyrics: ReadonlySet<string>,
   activeFile: string,
   debounceMs = 300,
 ): JianpuWorkerState {
@@ -72,15 +86,21 @@ export function useJianpuWorker(
   const sourceRef = useRef(source)
   const activeFileRef = useRef(activeFile)
   const enabledTracksRef = useRef<string[] | undefined>(undefined)
+  const disabledLyricsRef = useRef<string[] | undefined>(undefined)
 
   const enabledTracks = useMemo(
     () => enabledTracksForRender(parts, disabledParts),
     [parts, disabledParts],
   )
+  const disabledLyricsTracks = useMemo(
+    () => disabledLyricsForRender(parts, disabledLyrics),
+    [parts, disabledLyrics],
+  )
 
   sourceRef.current = source
   activeFileRef.current = activeFile
   enabledTracksRef.current = enabledTracks
+  disabledLyricsRef.current = disabledLyricsTracks
 
   const setNextWavUrl = useCallback((next: string | null) => {
     if (wavUrlRef.current) {
@@ -186,12 +206,13 @@ export function useJianpuWorker(
         source,
         id,
         enabledTracks,
+        disabledLyrics: disabledLyricsTracks,
       }
       worker.postMessage(payload)
     }, debounceMs)
 
     return () => window.clearTimeout(timer)
-  }, [source, enabledTracks, debounceMs])
+  }, [source, enabledTracks, disabledLyricsTracks, debounceMs])
 
   const exportPdf = useCallback(() => {
     const worker = workerRef.current
@@ -206,6 +227,7 @@ export function useJianpuWorker(
       source: sourceRef.current,
       id,
       enabledTracks: enabledTracksRef.current,
+      disabledLyrics: disabledLyricsRef.current,
     }
     worker.postMessage(payload)
   }, [pdfExporting])

@@ -22,17 +22,25 @@ const generatePdf =
     ? (jianpuWasm.generate_pdf as (
         source: string,
         enabledTracks?: string[],
+        disabledLyrics?: string[],
       ) => GeneratePdfResult)
     : null
 
 export type WorkerRequest =
-  | { type: 'render'; source: string; id: number; enabledTracks?: string[] }
+  | {
+      type: 'render'
+      source: string
+      id: number
+      enabledTracks?: string[]
+      disabledLyrics?: string[]
+    }
   | { type: 'listParts'; source: string; id: number }
   | {
       type: 'generatePdf'
       source: string
       id: number
       enabledTracks?: string[]
+      disabledLyrics?: string[]
     }
 
 export type WorkerResponse =
@@ -107,7 +115,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       return
     }
 
-    const result = generatePdf(msg.source, msg.enabledTracks)
+    const result = generatePdf(
+      msg.source,
+      msg.enabledTracks,
+      msg.disabledLyrics,
+    )
     if (result.status === 'ok') {
       const pdfBuffer = binaryBufferFromResult(result.pdf)
       postMessage(
@@ -131,7 +143,11 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
   if (msg.type !== 'render') return
 
-  const result = render(msg.source, msg.enabledTracks) as RenderResult
+  const result = render(
+    msg.source,
+    msg.enabledTracks,
+    msg.disabledLyrics,
+  ) as RenderResult
   if (result.status === 'ok') {
     let wavBuffer: ArrayBuffer | undefined
     if (generateWav) {

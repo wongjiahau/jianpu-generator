@@ -28,6 +28,9 @@ export default function App() {
   const [disabledParts, setDisabledParts] = useState<Set<string>>(
     () => new Set(),
   )
+  const [disabledLyrics, setDisabledLyrics] = useState<Set<string>>(
+    () => new Set(),
+  )
   const editorRef = useRef<EditorHandle>(null)
   const {
     parts,
@@ -40,7 +43,7 @@ export default function App() {
     diagnostics,
     rendering,
     exportPdf,
-  } = useJianpuWorker(source, disabledParts, store.active)
+  } = useJianpuWorker(source, disabledParts, disabledLyrics, store.active)
 
   useEffect(() => {
     const abbreviations = new Set(parts.map((part) => part.abbreviation))
@@ -52,9 +55,40 @@ export default function App() {
     })
   }, [parts])
 
+  useEffect(() => {
+    const lyricAbbreviations = new Set(
+      parts
+        .filter((part) => part.has_lyrics)
+        .map((part) => part.abbreviation),
+    )
+    setDisabledLyrics((prev) => {
+      const next = new Set(
+        [...prev].filter((abbreviation) =>
+          lyricAbbreviations.has(abbreviation),
+        ),
+      )
+      return next.size === prev.size ? prev : next
+    })
+  }, [parts])
+
   const handlePartToggle = useCallback(
     (abbreviation: string, enabled: boolean) => {
       setDisabledParts((prev) => {
+        const next = new Set(prev)
+        if (enabled) {
+          next.delete(abbreviation)
+        } else {
+          next.add(abbreviation)
+        }
+        return next
+      })
+    },
+    [],
+  )
+
+  const handleLyricsToggle = useCallback(
+    (abbreviation: string, enabled: boolean) => {
+      setDisabledLyrics((prev) => {
         const next = new Set(prev)
         if (enabled) {
           next.delete(abbreviation)
@@ -128,7 +162,9 @@ export default function App() {
                   <PartToggles
                     parts={parts}
                     disabledParts={disabledParts}
-                    onToggle={handlePartToggle}
+                    disabledLyrics={disabledLyrics}
+                    onPartToggle={handlePartToggle}
+                    onLyricsToggle={handleLyricsToggle}
                     loading={partsLoading}
                   />
                 }

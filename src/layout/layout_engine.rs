@@ -52,8 +52,8 @@ impl<'a> LayoutEngine<'a> {
             .measures
             .first()
             .map(|m| m.parts.iter().map(part_row_height).sum::<u32>())
-            .unwrap_or(4)
-            .max(4);
+            .unwrap_or(3)
+            .max(3);
         let bar_height: u32 = row_group_height - 1;
 
         let num_notes_parts = score
@@ -418,7 +418,7 @@ impl<'a> LayoutEngine<'a> {
                         );
                     }
                     notes_idx += 1;
-                    main_row_cursor += 4;
+                    main_row_cursor += part_row_height(part_row_enum);
                 }
                 PartRow::Chord(chord_slice) => {
                     emit_chord_part(

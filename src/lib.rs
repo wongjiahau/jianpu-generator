@@ -16,7 +16,8 @@ pub mod pdf;
 #[cfg(feature = "wav")]
 pub mod wav;
 
-use ast::grouped::Score;
+use ast::grouped::{PartRow, Score};
+use ast::parsed::PartKind;
 use error::JianPuError;
 
 /// A part declared in the `[parts]` section.
@@ -26,6 +27,8 @@ pub struct PartInfo {
     pub abbreviation: String,
     /// Full display name from the declaration left-hand side.
     pub display_name: String,
+    /// Whether the part declaration includes a lyrics column.
+    pub has_lyrics: bool,
 }
 
 /// Parse and group a `.jianpu` source string into a [`Score`].
@@ -56,6 +59,7 @@ pub fn list_parts_from_source(source: &str, filename: &str) -> Result<Vec<PartIn
         .map(|d| PartInfo {
             abbreviation: d.abbreviation,
             display_name: d.display_name,
+            has_lyrics: d.kind == PartKind::NotesWithLyrics,
         })
         .collect())
 }
@@ -69,8 +73,23 @@ pub fn render_svgs_from_source_filtered(
     filename: &str,
     enabled_tracks: Option<&[String]>,
 ) -> Result<Vec<String>, JianPuError> {
+    render_svgs_from_source_filtered_with_lyrics(source, filename, enabled_tracks, None)
+}
+
+/// Parse, group, optionally filter tracks and lyrics, and render SVG page strings.
+///
+/// When `enabled_tracks` is `None`, all parts are rendered.
+/// When `Some(tracks)` is empty, no parts are rendered.
+/// When `disabled_lyrics` lists part abbreviations, lyrics are hidden for those parts.
+pub fn render_svgs_from_source_filtered_with_lyrics(
+    source: &str,
+    filename: &str,
+    enabled_tracks: Option<&[String]>,
+    disabled_lyrics: Option<&[String]>,
+) -> Result<Vec<String>, JianPuError> {
     let mut score = compile(source, filename)?;
     apply_track_filter(&mut score, enabled_tracks);
+    apply_lyrics_filter(&mut score, disabled_lyrics);
     Ok(render_svgs(&score))
 }
 
@@ -96,6 +115,31 @@ pub fn filter_tracks(score: &mut Score, tracks: &[String]) {
         return;
     }
     apply_track_filter(score, Some(tracks));
+}
+
+/// Hide lyrics on parts whose abbreviations appear in `disabled_lyrics`.
+///
+/// `None` and `Some([])` keep every lyric line.
+pub fn apply_lyrics_filter(score: &mut Score, disabled_lyrics: Option<&[String]>) {
+    let Some(tracks) = disabled_lyrics else {
+        return;
+    };
+    if tracks.is_empty() {
+        return;
+    }
+    for measure in &mut score.measures {
+        for part in &mut measure.parts {
+            if let PartRow::Notes(part_slice) = part {
+                if part_slice
+                    .name
+                    .as_ref()
+                    .is_some_and(|name| tracks.contains(name))
+                {
+                    part_slice.lyrics = None;
+                }
+            }
+        }
+    }
 }
 
 /// Parse, group, optionally filter tracks, and synthesize WAV bytes.
@@ -124,8 +168,20 @@ pub fn write_pdf_from_source_filtered(
     filename: &str,
     enabled_tracks: Option<&[String]>,
 ) -> Result<Vec<u8>, JianPuError> {
+    write_pdf_from_source_filtered_with_lyrics(source, filename, enabled_tracks, None)
+}
+
+/// Parse, group, optionally filter tracks and lyrics, and write PDF bytes.
+#[cfg(feature = "pdf")]
+pub fn write_pdf_from_source_filtered_with_lyrics(
+    source: &str,
+    filename: &str,
+    enabled_tracks: Option<&[String]>,
+    disabled_lyrics: Option<&[String]>,
+) -> Result<Vec<u8>, JianPuError> {
     let mut score = compile(source, filename)?;
     apply_track_filter(&mut score, enabled_tracks);
+    apply_lyrics_filter(&mut score, disabled_lyrics);
     let svgs = render_svgs(&score);
     pdf::write_pdf(&svgs)
 }
@@ -157,6 +213,73 @@ mod tests {
         assert_eq!(parts[0].display_name, "main");
         assert_eq!(parts[1].abbreviation, "A1&T");
         assert_eq!(parts[1].display_name, "Alto 1 & Tenor");
+        assert!(!parts[0].has_lyrics);
+        assert!(parts[1].has_lyrics);
+    }
+
+    #[test]
+    fn hidden_lyrics_do_not_reserve_lyric_row_space() {
+        let input = concat!(
+            "[metadata]\n",
+            "title = \"t\"\n",
+            "author = \"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Soprano = notes lyrics\n",
+            "Alto = notes lyrics\n",
+            "\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "sop sop sop sop\n",
+            "5 6 7 1\n",
+            "alt alt alt alt\n",
+        );
+        let all = render_svgs_from_source(input, "test.jianpu").unwrap();
+        let alto_lyrics_hidden = render_svgs_from_source_filtered_with_lyrics(
+            input,
+            "test.jianpu",
+            None,
+            Some(&["Alto".into()]),
+        )
+        .unwrap();
+        assert_ne!(
+            all[0].len(),
+            alto_lyrics_hidden[0].len(),
+            "hiding one part's lyrics should change rendered SVG size"
+        );
+    }
+
+    #[test]
+    fn render_svgs_from_source_filtered_can_hide_lyrics_per_part() {
+        let input = concat!(
+            "[metadata]\n",
+            "title = \"t\"\n",
+            "author = \"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Soprano = notes lyrics\n",
+            "Alto = notes lyrics\n",
+            "\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "sop sop sop sop\n",
+            "5 6 7 1\n",
+            "alt alt alt alt\n",
+        );
+        let all = render_svgs_from_source(input, "test.jianpu").unwrap();
+        let alto_lyrics_hidden = render_svgs_from_source_filtered_with_lyrics(
+            input,
+            "test.jianpu",
+            None,
+            Some(&["Alto".into()]),
+        )
+        .unwrap();
+        assert!(all[0].contains("sop"));
+        assert!(all[0].contains("alt"));
+        assert!(alto_lyrics_hidden[0].contains("sop"));
+        assert!(!alto_lyrics_hidden[0].contains("alt"));
     }
 
     #[test]

@@ -1,8 +1,9 @@
 use jianpu_generator::{
-    error::JianPuError, error_reporter, list_parts_from_source, render_svgs_from_source_filtered,
+    error::JianPuError, error_reporter, list_parts_from_source,
+    render_svgs_from_source_filtered_with_lyrics,
 };
 #[cfg(feature = "pdf")]
-use jianpu_generator::write_pdf_from_source_filtered;
+use jianpu_generator::write_pdf_from_source_filtered_with_lyrics;
 #[cfg(feature = "wav")]
 use jianpu_generator::write_wav_from_source_filtered;
 use serde::Serialize;
@@ -37,6 +38,7 @@ struct DiagnosticOut {
 struct PartOut {
     abbreviation: String,
     display_name: String,
+    has_lyrics: bool,
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -82,9 +84,14 @@ fn diagnostic_from_error(source: &str, e: JianPuError) -> DiagnosticOut {
     }
 }
 
-fn render_response(source: &str, enabled_tracks: Option<Vec<String>>) -> RenderResponse {
+fn render_response(
+    source: &str,
+    enabled_tracks: Option<Vec<String>>,
+    disabled_lyrics: Option<Vec<String>>,
+) -> RenderResponse {
     let tracks = enabled_tracks.as_deref();
-    match render_svgs_from_source_filtered(source, "input.jianpu", tracks) {
+    let lyrics = disabled_lyrics.as_deref();
+    match render_svgs_from_source_filtered_with_lyrics(source, "input.jianpu", tracks, lyrics) {
         Ok(svgs) => RenderResponse::Ok { svgs },
         Err(e) => RenderResponse::Err {
             diagnostics: vec![diagnostic_from_error(source, e)],
@@ -100,6 +107,7 @@ fn list_parts_response(source: &str) -> ListPartsResponse {
                 .map(|part| PartOut {
                     abbreviation: part.abbreviation,
                     display_name: part.display_name,
+                    has_lyrics: part.has_lyrics,
                 })
                 .collect(),
         },
@@ -121,9 +129,14 @@ fn generate_wav_response(source: &str, enabled_tracks: Option<Vec<String>>) -> G
 }
 
 #[cfg(feature = "pdf")]
-fn generate_pdf_response(source: &str, enabled_tracks: Option<Vec<String>>) -> GeneratePdfResponse {
+fn generate_pdf_response(
+    source: &str,
+    enabled_tracks: Option<Vec<String>>,
+    disabled_lyrics: Option<Vec<String>>,
+) -> GeneratePdfResponse {
     let tracks = enabled_tracks.as_deref();
-    match write_pdf_from_source_filtered(source, "input.jianpu", tracks) {
+    let lyrics = disabled_lyrics.as_deref();
+    match write_pdf_from_source_filtered_with_lyrics(source, "input.jianpu", tracks, lyrics) {
         Ok(pdf) => GeneratePdfResponse::Ok { pdf },
         Err(e) => GeneratePdfResponse::Err {
             diagnostics: vec![diagnostic_from_error(source, e)],
@@ -148,10 +161,16 @@ fn to_js_value<T: Serialize>(value: &T) -> JsValue {
 /// When `enabled_tracks` is omitted, every part is rendered. When provided, only
 /// listed abbreviations are kept (`[]` renders no parts).
 ///
+/// When `disabled_lyrics` lists part abbreviations, lyrics are hidden for those parts.
+///
 /// `span.start` / `span.end` are UTF-8 byte offsets into `source`.
 #[wasm_bindgen]
-pub fn render(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValue {
-    to_js_value(&render_response(source, enabled_tracks))
+pub fn render(
+    source: &str,
+    enabled_tracks: Option<Vec<String>>,
+    disabled_lyrics: Option<Vec<String>>,
+) -> JsValue {
+    to_js_value(&render_response(source, enabled_tracks, disabled_lyrics))
 }
 
 /// Parse `.jianpu` source and return declared parts from the `[parts]` section.
@@ -209,10 +228,14 @@ pub fn generate_wav(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValu
 }
 
 #[cfg(feature = "pdf")]
-fn generate_pdf_to_js(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValue {
+fn generate_pdf_to_js(
+    source: &str,
+    enabled_tracks: Option<Vec<String>>,
+    disabled_lyrics: Option<Vec<String>>,
+) -> JsValue {
     use js_sys::{Object, Reflect, Uint8Array};
 
-    match generate_pdf_response(source, enabled_tracks) {
+    match generate_pdf_response(source, enabled_tracks, disabled_lyrics) {
         GeneratePdfResponse::Ok { pdf } => {
             let obj = Object::new();
             if Reflect::set(
@@ -249,8 +272,12 @@ fn generate_pdf_to_js(source: &str, enabled_tracks: Option<Vec<String>>) -> JsVa
 /// - `{ "status": "err", "diagnostics": [...] }`
 #[cfg(feature = "pdf")]
 #[wasm_bindgen]
-pub fn generate_pdf(source: &str, enabled_tracks: Option<Vec<String>>) -> JsValue {
-    generate_pdf_to_js(source, enabled_tracks)
+pub fn generate_pdf(
+    source: &str,
+    enabled_tracks: Option<Vec<String>>,
+    disabled_lyrics: Option<Vec<String>>,
+) -> JsValue {
+    generate_pdf_to_js(source, enabled_tracks, disabled_lyrics)
 }
 
 #[cfg(test)]
@@ -272,7 +299,7 @@ mod tests {
             "1 2 3 4\n",
             "a b c d\n",
         );
-        let resp = render_response(input, None);
+        let resp = render_response(input, None, None);
         match resp {
             RenderResponse::Ok { svgs } => {
                 assert_eq!(svgs.len(), 1);
@@ -312,6 +339,39 @@ mod tests {
     }
 
     #[test]
+    fn render_with_disabled_lyrics_hides_lyrics_for_part() {
+        let input = concat!(
+            "[metadata]\n",
+            "title = \"t\"\n",
+            "author = \"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Soprano = notes lyrics\n",
+            "Alto = notes lyrics\n",
+            "\n",
+            "[score]\n",
+            "(time=4/4 key=C4 bpm=120)\n",
+            "1 2 3 4\n",
+            "sop sop sop sop\n",
+            "5 6 7 1\n",
+            "alt alt alt alt\n",
+        );
+        let all = match render_response(input, None, None) {
+            RenderResponse::Ok { svgs } => svgs,
+            RenderResponse::Err { .. } => panic!("expected ok"),
+        };
+        let alto_lyrics_hidden =
+            match render_response(input, None, Some(vec!["Alto".into()])) {
+                RenderResponse::Ok { svgs } => svgs,
+                RenderResponse::Err { .. } => panic!("expected ok"),
+            };
+        assert!(all[0].contains("sop"));
+        assert!(all[0].contains("alt"));
+        assert!(alto_lyrics_hidden[0].contains("sop"));
+        assert!(!alto_lyrics_hidden[0].contains("alt"));
+    }
+
+    #[test]
     fn render_with_enabled_tracks_filters_parts() {
         let input = concat!(
             "[metadata]\n",
@@ -327,11 +387,11 @@ mod tests {
             "1 2 3 4\n",
             "5 6 7 1\n",
         );
-        let all = match render_response(input, None) {
+        let all = match render_response(input, None, None) {
             RenderResponse::Ok { svgs } => svgs,
             RenderResponse::Err { .. } => panic!("expected ok"),
         };
-        let soprano_only = match render_response(input, Some(vec!["Soprano".into()])) {
+        let soprano_only = match render_response(input, Some(vec!["Soprano".into()]), None) {
             RenderResponse::Ok { svgs } => svgs,
             RenderResponse::Err { .. } => panic!("expected ok"),
         };
@@ -340,7 +400,7 @@ mod tests {
 
     #[test]
     fn err_response_has_structured_diagnostic() {
-        let resp = render_response("not valid jianpu", None);
+        let resp = render_response("not valid jianpu", None, None);
         match resp {
             RenderResponse::Err { diagnostics } => {
                 assert!(!diagnostics.is_empty());
@@ -356,7 +416,7 @@ mod tests {
     #[test]
     fn demo_jianpu_renders() {
         let source = include_str!("../../../demo.jianpu");
-        let resp = render_response(source, None);
+        let resp = render_response(source, None, None);
         match resp {
             RenderResponse::Ok { svgs } => {
                 assert!(
@@ -377,7 +437,7 @@ mod tests {
     #[test]
     fn demo_jianpu_generates_pdf() {
         let source = include_str!("../../../demo.jianpu");
-        let resp = generate_pdf_response(source, None);
+        let resp = generate_pdf_response(source, None, None);
         match resp {
             GeneratePdfResponse::Ok { pdf } => {
                 assert!(pdf.len() > 4);
@@ -427,7 +487,7 @@ mod tests {
             "a b c d\n",
         );
         let token_byte_start = source.find('x').expect("error token in source");
-        let resp = render_response(source, None);
+        let resp = render_response(source, None, None);
         let RenderResponse::Err { diagnostics } = resp else {
             panic!("expected err");
         };
