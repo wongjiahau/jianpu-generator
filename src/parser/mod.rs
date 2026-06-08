@@ -19,19 +19,13 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
         match section.kind {
             SectionKind::Metadata => {
                 if raw_metadata.is_some() {
-                    return Err(JianPuError::new(
-                        doc_span.clone(),
-                        "duplicate [metadata] section",
-                    ));
+                    return Err(JianPuError::new(doc_span, "duplicate [metadata] section"));
                 }
                 raw_metadata = Some((section.content, section.content_offset));
             }
             SectionKind::Score => {
                 if raw_score.is_some() {
-                    return Err(JianPuError::new(
-                        doc_span.clone(),
-                        "duplicate [score] section",
-                    ));
+                    return Err(JianPuError::new(doc_span, "duplicate [score] section"));
                 }
                 raw_score = Some((section.content, section.content_offset));
             }

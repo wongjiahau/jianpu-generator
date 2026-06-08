@@ -6,6 +6,27 @@ use crate::error::{JianPuError, Span, Spanned};
 use crate::parser::score::{token_parser, tokenizer};
 use crate::utils::tokenize_lyrics;
 
+enum ColAction {
+    Notes(usize),
+    Lyrics(usize),
+    Chord(usize),
+}
+
+struct ParseAccumulators {
+    events_acc: Vec<Vec<Spanned<ScoreEvent>>>,
+    syllables_acc: Vec<Option<Vec<crate::ast::parsed::Syllable>>>,
+    chord_events_acc: Vec<Vec<Vec<ParsedChordEvent>>>,
+}
+
+struct BarGroupContext<'a> {
+    base_offset: usize,
+    parts: &'a [PartColumn],
+    col_actions: &'a [ColAction],
+    time_num: &'a mut u8,
+    time_den: &'a mut u8,
+    accumulators: &'a mut ParseAccumulators,
+}
+
 pub fn parse(
     content: &str,
     base_offset: usize,
@@ -37,15 +58,44 @@ pub fn parse(
         })
         .collect();
 
-    enum ColAction {
-        Notes(usize),
-        Lyrics(usize),
-        Chord(usize),
+    let col_actions = build_col_actions(parts, &notes_names, base_offset, content.len())?;
+    let mut accumulators = init_accumulators(&notes_names, &chord_names, parts);
+
+    let mut time_num: u8 = 4;
+    let mut time_den: u8 = 4;
+
+    let mut ctx = BarGroupContext {
+        base_offset,
+        parts,
+        col_actions: &col_actions,
+        time_num: &mut time_num,
+        time_den: &mut time_den,
+        accumulators: &mut accumulators,
+    };
+
+    for (bar_idx, group_lines) in groups.iter().enumerate() {
+        process_bar_group(group_lines, bar_idx + 1, &mut ctx)?;
     }
 
+    build_parse_result(
+        base_offset,
+        content.len(),
+        &notes_names,
+        chord_names,
+        accumulators,
+    )
+}
+
+fn build_col_actions(
+    parts: &[PartColumn],
+    notes_names: &[String],
+    base_offset: usize,
+    content_len: usize,
+) -> Result<Vec<ColAction>, JianPuError> {
     let mut chord_name_idx = 0usize;
     let mut col_actions = Vec::with_capacity(parts.len());
-    let parts_span = Span::new(base_offset, base_offset + content.len());
+    let parts_span = Span::new(base_offset, base_offset + content_len);
+
     for p in parts {
         match p {
             PartColumn::Notes { name } => {
@@ -73,134 +123,231 @@ pub fn parse(
         }
     }
 
-    let mut events_acc: Vec<Vec<Spanned<ScoreEvent>>> =
-        (0..notes_names.len()).map(|_| Vec::new()).collect();
+    Ok(col_actions)
+}
+
+fn init_accumulators(
+    notes_names: &[String],
+    chord_names: &[String],
+    parts: &[PartColumn],
+) -> ParseAccumulators {
     let mut syllables_acc: Vec<Option<Vec<crate::ast::parsed::Syllable>>> =
         (0..notes_names.len()).map(|_| None).collect();
-    let mut chord_events_acc: Vec<Vec<Vec<ParsedChordEvent>>> =
-        (0..chord_names.len()).map(|_| Vec::new()).collect();
 
     for p in parts {
         if let PartColumn::Lyrics { name } = p {
             if let Some(idx) = notes_names.iter().position(|n| n == name) {
-                syllables_acc[idx] = Some(Vec::new());
-            }
-        }
-    }
-
-    let mut time_num: u8 = 4;
-    let mut time_den: u8 = 4;
-
-    for (bar_idx, group_lines) in groups.iter().enumerate() {
-        let bar = bar_idx + 1;
-
-        let (directive_events, data_lines) = split_directive(group_lines, bar)?;
-
-        for e in &directive_events {
-            if let ScoreEvent::TimeSignatureChange {
-                numerator,
-                denominator,
-            } = &e.value
-            {
-                time_num = *numerator;
-                time_den = *denominator;
-            }
-        }
-
-        // Allow fewer lines than parts only when trailing columns are all Lyrics columns;
-        // missing lyrics lines are treated as empty (no syllables).
-        // Too many lines or too few notes lines are always errors.
-        let notes_cols_count = parts
-            .iter()
-            .filter(|p| matches!(p, PartColumn::Notes { .. }))
-            .count();
-        let group_first_span = {
-            let (line, off) = &group_lines[0];
-            Span::new(base_offset + off, base_offset + off + line.len())
-        };
-        if data_lines.len() < notes_cols_count {
-            return Err(JianPuError::new(
-                group_first_span.clone(),
-                format!(
-                    "expected {} lines (one per parts column), got {}",
-                    parts.len(),
-                    data_lines.len()
-                ),
-            ));
-        }
-        if data_lines.len() > parts.len() {
-            return Err(JianPuError::new(
-                group_first_span,
-                format!(
-                    "expected {} lines (one per parts column), got {}",
-                    parts.len(),
-                    data_lines.len()
-                ),
-            ));
-        }
-
-        // Pad with empty strings/zero-offsets for missing trailing lyrics lines
-        let padded_data: Vec<(String, usize)> = (0..parts.len())
-            .map(|i| data_lines.get(i).cloned().unwrap_or_default())
-            .collect();
-
-        if !directive_events.is_empty() {
-            events_acc[0].extend(directive_events);
-        }
-
-        let beats_expected = beats_per_measure(time_num, time_den);
-
-        for (i, (line, line_offset)) in padded_data.iter().enumerate() {
-            match col_actions[i] {
-                ColAction::Notes(idx) => {
-                    let tokens = tokenizer::tokenize(line, base_offset + line_offset);
-                    let events = token_parser::parse_tokens(tokens)?;
-                    validate_beats(&events, beats_expected, bar)?;
-                    events_acc[idx].extend(events);
-                }
-                ColAction::Lyrics(idx) => {
-                    let syllables = tokenize_lyrics(line);
-                    let line_span = Span::new(
-                        base_offset + line_offset,
-                        base_offset + line_offset + line.len(),
-                    );
-                    let Some(acc) = syllables_acc[idx].as_mut() else {
-                        return Err(JianPuError::new(
-                            line_span,
-                            "lyrics column has no matching notes column",
-                        ));
-                    };
-                    acc.extend(syllables);
-                }
-                ColAction::Chord(chord_idx) => {
-                    let events =
-                        crate::parser::score::chord_parser::parse(line, base_offset + line_offset)?;
-                    chord_events_acc[chord_idx].push(events);
+                if let Some(slot) = syllables_acc.get_mut(idx) {
+                    *slot = Some(Vec::new());
                 }
             }
         }
     }
 
+    ParseAccumulators {
+        events_acc: (0..notes_names.len()).map(|_| Vec::new()).collect(),
+        syllables_acc,
+        chord_events_acc: (0..chord_names.len()).map(|_| Vec::new()).collect(),
+    }
+}
+
+fn process_bar_group(
+    group_lines: &[(String, usize)],
+    bar: usize,
+    ctx: &mut BarGroupContext<'_>,
+) -> Result<(), JianPuError> {
+    let (directive_events, data_lines) = split_directive(group_lines, bar)?;
+
+    for e in &directive_events {
+        if let ScoreEvent::TimeSignatureChange {
+            numerator,
+            denominator,
+        } = &e.value
+        {
+            *ctx.time_num = *numerator;
+            *ctx.time_den = *denominator;
+        }
+    }
+
+    let padded_data =
+        validate_and_pad_group_lines(group_lines, data_lines, ctx.parts, ctx.base_offset)?;
+
+    if !directive_events.is_empty() {
+        let events_acc = ctx.accumulators.events_acc.get_mut(0).ok_or_else(|| {
+            JianPuError::new(
+                Span::new(ctx.base_offset, ctx.base_offset + 1),
+                "internal error: missing notes accumulator for directive events",
+            )
+        })?;
+        events_acc.extend(directive_events);
+    }
+
+    let beats_expected = beats_per_measure(*ctx.time_num, *ctx.time_den);
+    process_padded_columns(&padded_data, bar, beats_expected, ctx)
+}
+
+fn process_padded_columns(
+    padded_data: &[(String, usize)],
+    bar: usize,
+    beats_expected: u32,
+    ctx: &mut BarGroupContext<'_>,
+) -> Result<(), JianPuError> {
+    for (i, (line, line_offset)) in padded_data.iter().enumerate() {
+        process_column_line(i, line, *line_offset, bar, beats_expected, ctx)?;
+    }
+    Ok(())
+}
+
+fn process_column_line(
+    col_idx: usize,
+    line: &str,
+    line_offset: usize,
+    bar: usize,
+    beats_expected: u32,
+    ctx: &mut BarGroupContext<'_>,
+) -> Result<(), JianPuError> {
+    let line_span = Span::new(
+        ctx.base_offset + line_offset,
+        ctx.base_offset + line_offset + line.len(),
+    );
+    let col_action = ctx.col_actions.get(col_idx).ok_or_else(|| {
+        JianPuError::new(
+            line_span.clone(),
+            "internal error: column index out of range",
+        )
+    })?;
+    match col_action {
+        ColAction::Notes(idx) => {
+            let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
+            let events = token_parser::parse_tokens(tokens)?;
+            validate_beats(&events, beats_expected, bar)?;
+            let events_acc = ctx.accumulators.events_acc.get_mut(*idx).ok_or_else(|| {
+                JianPuError::new(
+                    line_span.clone(),
+                    "internal error: notes accumulator index out of range",
+                )
+            })?;
+            events_acc.extend(events);
+        }
+        ColAction::Lyrics(idx) => {
+            let syllables = tokenize_lyrics(line);
+            let Some(acc) = ctx
+                .accumulators
+                .syllables_acc
+                .get_mut(*idx)
+                .and_then(|slot| slot.as_mut())
+            else {
+                return Err(JianPuError::new(
+                    line_span,
+                    "lyrics column has no matching notes column",
+                ));
+            };
+            acc.extend(syllables);
+        }
+        ColAction::Chord(chord_idx) => {
+            let events =
+                crate::parser::score::chord_parser::parse(line, ctx.base_offset + line_offset)?;
+            let chord_acc = ctx
+                .accumulators
+                .chord_events_acc
+                .get_mut(*chord_idx)
+                .ok_or_else(|| {
+                    JianPuError::new(
+                        line_span,
+                        "internal error: chord accumulator index out of range",
+                    )
+                })?;
+            chord_acc.push(events);
+        }
+    }
+    Ok(())
+}
+
+fn validate_and_pad_group_lines(
+    group_lines: &[(String, usize)],
+    data_lines: &[(String, usize)],
+    parts: &[PartColumn],
+    base_offset: usize,
+) -> Result<Vec<(String, usize)>, JianPuError> {
+    let notes_cols_count = parts
+        .iter()
+        .filter(|p| matches!(p, PartColumn::Notes { .. }))
+        .count();
+    let group_first_span = group_lines
+        .first()
+        .map(|(line, off)| Span::new(base_offset + off, base_offset + off + line.len()))
+        .unwrap_or_else(|| Span::new(base_offset, base_offset));
+    if data_lines.len() < notes_cols_count {
+        return Err(JianPuError::new(
+            group_first_span,
+            format!(
+                "expected {} lines (one per parts column), got {}",
+                parts.len(),
+                data_lines.len()
+            ),
+        ));
+    }
+    if data_lines.len() > parts.len() {
+        return Err(JianPuError::new(
+            group_first_span,
+            format!(
+                "expected {} lines (one per parts column), got {}",
+                parts.len(),
+                data_lines.len()
+            ),
+        ));
+    }
+
+    Ok((0..parts.len())
+        .map(|i| data_lines.get(i).cloned().unwrap_or_default())
+        .collect())
+}
+
+fn build_parse_result(
+    base_offset: usize,
+    content_len: usize,
+    notes_names: &[String],
+    chord_names: Vec<String>,
+    mut accumulators: ParseAccumulators,
+) -> Result<(Vec<ParsedPart>, Vec<ParsedChordPart>), JianPuError> {
+    let internal_span = Span::new(base_offset, base_offset + content_len);
     let mut notes_result = Vec::new();
     for (i, name) in notes_names.iter().enumerate() {
+        let events = accumulators
+            .events_acc
+            .get_mut(i)
+            .ok_or_else(|| {
+                JianPuError::new(
+                    internal_span.clone(),
+                    "internal error: notes accumulator index out of range",
+                )
+            })
+            .map(std::mem::take)?;
+        let lyrics = accumulators
+            .syllables_acc
+            .get_mut(i)
+            .ok_or_else(|| {
+                JianPuError::new(
+                    internal_span.clone(),
+                    "internal error: lyrics accumulator index out of range",
+                )
+            })?
+            .take()
+            .map(|s| ParsedLyrics { syllables: s });
         notes_result.push(ParsedPart {
             name: if name.is_empty() {
                 None
             } else {
                 Some(name.clone())
             },
-            score: ParsedScore {
-                events: std::mem::take(&mut events_acc[i]),
-            },
-            lyrics: syllables_acc[i]
-                .take()
-                .map(|s| ParsedLyrics { syllables: s }),
+            score: ParsedScore { events },
+            lyrics,
         });
     }
 
     let chord_parts: Vec<ParsedChordPart> = chord_names
         .into_iter()
-        .zip(chord_events_acc)
+        .zip(accumulators.chord_events_acc)
         .map(|(name, events_per_measure)| ParsedChordPart {
             name: if name.is_empty() { None } else { Some(name) },
             events_per_measure,
@@ -240,23 +387,20 @@ fn split_directive(
     lines: &[(String, usize)],
     _bar: usize,
 ) -> Result<(Vec<Spanned<ScoreEvent>>, &[(String, usize)]), JianPuError> {
-    if lines
-        .first()
-        .map(|(l, _)| l.starts_with('('))
-        .unwrap_or(false)
-    {
-        let (directive_line, directive_offset) = &lines[0];
-        if !directive_line.ends_with(')') {
-            return Err(JianPuError::new(
-                Span::new(*directive_offset, directive_offset + directive_line.len()),
-                "directive row must end with ')'",
-            ));
+    if let Some((directive_line, directive_offset)) = lines.first() {
+        if directive_line.starts_with('(') {
+            if !directive_line.ends_with(')') {
+                return Err(JianPuError::new(
+                    Span::new(*directive_offset, directive_offset + directive_line.len()),
+                    "directive row must end with ')'",
+                ));
+            }
+            let events = parse_directive_line(directive_line, *directive_offset)?;
+            let remaining = lines.get(1..).unwrap_or(&[]);
+            return Ok((events, remaining));
         }
-        let events = parse_directive_line(directive_line, *directive_offset)?;
-        Ok((events, &lines[1..]))
-    } else {
-        Ok((Vec::new(), lines))
     }
+    Ok((Vec::new(), lines))
 }
 
 /// Returns `(token_text, byte_offset_within_inner)` pairs.
@@ -319,7 +463,7 @@ fn parse_directive_line(
 
         let event = if let Some(rest) = token.strip_prefix("bpm=") {
             let bpm = rest.parse::<u32>().map_err(|_| {
-                JianPuError::new(span.clone(), format!("invalid bpm value: {}", rest))
+                JianPuError::new(span.clone(), format!("invalid bpm value: {rest}"))
             })?;
             ScoreEvent::BpmChange(bpm)
         } else if let Some(rest) = token.strip_prefix("key=") {
@@ -330,7 +474,7 @@ fn parse_directive_line(
             if rest.len() < 2 || !rest.starts_with('"') || !rest.ends_with('"') {
                 return Err(JianPuError::new(
                     span,
-                    format!("label value must be a quoted string, got: {}", rest),
+                    format!("label value must be a quoted string, got: {rest}"),
                 ));
             }
             let text = rest[1..rest.len() - 1].to_string();
@@ -344,7 +488,7 @@ fn parse_directive_line(
         } else {
             return Err(JianPuError::new(
                 span,
-                format!("unknown directive: '{}'", token),
+                format!("unknown directive: '{token}'"),
             ));
         };
 
@@ -371,8 +515,8 @@ fn parse_key_value(value: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
         'G' => NoteName::G,
         _ => {
             return Err(JianPuError::new(
-                span.clone(),
-                format!("invalid note name: '{}'", name_char),
+                span,
+                format!("invalid note name: '{name_char}'"),
             ))
         }
     };
@@ -393,7 +537,7 @@ fn parse_key_value(value: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
     let octave = octave_str.parse::<u8>().map_err(|_| {
         JianPuError::new(
             span.clone(),
-            format!("invalid octave in 'key={}': expected number", value),
+            format!("invalid octave in 'key={value}': expected number"),
         )
     })?;
 
@@ -410,20 +554,26 @@ fn parse_time_value(value: &str, span: Span) -> Result<ScoreEvent, JianPuError> 
     let parts: Vec<&str> = value.split('/').collect();
     if parts.len() != 2 {
         return Err(JianPuError::new(
-            span.clone(),
-            format!("invalid time signature: '{}'", value),
+            span,
+            format!("invalid time signature: '{value}'"),
         ));
     }
-    let numerator = parts[0].parse::<u8>().map_err(|_| {
+    let numerator_str = parts.first().ok_or_else(|| {
+        JianPuError::new(span.clone(), format!("invalid time signature: '{value}'"))
+    })?;
+    let denominator_str = parts.get(1).ok_or_else(|| {
+        JianPuError::new(span.clone(), format!("invalid time signature: '{value}'"))
+    })?;
+    let numerator = numerator_str.parse::<u8>().map_err(|_| {
         JianPuError::new(
             span.clone(),
-            format!("invalid time numerator: '{}'", parts[0]),
+            format!("invalid time numerator: '{numerator_str}'"),
         )
     })?;
-    let denominator = parts[1].parse::<u8>().map_err(|_| {
+    let denominator = denominator_str.parse::<u8>().map_err(|_| {
         JianPuError::new(
             span.clone(),
-            format!("invalid time denominator: '{}'", parts[1]),
+            format!("invalid time denominator: '{denominator_str}'"),
         )
     })?;
     if denominator == 0 {
@@ -462,8 +612,7 @@ fn validate_beats(
                 return Err(JianPuError::new(
                     e.span.clone(),
                     format!(
-                        "note exceeds measure boundary: measure has {} quarter-beats, cumulative is now {}",
-                        expected, total
+                        "note exceeds measure boundary: measure has {expected} quarter-beats, cumulative is now {total}"
                     ),
                 ));
             }
@@ -484,10 +633,7 @@ fn validate_beats(
             .unwrap_or(Span::new(0, 1));
         return Err(JianPuError::new(
             span,
-            format!(
-                "incomplete measure: expected {} quarter-beats, got {}",
-                expected, total
-            ),
+            format!("incomplete measure: expected {expected} quarter-beats, got {total}"),
         ));
     }
 

@@ -9,16 +9,37 @@ pub fn parse(line: &str, line_file_offset: usize) -> Result<Vec<ParsedChordEvent
     let mut events = Vec::new();
     let mut byte_pos = 0usize;
 
+    let bytes = line.as_bytes();
     while byte_pos < line.len() {
-        if line.as_bytes()[byte_pos].is_ascii_whitespace() {
+        let byte = *bytes.get(byte_pos).ok_or_else(|| {
+            JianPuError::new(
+                Span::new(line_file_offset + byte_pos, line_file_offset + byte_pos + 1),
+                "invalid byte index while parsing chord line",
+            )
+        })?;
+        if byte.is_ascii_whitespace() {
             byte_pos += 1;
             continue;
         }
         let token_start = byte_pos;
-        while byte_pos < line.len() && !line.as_bytes()[byte_pos].is_ascii_whitespace() {
+        while byte_pos < line.len() {
+            let byte = *bytes.get(byte_pos).ok_or_else(|| {
+                JianPuError::new(
+                    Span::new(line_file_offset + byte_pos, line_file_offset + byte_pos + 1),
+                    "invalid byte index while parsing chord line",
+                )
+            })?;
+            if byte.is_ascii_whitespace() {
+                break;
+            }
             byte_pos += 1;
         }
-        let token = &line[token_start..byte_pos];
+        let token = line.get(token_start..byte_pos).ok_or_else(|| {
+            JianPuError::new(
+                Span::new(line_file_offset + token_start, line_file_offset + byte_pos),
+                "invalid token range in chord line",
+            )
+        })?;
         let span = Span::new(line_file_offset + token_start, line_file_offset + byte_pos);
 
         if token == "|" {
@@ -38,9 +59,10 @@ pub fn parse(line: &str, line_file_offset: usize) -> Result<Vec<ParsedChordEvent
 fn parse_chord_symbol(token: &str, span: Span) -> Result<ParsedChordSymbol, JianPuError> {
     let mut chars = token.chars();
 
-    let degree = chars.next().and_then(char_to_pitch).ok_or_else(|| {
-        JianPuError::new(span.clone(), format!("invalid chord token '{}'", token))
-    })?;
+    let degree = chars
+        .next()
+        .and_then(char_to_pitch)
+        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid chord token '{token}'")))?;
 
     // Peek at remaining string
     let rest: String = chars.collect();
@@ -85,8 +107,8 @@ fn parse_chord_symbol(token: &str, span: Span) -> Result<ParsedChordSymbol, Jian
         None
     } else {
         return Err(JianPuError::new(
-            span.clone(),
-            format!("unknown chord suffix '{}' in token '{}'", ext_str, token),
+            span,
+            format!("unknown chord suffix '{ext_str}' in token '{token}'"),
         ));
     };
 
@@ -113,22 +135,22 @@ fn parse_bass(s: &str, span: Span) -> Result<BassDegree, JianPuError> {
     let degree = chars
         .next()
         .and_then(char_to_pitch)
-        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid bass note '{}'", s)))?;
+        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid bass note '{s}'")))?;
     let accidental = match chars.next() {
         Some('#') => Accidental::Sharp,
         Some('b') => Accidental::Flat,
         None => Accidental::Natural,
         Some(c) => {
             return Err(JianPuError::new(
-                span.clone(),
-                format!("unexpected character '{}' in bass note '{}'", c, s),
+                span,
+                format!("unexpected character '{c}' in bass note '{s}'"),
             ))
         }
     };
     if chars.next().is_some() {
         return Err(JianPuError::new(
             span,
-            format!("bass note '{}' has trailing characters", s),
+            format!("bass note '{s}' has trailing characters"),
         ));
     }
     Ok(BassDegree { degree, accidental })

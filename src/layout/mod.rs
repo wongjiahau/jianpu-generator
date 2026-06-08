@@ -1,7 +1,11 @@
 use crate::ast::grouped::{NoteEvent, Score};
 use crate::ast::parsed::JianPuPitch;
-use crate::layout::types::*;
-use crate::utils::is_cjk_char;
+use crate::layout::types::{
+    GridContent, GridElement, GridPosition, HorizontalAlignment, Page, UnderlineSpan,
+    VerticalAlignment,
+};
+
+mod layout_engine;
 
 pub mod types;
 
@@ -16,13 +20,13 @@ fn flush_beam_buffer(
     row_offset: u32,
     elements: &mut Vec<GridElement>,
 ) {
-    if buffer.is_empty() {
+    let Some(first) = buffer.first() else {
         return;
-    }
+    };
     let levels = compute_underline_levels(buffer);
     elements.push(GridElement {
         position: GridPosition {
-            column: buffer[0].column,
+            column: first.column,
             row: row_offset + 2,
         },
         horizontal_alignment: HorizontalAlignment::Left,
@@ -33,8 +37,9 @@ fn flush_beam_buffer(
 }
 
 fn compute_underline_levels(buffer: &[BeamBufferEntry]) -> Vec<UnderlineSpan> {
-    let first = &buffer[0];
-    let last = &buffer[buffer.len() - 1];
+    let (Some(first), Some(last)) = (buffer.first(), buffer.last()) else {
+        return Vec::new();
+    };
     // Level 1: spans all notes in the group
     let mut levels = vec![UnderlineSpan {
         from_column: first.column,
@@ -100,7 +105,7 @@ fn format_chord_symbol(chord: &crate::ast::grouped::GroupedChord) -> String {
         Some(Extension::MajorSeventh) => "△⁷",
         None => "",
     };
-    let mut result = format!("{}{}{}{}", degree, accidental, triad, extension);
+    let mut result = format!("{degree}{accidental}{triad}{extension}");
 
     if let Some(bass) = &chord.bass {
         let bass_degree = match bass.degree {
@@ -146,642 +151,12 @@ fn compute_prefix_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 
 
 /// Margin on every edge of the page in points (~9 mm).
 /// Applied to all four sides: left/right for column fitting, top/bottom for row fitting.
-const PAGE_MARGIN: f32 = 25.0;
+pub(crate) const PAGE_MARGIN: f32 = 25.0;
 
 /// A4 in points: 595 × 842.
 /// Row height in points = score.metadata.row_height. Column width varies per row (justified).
 pub fn layout(score: &Score, page_width_pt: f32, page_height_pt: f32) -> Vec<Page> {
-    let row_height = score.metadata.row_height as f32;
-    let columns_per_row = score.metadata.max_columns;
-
-    let row_group_height: u32 = score
-        .measures
-        .first()
-        .map(|m| m.parts.iter().map(part_row_height).sum::<u32>())
-        .unwrap_or(4)
-        .max(4);
-    let bar_height: u32 = row_group_height - 1;
-
-    let num_notes_parts = score
-        .measures
-        .first()
-        .map(|m| {
-            use crate::ast::grouped::PartRow;
-            m.parts
-                .iter()
-                .filter(|p| matches!(p, PartRow::Notes(_)))
-                .count()
-        })
-        .unwrap_or(1)
-        .max(1) as u32;
-
-    let has_named_parts = score
-        .measures
-        .first()
-        .map(|m| m.parts.iter().any(|p| p.name().is_some()))
-        .unwrap_or(false);
-    let label_cols: u32 = if has_named_parts {
-        ((score.metadata.label_width as f32 / row_height).ceil()) as u32
-    } else {
-        0
-    };
-
-    let header_rows: u32 = if score.metadata.subtitle.is_some() {
-        3
-    } else {
-        2
-    };
-    let footer_rows: u32 = 1;
-    let reserved_rows = header_rows + footer_rows;
-    let usable_height = page_height_pt - 2.0 * PAGE_MARGIN;
-    let row_groups_per_page =
-        ((usable_height / row_height) as u32 - reserved_rows) / row_group_height;
-
-    let make_header = || Header {
-        title: score.metadata.title.clone(),
-        subtitle: score.metadata.subtitle.clone(),
-        author: score.metadata.author.clone(),
-    };
-
-    let mut pages: Vec<Page> = Vec::new();
-    let mut current_page_row_groups: Vec<RowGroup> = Vec::new();
-    let mut current_elements: Vec<GridElement> = Vec::new();
-    // current_col starts at label_cols (0 for unnamed single-part)
-    let mut current_col: u32 = label_cols;
-    let mut current_row_offset: u32 = header_rows;
-    let mut is_line_start = true;
-    let mut bar_number: u32 = 1;
-
-    // Per-part state that persists across measure boundaries
-    let mut per_part_prev_tie: Vec<bool> = vec![false; num_notes_parts as usize];
-    let mut per_part_prev_pitch: Vec<Option<JianPuPitch>> = vec![None; num_notes_parts as usize];
-    let mut per_part_beam_buffer: Vec<Vec<BeamBufferEntry>> =
-        (0..num_notes_parts).map(|_| Vec::new()).collect();
-    // pending_chain must persist across measures so cross-measure tie/slur arcs are emitted
-    let mut per_part_pending_chain: Vec<Vec<(u32, JianPuPitch)>> =
-        vec![Vec::new(); num_notes_parts as usize];
-    let mut per_part_chain_row: Vec<u32> = vec![0; num_notes_parts as usize];
-    // Tracks a tie pitch that crossed a line boundary, so a left-half arc can be drawn on the new line.
-    let mut per_part_cross_line_tie: Vec<Option<JianPuPitch>> =
-        vec![None; num_notes_parts as usize];
-
-    for measure in &score.measures {
-        let prefix_width = compute_prefix_width(measure);
-        let measure_width = measure_column_width(measure);
-
-        if current_col + prefix_width + measure_width > columns_per_row {
-            use crate::ast::grouped::PartRow;
-            // Flush open beam buffers for all notes parts
-            let mut notes_idx_flush = 0usize;
-            let mut flush_row_cursor = current_row_offset;
-            for part_row in measure.parts.iter() {
-                if let PartRow::Notes(_) = part_row {
-                    flush_beam_buffer(
-                        &mut per_part_beam_buffer[notes_idx_flush],
-                        flush_row_cursor,
-                        &mut current_elements,
-                    );
-                    notes_idx_flush += 1;
-                }
-                flush_row_cursor += part_row_height(part_row);
-            }
-            // Emit right-half tie arcs for open chains crossing the line boundary.
-            // prev_tie is intentionally NOT reset here — it persists to the next line
-            // so that the continuation note skips consuming a lyric syllable.
-            let mut notes_idx_tie = 0usize;
-            for part_row in measure.parts.iter() {
-                if let PartRow::Notes(_) = part_row {
-                    let chain = &per_part_pending_chain[notes_idx_tie];
-                    let chain_row = per_part_chain_row[notes_idx_tie];
-                    if let Some(last) = chain.last() {
-                        let to_col = current_col.saturating_sub(1);
-                        if last.0 < to_col {
-                            current_elements.push(GridElement {
-                                position: GridPosition {
-                                    column: last.0,
-                                    row: chain_row,
-                                },
-                                horizontal_alignment: HorizontalAlignment::Left,
-                                vertical_alignment: VerticalAlignment::Top,
-                                content: GridContent::TieOrSlurCurve {
-                                    from_column: last.0,
-                                    to_column: to_col,
-                                },
-                            });
-                        }
-                        per_part_cross_line_tie[notes_idx_tie] = Some(last.1.clone());
-                    }
-                    notes_idx_tie += 1;
-                }
-            }
-            for chain in per_part_pending_chain.iter_mut() {
-                chain.clear();
-            }
-
-            // Bottom system bar for the row group being flushed
-            current_elements.push(GridElement {
-                position: GridPosition {
-                    column: 0,
-                    row: current_row_offset + row_group_height,
-                },
-                horizontal_alignment: HorizontalAlignment::Left,
-                vertical_alignment: VerticalAlignment::Top,
-                content: GridContent::HorizontalBar {
-                    from_column: 0,
-                    to_column: current_col,
-                },
-            });
-
-            if let Some(elements) =
-                nonempty::NonEmpty::from_vec(std::mem::take(&mut current_elements))
-            {
-                current_page_row_groups.push(RowGroup {
-                    elements,
-                    height_in_rows: row_group_height,
-                    width_in_columns: current_col,
-                });
-            }
-            current_col = label_cols;
-            current_row_offset += row_group_height;
-            is_line_start = true;
-
-            if current_page_row_groups.len() >= row_groups_per_page as usize {
-                if !current_page_row_groups.is_empty() {
-                    pages.push(Page {
-                        header: make_header(),
-                        footer: Footer {
-                            page: pages.len() as u32 + 1,
-                            total: 0,
-                        },
-                        row_groups: std::mem::take(&mut current_page_row_groups),
-                        page_width_pt,
-                    });
-                }
-                current_row_offset = header_rows;
-            }
-        }
-
-        // Left system bar at start of each system line
-        if is_line_start {
-            current_elements.push(GridElement {
-                position: GridPosition {
-                    column: label_cols,
-                    row: current_row_offset + 1,
-                },
-                horizontal_alignment: HorizontalAlignment::Center,
-                vertical_alignment: VerticalAlignment::Center,
-                content: GridContent::BarLine {
-                    height_in_rows: bar_height,
-                },
-            });
-            // Only emit bar number when no section label occupies the same position
-            if measure.label.is_none() {
-                current_elements.push(GridElement {
-                    position: GridPosition {
-                        column: label_cols,
-                        row: current_row_offset,
-                    },
-                    horizontal_alignment: HorizontalAlignment::Left,
-                    vertical_alignment: VerticalAlignment::Bottom,
-                    content: GridContent::BarNumber { number: bar_number },
-                });
-            }
-            current_col = label_cols + 1;
-        }
-        // Emit part labels at start of each system line
-        if is_line_start && has_named_parts {
-            let mut row_cursor = current_row_offset;
-            for part_row in &measure.parts {
-                if let Some(name) = part_row.name() {
-                    current_elements.push(GridElement {
-                        position: GridPosition {
-                            column: 0,
-                            row: row_cursor + 1,
-                        },
-                        horizontal_alignment: HorizontalAlignment::Left,
-                        vertical_alignment: VerticalAlignment::Center,
-                        content: GridContent::PartLabel { text: name.clone() },
-                    });
-                }
-                row_cursor += part_row_height(part_row);
-            }
-        }
-        is_line_start = false;
-
-        // Emit section label above the row group (row +0) if present for this measure
-        if let Some(label_text) = &measure.label {
-            current_elements.push(GridElement {
-                position: GridPosition {
-                    column: current_col,
-                    row: current_row_offset,
-                },
-                horizontal_alignment: HorizontalAlignment::Left,
-                vertical_alignment: VerticalAlignment::Bottom,
-                content: GridContent::SectionLabel {
-                    text: label_text.clone(),
-                },
-            });
-        }
-
-        // Emit directives for every notes part at their respective row offsets
-        let directive_col_start = current_col;
-        let mut directive_advance = 0u32;
-
-        {
-            use crate::ast::grouped::PartRow;
-            let mut directive_row_cursor = current_row_offset;
-            let mut is_first_directive_part = true;
-            for part_row_enum in measure.parts.iter() {
-                if let PartRow::Notes(_) = part_row_enum {
-                    let mut dc = directive_col_start;
-
-                    if let Some(ts) = &measure.time_signature {
-                        current_elements.push(GridElement {
-                            position: GridPosition {
-                                column: dc,
-                                row: directive_row_cursor + 1,
-                            },
-                            horizontal_alignment: HorizontalAlignment::Center,
-                            vertical_alignment: VerticalAlignment::Center,
-                            content: GridContent::TimeSignatureLabel {
-                                numerator: ts.numerator,
-                                denominator: ts.denominator,
-                            },
-                        });
-                        dc += 2;
-                        if is_first_directive_part {
-                            directive_advance += 2;
-                        }
-                    }
-
-                    if let Some(bpm) = measure.bpm {
-                        current_elements.push(GridElement {
-                            position: GridPosition {
-                                column: dc,
-                                row: directive_row_cursor + 1,
-                            },
-                            horizontal_alignment: HorizontalAlignment::Center,
-                            vertical_alignment: VerticalAlignment::Center,
-                            content: GridContent::BpmLabel { bpm },
-                        });
-                        if is_first_directive_part {
-                            directive_advance += 2;
-                        }
-                    }
-                    is_first_directive_part = false;
-                }
-                directive_row_cursor += part_row_height(part_row_enum);
-            }
-        }
-
-        current_col = directive_col_start + directive_advance;
-        let note_col_start = current_col;
-
-        // Compute max notes width for bar line placement
-        let max_notes_width: u32 = {
-            use crate::ast::grouped::PartRow;
-            measure
-                .parts
-                .iter()
-                .filter_map(|row| {
-                    if let PartRow::Notes(p) = row {
-                        Some(p)
-                    } else {
-                        None
-                    }
-                })
-                .map(|part| {
-                    part.notes
-                        .events
-                        .iter()
-                        .map(|n| match n {
-                            NoteEvent::Note(note) => note.duration,
-                            NoteEvent::Rest(rest) => rest.duration,
-                        })
-                        .sum::<u32>()
-                })
-                .max()
-                .unwrap_or(0)
-        };
-
-        // Emit notes/lyrics for each part
-        {
-            use crate::ast::grouped::{GroupedChordEvent, PartRow};
-            let mut notes_idx = 0usize;
-            let mut main_row_cursor = current_row_offset;
-            for part_row_enum in measure.parts.iter() {
-                let part_row_offset = main_row_cursor;
-                match part_row_enum {
-                    PartRow::Notes(part_slice) => {
-                        let mut col = note_col_start;
-                        let measure_col_start_for_part = note_col_start;
-
-                        let pending_chain = &mut per_part_pending_chain[notes_idx];
-                        let chain_row_ref = &mut per_part_chain_row[notes_idx];
-                        if pending_chain.is_empty() {
-                            *chain_row_ref = part_row_offset + 1;
-                        }
-                        let beam_buf = &mut per_part_beam_buffer[notes_idx];
-                        let prev_tie = &mut per_part_prev_tie[notes_idx];
-                        let prev_pitch = &mut per_part_prev_pitch[notes_idx];
-                        let cross_line_tie = &mut per_part_cross_line_tie[notes_idx];
-
-                        let mut lyrics_iter =
-                            part_slice.lyrics.as_ref().map(|l| l.syllables.iter());
-
-                        for note_event in &part_slice.notes.events {
-                            match note_event {
-                                NoteEvent::Note(note) => {
-                                    // Note head (row +1)
-                                    current_elements.push(GridElement {
-                                        position: GridPosition {
-                                            column: col,
-                                            row: part_row_offset + 1,
-                                        },
-                                        horizontal_alignment: HorizontalAlignment::Center,
-                                        vertical_alignment: VerticalAlignment::Center,
-                                        content: GridContent::NoteHead {
-                                            pitch: note.pitch.clone(),
-                                            octave: note.octave,
-                                            dotted: note.dotted,
-                                        },
-                                    });
-
-                                    // Lower octave dots (row +2)
-                                    if note.octave < 0 {
-                                        let dot_underline_count = match note.duration {
-                                            1 => 2u8,
-                                            2 | 3 => 1u8,
-                                            _ => 0u8,
-                                        };
-                                        current_elements.push(GridElement {
-                                            position: GridPosition {
-                                                column: col,
-                                                row: part_row_offset + 2,
-                                            },
-                                            horizontal_alignment: HorizontalAlignment::Center,
-                                            vertical_alignment: VerticalAlignment::Top,
-                                            content: GridContent::LowerOctaveDots {
-                                                count: (-note.octave) as u32,
-                                                underline_count: dot_underline_count,
-                                            },
-                                        });
-                                    }
-
-                                    // Extension dashes (row +1)
-                                    if note.duration > 4 {
-                                        let extra_beats = (note.duration - 4) / 4;
-                                        for i in 0..extra_beats {
-                                            current_elements.push(GridElement {
-                                                position: GridPosition {
-                                                    column: col + 4 + i * 4,
-                                                    row: part_row_offset + 1,
-                                                },
-                                                horizontal_alignment: HorizontalAlignment::Center,
-                                                vertical_alignment: VerticalAlignment::Center,
-                                                content: GridContent::Extension,
-                                            });
-                                        }
-                                    }
-
-                                    let underline_count = match note.duration {
-                                        1 => 2,
-                                        2 | 3 => 1,
-                                        _ => 0,
-                                    };
-
-                                    if underline_count == 0 {
-                                        flush_beam_buffer(
-                                            beam_buf,
-                                            part_row_offset,
-                                            &mut current_elements,
-                                        );
-                                    }
-
-                                    pending_chain.push((col, note.pitch.clone()));
-
-                                    // Lyric (row +3)
-                                    let is_tie_continuation =
-                                        *prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
-
-                                    // Left-half arc for a tie that crossed a line boundary
-                                    if cross_line_tie.is_some() {
-                                        if is_tie_continuation && col > label_cols {
-                                            current_elements.push(GridElement {
-                                                position: GridPosition {
-                                                    column: label_cols,
-                                                    row: *chain_row_ref,
-                                                },
-                                                horizontal_alignment: HorizontalAlignment::Left,
-                                                vertical_alignment: VerticalAlignment::Top,
-                                                content: GridContent::TieOrSlurCurve {
-                                                    from_column: label_cols,
-                                                    to_column: col,
-                                                },
-                                            });
-                                        }
-                                        *cross_line_tie = None;
-                                    }
-
-                                    if !is_tie_continuation {
-                                        if let Some(ref mut iter) = lyrics_iter {
-                                            if let Some(syllable) = iter.next() {
-                                                let is_cjk = syllable
-                                                    .text
-                                                    .chars()
-                                                    .next()
-                                                    .map(is_cjk_char)
-                                                    .unwrap_or(false);
-                                                current_elements.push(GridElement {
-                                                    position: GridPosition {
-                                                        column: col,
-                                                        row: part_row_offset + 3,
-                                                    },
-                                                    horizontal_alignment:
-                                                        HorizontalAlignment::Center,
-                                                    vertical_alignment: VerticalAlignment::Top,
-                                                    content: GridContent::Lyric {
-                                                        text: syllable.text.clone(),
-                                                        is_cjk,
-                                                    },
-                                                });
-                                            }
-                                        }
-                                    }
-                                    *prev_tie = note.tie;
-                                    *prev_pitch = Some(note.pitch.clone());
-
-                                    if underline_count > 0 {
-                                        beam_buf.push(BeamBufferEntry {
-                                            column: col,
-                                            underline_count,
-                                            duration: note.duration,
-                                        });
-                                    }
-
-                                    col += note.duration;
-
-                                    let beat_position = col - measure_col_start_for_part;
-                                    if underline_count > 0 && beat_position % 4 == 0 {
-                                        flush_beam_buffer(
-                                            beam_buf,
-                                            part_row_offset,
-                                            &mut current_elements,
-                                        );
-                                    }
-
-                                    if !note.tie {
-                                        flush_chain(
-                                            pending_chain,
-                                            *chain_row_ref,
-                                            &mut current_elements,
-                                        );
-                                        pending_chain.clear();
-                                    }
-                                }
-                                NoteEvent::Rest(rest) => {
-                                    let rest_underline_count = match rest.duration {
-                                        1 => 2,
-                                        2 => 1,
-                                        _ => 0,
-                                    };
-                                    if rest_underline_count == 0 {
-                                        flush_beam_buffer(
-                                            beam_buf,
-                                            part_row_offset,
-                                            &mut current_elements,
-                                        );
-                                    }
-                                    current_elements.push(GridElement {
-                                        position: GridPosition {
-                                            column: col,
-                                            row: part_row_offset + 1,
-                                        },
-                                        horizontal_alignment: HorizontalAlignment::Center,
-                                        vertical_alignment: VerticalAlignment::Center,
-                                        content: GridContent::Rest,
-                                    });
-                                    if rest_underline_count > 0 {
-                                        beam_buf.push(BeamBufferEntry {
-                                            column: col,
-                                            underline_count: rest_underline_count,
-                                            duration: rest.duration,
-                                        });
-                                    }
-                                    col += rest.duration;
-                                    *prev_tie = false;
-                                    *cross_line_tie = None;
-                                    let beat_position = col - measure_col_start_for_part;
-                                    if rest_underline_count > 0 && beat_position % 4 == 0 {
-                                        flush_beam_buffer(
-                                            beam_buf,
-                                            part_row_offset,
-                                            &mut current_elements,
-                                        );
-                                    }
-                                }
-                            }
-                        }
-
-                        flush_beam_buffer(beam_buf, part_row_offset, &mut current_elements);
-                        notes_idx += 1;
-                        main_row_cursor += 4;
-                    } // end PartRow::Notes
-                    PartRow::Chord(chord_slice) => {
-                        let mut col = note_col_start;
-                        for event in &chord_slice.events {
-                            match event {
-                                GroupedChordEvent::Chord(chord) => {
-                                    let text = format_chord_symbol(chord);
-                                    current_elements.push(GridElement {
-                                        position: GridPosition {
-                                            column: col,
-                                            row: main_row_cursor + 1,
-                                        },
-                                        horizontal_alignment: HorizontalAlignment::Left,
-                                        vertical_alignment: VerticalAlignment::Center,
-                                        content: GridContent::ChordSymbol { text },
-                                    });
-                                    col += chord.duration;
-                                }
-                                GroupedChordEvent::Rest(dur) => {
-                                    col += dur;
-                                }
-                            }
-                        }
-                        main_row_cursor += 2;
-                    }
-                } // end match part_row_enum
-            } // end for part_row_enum
-        } // end block
-
-        // Bar line spanning all parts
-        let bar_col = note_col_start + max_notes_width;
-        current_elements.push(GridElement {
-            position: GridPosition {
-                column: bar_col,
-                row: current_row_offset + 1,
-            },
-            horizontal_alignment: HorizontalAlignment::Center,
-            vertical_alignment: VerticalAlignment::Center,
-            content: GridContent::BarLine {
-                height_in_rows: bar_height,
-            },
-        });
-        current_col = bar_col + 1;
-        bar_number += 1;
-    }
-
-    // Bottom system bar for the last row group
-    if !current_elements.is_empty() {
-        current_elements.push(GridElement {
-            position: GridPosition {
-                column: 0,
-                row: current_row_offset + row_group_height,
-            },
-            horizontal_alignment: HorizontalAlignment::Left,
-            vertical_alignment: VerticalAlignment::Top,
-            content: GridContent::HorizontalBar {
-                from_column: 0,
-                to_column: current_col,
-            },
-        });
-    }
-    // Flush remaining elements
-    if let Some(elements) = nonempty::NonEmpty::from_vec(std::mem::take(&mut current_elements)) {
-        current_page_row_groups.push(RowGroup {
-            elements,
-            height_in_rows: row_group_height,
-            width_in_columns: current_col,
-        });
-    }
-    if !current_page_row_groups.is_empty() {
-        pages.push(Page {
-            header: make_header(),
-            footer: Footer {
-                page: pages.len() as u32 + 1,
-                total: 0,
-            },
-            row_groups: std::mem::take(&mut current_page_row_groups),
-            page_width_pt,
-        });
-    }
-
-    if pages.is_empty() {
-        pages.push(Page {
-            header: make_header(),
-            footer: Footer { page: 1, total: 1 },
-            row_groups: Vec::new(),
-            page_width_pt,
-        });
-    }
-
-    let total = pages.len() as u32;
-    for page in &mut pages {
-        page.footer.total = total;
-    }
-
-    pages
+    layout_engine::LayoutEngine::new(score, page_width_pt, page_height_pt).layout()
 }
 
 /// Emit tie/slur arcs for a completed chain of `~`-connected notes.
@@ -794,37 +169,45 @@ fn flush_chain(chain: &[(u32, JianPuPitch)], chain_row: u32, elements: &mut Vec<
         return;
     }
 
-    let has_pitch_change = chain.windows(2).any(|w| w[0].1 != w[1].1);
+    let has_pitch_change = chain
+        .windows(2)
+        .any(|w| matches!((w.first(), w.get(1)), (Some(a), Some(b)) if a.1 != b.1));
 
     if has_pitch_change {
+        let (Some(first), Some(last)) = (chain.first(), chain.last()) else {
+            return;
+        };
         // One slur spanning the entire chain
         elements.push(GridElement {
             position: GridPosition {
-                column: chain[0].0,
+                column: first.0,
                 row: chain_row,
             },
             horizontal_alignment: HorizontalAlignment::Left,
             vertical_alignment: VerticalAlignment::Top,
             content: GridContent::TieOrSlurCurve {
-                from_column: chain[0].0,
-                to_column: chain[chain.len() - 1].0,
+                from_column: first.0,
+                to_column: last.0,
             },
         });
     }
 
     // Tie arc for each consecutive same-pitch pair
     for w in chain.windows(2) {
-        if w[0].1 == w[1].1 {
+        let (Some(prev), Some(next)) = (w.first(), w.get(1)) else {
+            continue;
+        };
+        if prev.1 == next.1 {
             elements.push(GridElement {
                 position: GridPosition {
-                    column: w[0].0,
+                    column: prev.0,
                     row: chain_row,
                 },
                 horizontal_alignment: HorizontalAlignment::Left,
                 vertical_alignment: VerticalAlignment::Top,
                 content: GridContent::TieOrSlurCurve {
-                    from_column: w[0].0,
-                    to_column: w[1].0,
+                    from_column: prev.0,
+                    to_column: next.0,
                 },
             });
         }
@@ -887,8 +270,7 @@ mod tests {
             score_content.push('\n'); // blank line separating bar groups
         }
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{}",
-            score_content
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{score_content}"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -901,8 +283,7 @@ mod tests {
         // lyrics_str is ignored here as it's embedded in score_section.
         let _ = lyrics_str; // lyrics are inline in score_section
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{}",
-            score_section
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n{score_section}"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -1487,8 +868,7 @@ mod tests {
 
     fn make_two_part_score(s_notes: &str, a_notes: &str) -> Score {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{}\n{}\n",
-            s_notes, a_notes
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{s_notes}\n{a_notes}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap()
@@ -1784,8 +1164,7 @@ mod tests {
         // The right-half arc starts at the tied note (col 17) and ends at the bar line (col 21 = 22-1).
         assert!(
             curves.iter().any(|&(from, to)| from == 17 && to == 21),
-            "expected right-half arc from col 17 to col 21; got: {:?}",
-            curves
+            "expected right-half arc from col 17 to col 21; got: {curves:?}"
         );
     }
 
@@ -1800,8 +1179,7 @@ mod tests {
         assert_eq!(
             lyrics.len(),
             1,
-            "continuation note across line break must not consume a lyric syllable; got: {:?}",
-            lyrics
+            "continuation note across line break must not consume a lyric syllable; got: {lyrics:?}"
         );
         assert_eq!(lyrics[0].1, "a");
     }

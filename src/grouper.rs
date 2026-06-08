@@ -1,9 +1,13 @@
-use crate::ast::grouped::*;
+use crate::ast::grouped::{
+    ChordSlice, GroupedChord, GroupedChordEvent, GroupedChordPart, GroupedMeasure, GroupedNote,
+    GroupedPart, GroupedRest, Metadata, NoteEvent, Notes, Score, TimeSignature,
+};
 use crate::ast::parsed::{
-    Accidental, NoteName, ParsedChordEvent, ParsedChordPart, ParsedDocument, ParsedPart,
+    Accidental, KeyChange, Note, NoteName, ParsedChordEvent, ParsedChordPart, ParsedDocument,
+    ParsedNote, ParsedPart, ParsedRest, ScoreEvent, Syllable,
 };
 use crate::combiner;
-use crate::error::JianPuError;
+use crate::error::{JianPuError, Span};
 
 pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
     let parts_ordering = doc.metadata.parts.clone();
@@ -18,7 +22,7 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
         grouped_chord_parts.push(group_chord_part(cp)?);
     }
 
-    let measures = combiner::combine(grouped_parts, grouped_chord_parts, &parts_ordering)?;
+    let measures = combiner::combine(&grouped_parts, &grouped_chord_parts, &parts_ordering)?;
 
     Ok(Score {
         metadata: Metadata {
@@ -34,222 +38,294 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
     })
 }
 
-// The flush_measure! macro resets directive flags that are immediately overwritten
-// at directive-change call sites; the resulting assignments are never read before
-// the overwrite, which is intentional, not a bug.
-#[allow(unused_assignments)]
-fn group_part(part: ParsedPart) -> Result<GroupedPart, JianPuError> {
-    use crate::ast::parsed::{KeyChange, Note, ScoreEvent};
+struct PartGrouper {
+    current_bpm: u32,
+    current_key: KeyChange,
+    current_time_sig: TimeSignature,
+    bpm_changed: bool,
+    key_changed: bool,
+    time_sig_changed: bool,
+    measures: Vec<GroupedMeasure>,
+    current_notes: Vec<NoteEvent>,
+    current_beat: u32,
+    capacity: u32,
+    pending_label: Option<String>,
+    part_name: Option<String>,
+    part_lyrics: Option<Vec<Syllable>>,
+}
 
-    let default_key = KeyChange {
-        note: Note {
-            name: NoteName::C,
-            octave: 4,
-            accidental: Accidental::Natural,
-        },
-    };
-
-    let mut current_bpm: u32 = 120;
-    let mut current_key = default_key;
-    let mut current_time_sig = TimeSignature {
-        numerator: 4,
-        denominator: 4,
-    };
-
-    let measure_capacity =
-        |ts: &TimeSignature| -> u32 { (ts.numerator as u32) * 16 / (ts.denominator as u32) };
-
-    // Track whether each directive was explicitly set since the last measure boundary.
-    // All start as true so the first measure always gets Some(_) for all directives.
-    let mut bpm_changed = true;
-    let mut key_changed = true;
-    let mut time_sig_changed = true;
-
-    let mut measures: Vec<GroupedMeasure> = Vec::new();
-    let mut current_notes: Vec<NoteEvent> = Vec::new();
-    let mut current_beat: u32 = 0;
-    let mut capacity = measure_capacity(&current_time_sig);
-    let mut pending_label: Option<String> = None;
-
-    macro_rules! flush_measure {
-        () => {
-            if !current_notes.is_empty() {
-                measures.push(GroupedMeasure {
-                    time_signature: if time_sig_changed {
-                        Some(TimeSignature {
-                            numerator: current_time_sig.numerator,
-                            denominator: current_time_sig.denominator,
-                        })
-                    } else {
-                        None
-                    },
-                    bpm: if bpm_changed { Some(current_bpm) } else { None },
-                    key: if key_changed {
-                        Some(current_key.clone())
-                    } else {
-                        None
-                    },
-                    label: pending_label.take(),
-                    notes: Notes {
-                        events: std::mem::take(&mut current_notes),
-                    },
-                });
-                current_beat = 0;
-                bpm_changed = false;
-                key_changed = false;
-                time_sig_changed = false;
-            }
+impl PartGrouper {
+    fn new(part: &ParsedPart) -> Self {
+        let default_key = KeyChange {
+            note: Note {
+                name: NoteName::C,
+                octave: 4,
+                accidental: Accidental::Natural,
+            },
         };
+        let current_time_sig = TimeSignature {
+            numerator: 4,
+            denominator: 4,
+        };
+        let capacity = Self::measure_capacity(&current_time_sig);
+
+        Self {
+            current_bpm: 120,
+            current_key: default_key,
+            current_time_sig,
+            bpm_changed: true,
+            key_changed: true,
+            time_sig_changed: true,
+            measures: Vec::new(),
+            current_notes: Vec::new(),
+            current_beat: 0,
+            capacity,
+            pending_label: None,
+            part_name: part.name.clone(),
+            part_lyrics: part.lyrics.as_ref().map(|l| l.syllables.clone()),
+        }
     }
 
-    for spanned in part.score.events {
+    fn measure_capacity(ts: &TimeSignature) -> u32 {
+        (ts.numerator as u32) * 16 / (ts.denominator as u32)
+    }
+
+    // Directive flags reset here are immediately overwritten at directive-change
+    // call sites; the resulting assignments are never read before the overwrite.
+    #[allow(unused_assignments)]
+    fn flush_measure(&mut self) {
+        if self.current_notes.is_empty() {
+            return;
+        }
+        self.measures.push(GroupedMeasure {
+            time_signature: if self.time_sig_changed {
+                Some(TimeSignature {
+                    numerator: self.current_time_sig.numerator,
+                    denominator: self.current_time_sig.denominator,
+                })
+            } else {
+                None
+            },
+            bpm: if self.bpm_changed {
+                Some(self.current_bpm)
+            } else {
+                None
+            },
+            key: if self.key_changed {
+                Some(self.current_key.clone())
+            } else {
+                None
+            },
+            label: self.pending_label.take(),
+            notes: Notes {
+                events: std::mem::take(&mut self.current_notes),
+            },
+        });
+        self.current_beat = 0;
+        self.bpm_changed = false;
+        self.key_changed = false;
+        self.time_sig_changed = false;
+    }
+
+    fn flush_if_full(&mut self) {
+        if self.current_beat >= self.capacity {
+            self.flush_measure();
+        }
+    }
+
+    fn push_timed_event(
+        &mut self,
+        span: Span,
+        duration: u32,
+        event: NoteEvent,
+        overflow_label: &str,
+    ) -> Result<(), JianPuError> {
+        self.flush_if_full();
+        self.current_notes.push(event);
+        self.current_beat += duration;
+        if self.current_beat > self.capacity {
+            return Err(JianPuError::new(
+                span,
+                format!(
+                    "{overflow_label} duration {duration} overflows the current measure (capacity {} quarter-beats, {} used)",
+                    self.capacity, self.current_beat
+                ),
+            ));
+        }
+        if self.current_beat == self.capacity {
+            self.flush_measure();
+        }
+        Ok(())
+    }
+
+    fn handle_bpm_change(&mut self, bpm: u32) {
+        self.flush_measure();
+        self.current_bpm = bpm;
+        self.bpm_changed = true;
+    }
+
+    fn handle_key_change(&mut self, kc: KeyChange) {
+        self.flush_measure();
+        self.current_key = kc;
+        self.key_changed = true;
+    }
+
+    fn handle_time_signature_change(&mut self, numerator: u8, denominator: u8) {
+        self.flush_measure();
+        self.current_time_sig = TimeSignature {
+            numerator,
+            denominator,
+        };
+        self.capacity = Self::measure_capacity(&self.current_time_sig);
+        self.time_sig_changed = true;
+    }
+
+    fn handle_extension(&mut self, span: Span) -> Result<(), JianPuError> {
+        match self.current_notes.last_mut() {
+            Some(NoteEvent::Note(n)) => {
+                n.duration += 4;
+                self.current_beat += 4;
+            }
+            Some(NoteEvent::Rest(r)) => {
+                r.duration += 4;
+                self.current_beat += 4;
+            }
+            None => {
+                return Err(JianPuError::new(
+                    span,
+                    "extension `-` without a preceding note or rest; if it follows a measure boundary, cross-measure extension is not supported".to_string(),
+                ));
+            }
+        }
+        if self.current_beat >= self.capacity {
+            self.flush_measure();
+        }
+        Ok(())
+    }
+
+    fn handle_tie_marker(&mut self, span: Span) -> Result<(), JianPuError> {
+        let last_note = self.current_notes.last_mut().or_else(|| {
+            self.measures
+                .last_mut()
+                .and_then(|m| m.notes.events.last_mut())
+        });
+        match last_note {
+            Some(NoteEvent::Note(n)) => {
+                n.tie = true;
+                Ok(())
+            }
+            _ => Err(JianPuError::new(
+                span,
+                "tie `~` without a preceding note".to_string(),
+            )),
+        }
+    }
+
+    fn handle_note(&mut self, span: Span, pn: ParsedNote) -> Result<(), JianPuError> {
+        self.push_timed_event(
+            span,
+            pn.duration,
+            NoteEvent::Note(GroupedNote {
+                pitch: pn.pitch,
+                octave: pn.octave,
+                duration: pn.duration,
+                tie: pn.tie,
+                dotted: pn.dotted,
+            }),
+            "note",
+        )
+    }
+
+    fn handle_label_change(&mut self, text: String) {
+        self.flush_measure();
+        self.pending_label = Some(text);
+    }
+
+    fn handle_rest(&mut self, span: Span, pr: &ParsedRest) -> Result<(), JianPuError> {
+        self.push_timed_event(
+            span,
+            pr.duration,
+            NoteEvent::Rest(GroupedRest {
+                duration: pr.duration,
+                dotted: pr.dotted,
+            }),
+            "rest",
+        )
+    }
+
+    fn process_event(
+        &mut self,
+        spanned: crate::error::Spanned<ScoreEvent>,
+    ) -> Result<(), JianPuError> {
         match spanned.value {
             ScoreEvent::BpmChange(bpm) => {
-                flush_measure!();
-                current_bpm = bpm;
-                bpm_changed = true;
+                self.handle_bpm_change(bpm);
+                Ok(())
             }
             ScoreEvent::KeyChange(kc) => {
-                flush_measure!();
-                current_key = kc;
-                key_changed = true;
+                self.handle_key_change(kc);
+                Ok(())
             }
             ScoreEvent::TimeSignatureChange {
                 numerator,
                 denominator,
             } => {
-                flush_measure!();
-                current_time_sig = TimeSignature {
-                    numerator,
-                    denominator,
-                };
-                capacity = measure_capacity(&current_time_sig);
-                time_sig_changed = true;
+                self.handle_time_signature_change(numerator, denominator);
+                Ok(())
             }
-            ScoreEvent::Extension => {
-                match current_notes.last_mut() {
-                    Some(NoteEvent::Note(n)) => {
-                        n.duration += 4;
-                        current_beat += 4;
-                    }
-                    Some(NoteEvent::Rest(r)) => {
-                        r.duration += 4;
-                        current_beat += 4;
-                    }
-                    None => {
-                        return Err(JianPuError::new(
-                            spanned.span,
-                            "extension `-` without a preceding note or rest; if it follows a measure boundary, cross-measure extension is not supported".to_string(),
-                        ));
-                    }
-                }
-                if current_beat >= capacity {
-                    flush_measure!();
-                }
-            }
-            ScoreEvent::TieMarker => {
-                // When `-` fills a measure exactly it flushes current_notes, so fall
-                // back to the last note of the last completed measure.
-                let last_note = current_notes
-                    .last_mut()
-                    .or_else(|| measures.last_mut().and_then(|m| m.notes.events.last_mut()));
-                match last_note {
-                    Some(NoteEvent::Note(n)) => {
-                        n.tie = true;
-                    }
-                    _ => {
-                        return Err(JianPuError::new(
-                            spanned.span,
-                            "tie `~` without a preceding note".to_string(),
-                        ));
-                    }
-                }
-            }
-            ScoreEvent::Note(pn) => {
-                if current_beat >= capacity {
-                    flush_measure!();
-                }
-                let note_duration = pn.duration;
-                current_notes.push(NoteEvent::Note(GroupedNote {
-                    pitch: pn.pitch,
-                    octave: pn.octave,
-                    duration: pn.duration,
-                    tie: pn.tie,
-                    dotted: pn.dotted,
-                }));
-                current_beat += note_duration;
-                if current_beat > capacity {
-                    return Err(JianPuError::new(
-                        spanned.span,
-                        format!(
-                            "note duration {} overflows the current measure (capacity {} quarter-beats, {} used)",
-                            note_duration, capacity, current_beat
-                        ),
-                    ));
-                }
-                if current_beat == capacity {
-                    flush_measure!();
-                }
-            }
+            ScoreEvent::Extension => self.handle_extension(spanned.span),
+            ScoreEvent::TieMarker => self.handle_tie_marker(spanned.span),
+            ScoreEvent::Note(pn) => self.handle_note(spanned.span, pn),
             ScoreEvent::LabelChange(text) => {
-                flush_measure!();
-                pending_label = Some(text);
+                self.handle_label_change(text);
+                Ok(())
             }
-            ScoreEvent::Rest(pr) => {
-                if current_beat >= capacity {
-                    flush_measure!();
-                }
-                let rest_duration = pr.duration;
-                current_notes.push(NoteEvent::Rest(GroupedRest {
-                    duration: pr.duration,
-                    dotted: pr.dotted,
-                }));
-                current_beat += rest_duration;
-                if current_beat > capacity {
-                    return Err(JianPuError::new(
-                        spanned.span,
-                        format!(
-                            "rest duration {} overflows the current measure (capacity {} quarter-beats, {} used)",
-                            rest_duration, capacity, current_beat
-                        ),
-                    ));
-                }
-                if current_beat == capacity {
-                    flush_measure!();
-                }
-            }
+            ScoreEvent::Rest(pr) => self.handle_rest(spanned.span, &pr),
         }
     }
 
-    // Flush any remaining notes as a partial measure (inline to avoid spurious unused-assignment warnings)
-    if !current_notes.is_empty() {
-        measures.push(GroupedMeasure {
-            time_signature: if time_sig_changed {
-                Some(TimeSignature {
-                    numerator: current_time_sig.numerator,
-                    denominator: current_time_sig.denominator,
-                })
-            } else {
-                None
-            },
-            bpm: if bpm_changed { Some(current_bpm) } else { None },
-            key: if key_changed {
-                Some(current_key.clone())
-            } else {
-                None
-            },
-            label: pending_label.take(),
-            notes: Notes {
-                events: std::mem::take(&mut current_notes),
-            },
-        });
-    }
+    fn finish(mut self) -> GroupedPart {
+        if !self.current_notes.is_empty() {
+            self.measures.push(GroupedMeasure {
+                time_signature: if self.time_sig_changed {
+                    Some(TimeSignature {
+                        numerator: self.current_time_sig.numerator,
+                        denominator: self.current_time_sig.denominator,
+                    })
+                } else {
+                    None
+                },
+                bpm: if self.bpm_changed {
+                    Some(self.current_bpm)
+                } else {
+                    None
+                },
+                key: if self.key_changed {
+                    Some(self.current_key.clone())
+                } else {
+                    None
+                },
+                label: self.pending_label.take(),
+                notes: Notes {
+                    events: std::mem::take(&mut self.current_notes),
+                },
+            });
+        }
 
-    Ok(GroupedPart {
-        name: part.name,
-        measures,
-        lyrics: part.lyrics.map(|l| l.syllables),
-    })
+        GroupedPart {
+            name: self.part_name,
+            measures: self.measures,
+            lyrics: self.part_lyrics,
+        }
+    }
+}
+
+fn group_part(part: ParsedPart) -> Result<GroupedPart, JianPuError> {
+    let mut grouper = PartGrouper::new(&part);
+    for spanned in part.score.events {
+        grouper.process_event(spanned)?;
+    }
+    Ok(grouper.finish())
 }
 
 fn group_chord_part(part: ParsedChordPart) -> Result<GroupedChordPart, JianPuError> {
@@ -321,7 +397,7 @@ mod tests {
         use crate::ast::grouped::PartRow;
         match &score.measures[measure_idx].parts[0] {
             PartRow::Notes(p) => &p.notes.events,
-            _ => panic!("expected Notes part"),
+            PartRow::Chord(_) => panic!("expected Notes part"),
         }
     }
 
@@ -352,7 +428,7 @@ mod tests {
         ));
         match &first_part_notes(&score, 0)[0] {
             NoteEvent::Note(n) => assert_eq!(n.duration, 8),
-            _ => panic!("expected Note"),
+            NoteEvent::Rest(_) => panic!("expected Note"),
         }
     }
 
@@ -518,11 +594,11 @@ mod tests {
         use crate::ast::grouped::PartRow;
         let m0_lyrics = match &score.measures[0].parts[0] {
             PartRow::Notes(p) => p.lyrics.as_ref().unwrap(),
-            _ => panic!("expected Notes part"),
+            PartRow::Chord(_) => panic!("expected Notes part"),
         };
         let m1_lyrics = match &score.measures[1].parts[0] {
             PartRow::Notes(p) => p.lyrics.as_ref().unwrap(),
-            _ => panic!("expected Notes part"),
+            PartRow::Chord(_) => panic!("expected Notes part"),
         };
         assert_eq!(m0_lyrics.syllables.len(), 4);
         assert_eq!(m1_lyrics.syllables.len(), 4);
@@ -539,7 +615,7 @@ mod tests {
         let notes_m0 = first_part_notes(&score, 0);
         match notes_m0.last().unwrap() {
             NoteEvent::Note(n) => assert!(n.tie, "note 6 in measure 0 should be tied"),
-            _ => panic!("expected Note"),
+            NoteEvent::Rest(_) => panic!("expected Note"),
         }
     }
 
@@ -556,11 +632,11 @@ mod tests {
                 assert_eq!(n.duration, 8, "note 6 should be extended to 2 beats");
                 assert!(n.tie, "note 6 should have tie=true");
             }
-            _ => panic!("expected Note"),
+            NoteEvent::Rest(_) => panic!("expected Note"),
         }
         match &notes[1] {
             NoteEvent::Note(n) => assert_eq!(n.pitch, crate::ast::parsed::JianPuPitch::Seven),
-            _ => panic!("expected Note"),
+            NoteEvent::Rest(_) => panic!("expected Note"),
         }
     }
 
@@ -598,7 +674,7 @@ mod tests {
                 GroupedChordEvent::Chord(c) => {
                     assert_eq!(c.duration, 16); // 4 tokens * 4 quarter-beats
                 }
-                _ => panic!("expected Chord event"),
+                GroupedChordEvent::Rest(_) => panic!("expected Chord event"),
             }
         }
     }

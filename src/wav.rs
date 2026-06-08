@@ -14,7 +14,7 @@ pub fn write_wav(midi_bytes: &[u8]) -> Result<Vec<u8>, JianPuError> {
         .map_err(|_| JianPuError::new(Span::new(0, 0), "invalid MIDI bytes"))?;
     let tpq = match smf.header.timing {
         Timing::Metrical(t) => t.as_int() as u32,
-        _ => 480,
+        Timing::Timecode(..) => 480,
     };
 
     let mut synth = Synth::new(SynthDescriptor {
@@ -31,7 +31,13 @@ pub fn write_wav(midi_bytes: &[u8]) -> Result<Vec<u8>, JianPuError> {
     let mut all_l: Vec<f32> = Vec::new();
     let mut all_r: Vec<f32> = Vec::new();
 
-    for event in smf.tracks[0].iter() {
+    let track = smf.tracks.first().ok_or_else(|| {
+        JianPuError::new(
+            Span::new(0, 0),
+            "internal invariant: MIDI file has no tracks",
+        )
+    })?;
+    for event in track.iter() {
         let delta = event.delta.as_int();
         if delta > 0 {
             let n = ticks_to_samples(delta, tpq, micros_per_beat);
@@ -96,7 +102,9 @@ fn render_samples(synth: &mut Synth, n: usize, l: &mut Vec<f32>, r: &mut Vec<f32
     let prev = l.len();
     l.resize(prev + n, 0.0);
     r.resize(prev + n, 0.0);
-    synth.write_f32(n, &mut l[prev..], 0, 1, &mut r[prev..], 0, 1);
+    let (_, l_tail) = l.split_at_mut(prev);
+    let (_, r_tail) = r.split_at_mut(prev);
+    synth.write_f32(n, l_tail, 0, 1, r_tail, 0, 1);
 }
 
 fn encode_wav(l: &[f32], r: &[f32]) -> Result<Vec<u8>, JianPuError> {

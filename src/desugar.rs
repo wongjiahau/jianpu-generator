@@ -14,12 +14,12 @@ pub fn desugar_groups(
 ) -> Result<Vec<Vec<(String, usize)>>, JianPuError> {
     groups
         .into_iter()
-        .map(|group| desugar_group(group, parts))
+        .map(|group| desugar_group(&group, parts))
         .collect()
 }
 
 fn desugar_group(
-    group: Vec<(String, usize)>,
+    group: &[(String, usize)],
     parts: &[PartColumn],
 ) -> Result<Vec<(String, usize)>, JianPuError> {
     // Directive line (starts with `(`) is never a ditto target — pass it through.
@@ -33,8 +33,8 @@ fn desugar_group(
         0
     };
 
-    let directive_lines = group[..directive_count].to_vec();
-    let data_lines = &group[directive_count..];
+    let directive_lines = group.get(..directive_count).unwrap_or(&[]).to_vec();
+    let data_lines = group.get(directive_count..).unwrap_or(&[]);
 
     let mut resolved: Vec<(String, usize)> = Vec::with_capacity(data_lines.len());
 
@@ -45,11 +45,21 @@ fn desugar_group(
                 resolved.push((line.clone(), *offset));
                 continue;
             }
-            let col_type = column_type(&parts[i]);
+            let col_type = parts.get(i).map(column_type).ok_or_else(|| {
+                JianPuError::new(
+                    Span::new(0, 0),
+                    "internal invariant: part column missing for ditto line",
+                )
+            })?;
             let source = (0..resolved.len())
                 .rev()
-                .find(|&j| column_type(&parts[j]) == col_type)
-                .map(|j| resolved[j].0.clone());
+                .find(|&j| {
+                    parts
+                        .get(j)
+                        .map(|p| column_type(p) == col_type)
+                        .unwrap_or(false)
+                })
+                .and_then(|j| resolved.get(j).map(|r| r.0.clone()));
 
             match source {
                 Some(src_content) => {
@@ -61,7 +71,7 @@ fn desugar_group(
                         Span::new(*offset, *offset + 1),
                         format!(
                             "ditto '\"' has no preceding {} line in this measure group",
-                            col_type_name(&parts[i])
+                            parts.get(i).map(col_type_name).unwrap_or("unknown")
                         ),
                     ));
                 }

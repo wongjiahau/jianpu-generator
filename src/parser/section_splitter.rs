@@ -39,7 +39,7 @@ pub fn split_sections(input: &str) -> Result<Vec<RawSection>, JianPuError> {
                 _ => {
                     return Err(JianPuError::new(
                         Span::new(byte_offset, byte_offset + line.len()),
-                        format!("unknown section: [{}]", kind_str),
+                        format!("unknown section: [{kind_str}]"),
                     ))
                 }
             });

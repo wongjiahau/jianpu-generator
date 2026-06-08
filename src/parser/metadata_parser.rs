@@ -5,13 +5,13 @@ fn parse_positive_u32(key: &str, value: &str, line_span: &Span) -> Result<u32, J
     let parsed = value.parse::<u32>().map_err(|_| {
         JianPuError::new(
             line_span.clone(),
-            format!("{} must be a positive integer, got: {}", key, value),
+            format!("{key} must be a positive integer, got: {value}"),
         )
     })?;
     if parsed == 0 {
         return Err(JianPuError::new(
             line_span.clone(),
-            format!("{} must be greater than zero", key),
+            format!("{key} must be greater than zero"),
         ));
     }
     Ok(parsed)
@@ -40,8 +40,7 @@ fn parse_parts(
             return Err(JianPuError::new(
                 span.clone(),
                 format!(
-                    "invalid parts token '{}': expected 'notes:<name>', 'lyrics:<name>', or 'chord:<name>'",
-                    token
+                    "invalid parts token '{token}': expected 'notes:<name>', 'lyrics:<name>', or 'chord:<name>'"
                 ),
             ));
         };
@@ -74,7 +73,7 @@ pub fn parse_metadata(content: &str, base_offset: usize) -> Result<ParsedMetadat
         let (key_raw, value_raw) = trimmed.split_once('=').ok_or_else(|| {
             JianPuError::new(
                 line_span.clone(),
-                format!("expected key = value, got: {}", trimmed),
+                format!("expected key = value, got: {trimmed}"),
             )
         })?;
 
@@ -104,7 +103,7 @@ pub fn parse_metadata(content: &str, base_offset: usize) -> Result<ParsedMetadat
             _ => {
                 return Err(JianPuError::new(
                     line_span,
-                    format!("unknown metadata field: {}", key),
+                    format!("unknown metadata field: {key}"),
                 ))
             }
         }

@@ -1,49 +1,21 @@
-use crate::ast::grouped::*;
+use crate::ast::grouped::{
+    GroupedChordPart, GroupedMeasure, GroupedPart, Lyrics, MultiPartMeasure, NoteEvent, Notes,
+    PartRow, PartSlice,
+};
 use crate::ast::parsed::{JianPuPitch, PartColumn, Syllable};
 use crate::error::{JianPuError, Span};
 
 pub fn combine(
-    parts: Vec<GroupedPart>,
-    chord_parts: Vec<GroupedChordPart>,
+    parts: &[GroupedPart],
+    chord_parts: &[GroupedChordPart],
     parts_ordering: &[PartColumn],
 ) -> Result<Vec<MultiPartMeasure>, JianPuError> {
     if parts.is_empty() && chord_parts.is_empty() {
         return Ok(Vec::new());
     }
 
-    // Use the first notes part as the measure count source.
-    let expected_len = if !parts.is_empty() {
-        parts[0].measures.len()
-    } else {
-        0
-    };
-
-    for part in &parts[1..] {
-        if part.measures.len() != expected_len {
-            // structurally unreachable: interleaved parser produces equal measure counts for all parts
-            return Err(JianPuError::new(
-                Span::new(0, 1),
-                format!(
-                    "part {:?} has {} measures but the first part has {}; all parts must have the same number of measures",
-                    part.name, part.measures.len(), expected_len
-                ),
-            ));
-        }
-    }
-    for cp in &chord_parts {
-        if cp.measures.len() != expected_len {
-            // structurally unreachable: interleaved parser produces equal measure counts for all parts
-            return Err(JianPuError::new(
-                Span::new(0, 1),
-                format!(
-                    "chord part {:?} has {} measures but notes parts have {}",
-                    cp.name,
-                    cp.measures.len(),
-                    expected_len
-                ),
-            ));
-        }
-    }
+    let expected_len = parts.first().map(|p| p.measures.len()).unwrap_or(0);
+    validate_measure_counts(parts, chord_parts, expected_len)?;
 
     let lyrics_per_part: Vec<Vec<Vec<Syllable>>> = parts
         .iter()
@@ -55,52 +27,24 @@ pub fn combine(
         })
         .collect();
 
-    let num_measures = expected_len;
-    let mut combined = Vec::with_capacity(num_measures);
-
-    for measure_idx in 0..num_measures {
-        let first = &parts[0].measures[measure_idx];
-
-        // Build part rows in parts_ordering order
-        let mut notes_idx = 0usize;
-        let mut chord_idx = 0usize;
-        let mut part_rows: Vec<PartRow> = Vec::new();
-
-        for col in parts_ordering {
-            match col {
-                PartColumn::Notes { .. } => {
-                    if notes_idx < parts.len() {
-                        let part = &parts[notes_idx];
-                        let measure = &part.measures[measure_idx];
-                        let syllables = lyrics_per_part[notes_idx][measure_idx].clone();
-                        let lyrics = if part.lyrics.is_some() {
-                            Some(Lyrics { syllables })
-                        } else {
-                            None
-                        };
-                        part_rows.push(PartRow::Notes(PartSlice {
-                            name: part.name.clone(),
-                            notes: Notes {
-                                events: measure.notes.events.clone(),
-                            },
-                            lyrics,
-                        }));
-                        notes_idx += 1;
-                    }
-                }
-                PartColumn::Lyrics { .. } => {
-                    // lyrics bundled into the Notes PartSlice above
-                }
-                PartColumn::Chord { .. } => {
-                    if chord_idx < chord_parts.len() {
-                        let cp = &chord_parts[chord_idx];
-                        part_rows.push(PartRow::Chord(cp.measures[measure_idx].clone()));
-                        chord_idx += 1;
-                    }
-                }
-            }
-        }
-
+    let mut combined = Vec::with_capacity(expected_len);
+    for measure_idx in 0..expected_len {
+        let first = parts
+            .first()
+            .and_then(|p| p.measures.get(measure_idx))
+            .ok_or_else(|| {
+                JianPuError::new(
+                    Span::new(0, 0),
+                    "internal invariant: first part measure missing",
+                )
+            })?;
+        let part_rows = build_part_rows(
+            parts,
+            chord_parts,
+            parts_ordering,
+            measure_idx,
+            &lyrics_per_part,
+        )?;
         combined.push(MultiPartMeasure {
             time_signature: first.time_signature.clone(),
             bpm: first.bpm,
@@ -111,6 +55,103 @@ pub fn combine(
     }
 
     Ok(combined)
+}
+
+fn validate_measure_counts(
+    parts: &[GroupedPart],
+    chord_parts: &[GroupedChordPart],
+    expected_len: usize,
+) -> Result<(), JianPuError> {
+    for part in parts.iter().skip(1) {
+        if part.measures.len() != expected_len {
+            return Err(JianPuError::new(
+                Span::new(0, 1),
+                format!(
+                    "part {:?} has {} measures but the first part has {}; all parts must have the same number of measures",
+                    part.name, part.measures.len(), expected_len
+                ),
+            ));
+        }
+    }
+    for cp in chord_parts {
+        if cp.measures.len() != expected_len {
+            return Err(JianPuError::new(
+                Span::new(0, 1),
+                format!(
+                    "chord part {:?} has {} measures but notes parts have {}",
+                    cp.name,
+                    cp.measures.len(),
+                    expected_len
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn build_part_rows(
+    parts: &[GroupedPart],
+    chord_parts: &[GroupedChordPart],
+    parts_ordering: &[PartColumn],
+    measure_idx: usize,
+    lyrics_per_part: &[Vec<Vec<Syllable>>],
+) -> Result<Vec<PartRow>, JianPuError> {
+    let mut notes_idx = 0usize;
+    let mut chord_idx = 0usize;
+    let mut part_rows = Vec::new();
+
+    for col in parts_ordering {
+        match col {
+            PartColumn::Notes { .. } => {
+                if let Some(part) = parts.get(notes_idx) {
+                    let measure = part.measures.get(measure_idx).ok_or_else(|| {
+                        JianPuError::new(
+                            Span::new(0, 0),
+                            "internal invariant: notes part measure missing",
+                        )
+                    })?;
+                    let syllables = lyrics_per_part
+                        .get(notes_idx)
+                        .and_then(|lyrics| lyrics.get(measure_idx))
+                        .ok_or_else(|| {
+                            JianPuError::new(
+                                Span::new(0, 0),
+                                "internal invariant: lyrics distribution missing",
+                            )
+                        })?
+                        .clone();
+                    let lyrics = if part.lyrics.is_some() {
+                        Some(Lyrics { syllables })
+                    } else {
+                        None
+                    };
+                    part_rows.push(PartRow::Notes(PartSlice {
+                        name: part.name.clone(),
+                        notes: Notes {
+                            events: measure.notes.events.clone(),
+                        },
+                        lyrics,
+                    }));
+                    notes_idx += 1;
+                }
+            }
+            PartColumn::Lyrics { .. } => {}
+            PartColumn::Chord { .. } => {
+                if let Some(cp) = chord_parts.get(chord_idx) {
+                    let chord_measure = cp.measures.get(measure_idx).ok_or_else(|| {
+                        JianPuError::new(
+                            Span::new(0, 0),
+                            "internal invariant: chord part measure missing",
+                        )
+                    })?;
+                    part_rows.push(PartRow::Chord(chord_measure.clone()));
+                    chord_idx += 1;
+                }
+            }
+        }
+    }
+
+    Ok(part_rows)
 }
 
 fn distribute_lyrics(measures: &[GroupedMeasure], lyrics: &[Syllable]) -> Vec<Vec<Syllable>> {
@@ -125,9 +166,11 @@ fn distribute_lyrics(measures: &[GroupedMeasure], lyrics: &[Syllable]) -> Vec<Ve
             match event {
                 NoteEvent::Note(note) => {
                     let is_continuation = prev_tie && prev_pitch.as_ref() == Some(&note.pitch);
-                    if !is_continuation && syllable_idx < lyrics.len() {
-                        measure_syllables.push(lyrics[syllable_idx].clone());
-                        syllable_idx += 1;
+                    if !is_continuation {
+                        if let Some(syllable) = lyrics.get(syllable_idx) {
+                            measure_syllables.push(syllable.clone());
+                            syllable_idx += 1;
+                        }
                     }
                     prev_tie = note.tie;
                     prev_pitch = Some(note.pitch.clone());
@@ -149,8 +192,7 @@ mod tests {
 
     fn make_two_part_score(soprano: &str, alto: &str) -> Vec<MultiPartMeasure> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{}\n{}\n",
-            soprano, alto
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes:Soprano notes:Alto\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{soprano}\n{alto}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         grouper::group(doc).unwrap().measures

@@ -31,13 +31,13 @@ fn parse_single_token(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
     if let Some(rest) = text.strip_prefix("bpm=") {
         let bpm = rest
             .parse::<u32>()
-            .map_err(|_| JianPuError::new(span.clone(), format!("invalid bpm value: {}", rest)))?;
+            .map_err(|_| JianPuError::new(span.clone(), format!("invalid bpm value: {rest}")))?;
         return Ok(ScoreEvent::BpmChange(bpm));
     }
 
     // Key change directive: 1=C4, 1=Bb4, 1=F#3
     if text.starts_with("1=") {
-        return parse_key_change(text, span);
+        return parse_key_change(text, &span);
     }
 
     // Time signature: N/N
@@ -49,11 +49,14 @@ fn parse_single_token(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
     parse_note_or_rest(text, span)
 }
 
-fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
-    let mut chars = text.char_indices().peekable();
+struct TrailingModifiers {
+    trailing_dots: i8,
+    dotted: bool,
+    tie: bool,
+}
 
-    // Duration prefix
-    let duration: u32 = match chars.peek() {
+fn parse_duration_prefix(chars: &mut std::iter::Peekable<std::str::CharIndices>) -> u32 {
+    match chars.peek() {
         Some(&(_, '=')) => {
             chars.next();
             1
@@ -63,20 +66,27 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
             2
         }
         _ => 4,
-    };
+    }
+}
 
-    // Leading octave dots
+fn parse_leading_octave_dots(chars: &mut std::iter::Peekable<std::str::CharIndices>) -> i8 {
     let mut leading_dots = 0i8;
     while chars.peek().map(|&(_, c)| c) == Some('.') {
         leading_dots += 1;
         chars.next();
     }
+    leading_dots
+}
 
-    // Pitch digit — span points to this exact character
+fn parse_pitch_digit(
+    chars: &mut std::iter::Peekable<std::str::CharIndices>,
+    text: &str,
+    span: &Span,
+) -> Result<char, JianPuError> {
     let (pitch_byte, pitch_char) = chars.next().ok_or_else(|| {
         JianPuError::new(
             span.clone(),
-            format!("expected a pitch digit (0-7), got: {}", text),
+            format!("expected a pitch digit (0-7), got: {text}"),
         )
     })?;
 
@@ -84,14 +94,22 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
         let pos = span.start + pitch_byte;
         return Err(JianPuError::new(
             Span::new(pos, pos + pitch_char.len_utf8()),
-            format!("expected pitch digit 0-7, got: {}", pitch_char),
+            format!("expected pitch digit 0-7, got: {pitch_char}"),
         ));
     }
 
-    // Trailing octave dots, then optional dotted-duration marker (*), then optional tie (~)
+    Ok(pitch_char)
+}
+
+fn parse_trailing_modifiers(
+    chars: &mut std::iter::Peekable<std::str::CharIndices>,
+    duration: u32,
+    span: &Span,
+) -> Result<TrailingModifiers, JianPuError> {
     let mut trailing_dots = 0i8;
     let mut dotted = false;
     let mut tie = false;
+
     while let Some(&(idx, c)) = chars.peek() {
         match c {
             '.' => {
@@ -119,18 +137,28 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
                 let pos = span.start + idx;
                 return Err(JianPuError::new(
                     Span::new(pos, pos + c.len_utf8()),
-                    format!("unexpected character after pitch: {}", c),
+                    format!("unexpected character after pitch: {c}"),
                 ));
             }
         }
     }
 
-    let duration = if dotted {
+    Ok(TrailingModifiers {
+        trailing_dots,
+        dotted,
+        tie,
+    })
+}
+
+fn apply_dotted_duration(duration: u32, dotted: bool) -> u32 {
+    if dotted {
         duration + duration / 2
     } else {
         duration
-    };
+    }
+}
 
+fn resolve_octave(leading_dots: i8, trailing_dots: i8, span: Span) -> Result<i8, JianPuError> {
     if leading_dots > 0 && trailing_dots > 0 {
         return Err(JianPuError::new(
             span,
@@ -139,31 +167,49 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
         ));
     }
 
-    let octave = if leading_dots > 0 {
+    Ok(if leading_dots > 0 {
         leading_dots
     } else {
         -trailing_dots
-    };
+    })
+}
+
+fn pitch_char_to_jianpu(pitch_char: char, span: Span) -> Result<JianPuPitch, JianPuError> {
+    match pitch_char {
+        '1' => Ok(JianPuPitch::One),
+        '2' => Ok(JianPuPitch::Two),
+        '3' => Ok(JianPuPitch::Three),
+        '4' => Ok(JianPuPitch::Four),
+        '5' => Ok(JianPuPitch::Five),
+        '6' => Ok(JianPuPitch::Six),
+        '7' => Ok(JianPuPitch::Seven),
+        _ => Err(JianPuError::new(
+            span,
+            format!("expected pitch digit 0-7, got: {pitch_char}"),
+        )),
+    }
+}
+
+fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
+    let mut chars = text.char_indices().peekable();
+
+    let base_duration = parse_duration_prefix(&mut chars);
+    let leading_dots = parse_leading_octave_dots(&mut chars);
+    let pitch_char = parse_pitch_digit(&mut chars, text, &span)?;
+    let TrailingModifiers {
+        trailing_dots,
+        dotted,
+        tie,
+    } = parse_trailing_modifiers(&mut chars, base_duration, &span)?;
+
+    let duration = apply_dotted_duration(base_duration, dotted);
+    let octave = resolve_octave(leading_dots, trailing_dots, span.clone())?;
 
     if pitch_char == '0' {
         return Ok(ScoreEvent::Rest(ParsedRest { duration, dotted }));
     }
 
-    let pitch = match pitch_char {
-        '1' => JianPuPitch::One,
-        '2' => JianPuPitch::Two,
-        '3' => JianPuPitch::Three,
-        '4' => JianPuPitch::Four,
-        '5' => JianPuPitch::Five,
-        '6' => JianPuPitch::Six,
-        '7' => JianPuPitch::Seven,
-        _ => {
-            return Err(JianPuError::new(
-                span,
-                format!("expected pitch digit 0-7, got: {pitch_char}"),
-            ));
-        }
-    };
+    let pitch = pitch_char_to_jianpu(pitch_char, span)?;
 
     Ok(ScoreEvent::Note(ParsedNote {
         pitch,
@@ -174,7 +220,7 @@ fn parse_note_or_rest(text: &str, span: Span) -> Result<ScoreEvent, JianPuError>
     }))
 }
 
-fn parse_key_change(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
+fn parse_key_change(text: &str, span: &Span) -> Result<ScoreEvent, JianPuError> {
     let after_eq = text.strip_prefix("1=").ok_or_else(|| {
         JianPuError::new(
             span.clone(),
@@ -186,7 +232,7 @@ fn parse_key_change(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
     let name_char = chars.next().ok_or_else(|| {
         JianPuError::new(
             span.clone(),
-            format!("expected note name after '1=', got: {}", text),
+            format!("expected note name after '1=', got: {text}"),
         )
     })?;
 
@@ -201,7 +247,7 @@ fn parse_key_change(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
         _ => {
             return Err(JianPuError::new(
                 span.clone(),
-                format!("invalid note name: {}", name_char),
+                format!("invalid note name: {name_char}"),
             ))
         }
     };
@@ -222,7 +268,7 @@ fn parse_key_change(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
     let octave = octave_str.parse::<u8>().map_err(|_| {
         JianPuError::new(
             span.clone(),
-            format!("invalid octave number in key change: {}", text),
+            format!("invalid octave number in key change: {text}"),
         )
     })?;
 
@@ -239,20 +285,26 @@ fn parse_time_signature(text: &str, span: Span) -> Result<ScoreEvent, JianPuErro
     let parts: Vec<&str> = text.split('/').collect();
     if parts.len() != 2 {
         return Err(JianPuError::new(
-            span.clone(),
-            format!("invalid time signature: {}", text),
+            span,
+            format!("invalid time signature: {text}"),
         ));
     }
-    let numerator = parts[0].parse::<u8>().map_err(|_| {
+    let numerator_str = parts
+        .first()
+        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid time signature: {text}")))?;
+    let denominator_str = parts
+        .get(1)
+        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid time signature: {text}")))?;
+    let numerator = numerator_str.parse::<u8>().map_err(|_| {
         JianPuError::new(
             span.clone(),
-            format!("invalid time signature numerator: {}", parts[0]),
+            format!("invalid time signature numerator: {numerator_str}"),
         )
     })?;
-    let denominator = parts[1].parse::<u8>().map_err(|_| {
+    let denominator = denominator_str.parse::<u8>().map_err(|_| {
         JianPuError::new(
             span.clone(),
-            format!("invalid time signature denominator: {}", parts[1]),
+            format!("invalid time signature denominator: {denominator_str}"),
         )
     })?;
     if denominator == 0 {
@@ -279,14 +331,14 @@ mod tests {
     fn note(events: &[Spanned<ScoreEvent>], i: usize) -> &ParsedNote {
         match &events[i].value {
             ScoreEvent::Note(n) => n,
-            _ => panic!("expected Note at index {}", i),
+            _ => panic!("expected Note at index {i}"),
         }
     }
 
     fn rest(events: &[Spanned<ScoreEvent>], i: usize) -> &ParsedRest {
         match &events[i].value {
             ScoreEvent::Rest(r) => r,
-            _ => panic!("expected Rest at index {}", i),
+            _ => panic!("expected Rest at index {i}"),
         }
     }
 

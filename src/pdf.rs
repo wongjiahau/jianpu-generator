@@ -37,19 +37,24 @@ pub fn write_pdf(svgs: &[String]) -> Result<Vec<u8>, JianPuError> {
 
     for (i, svg_str) in svgs.iter().enumerate() {
         let tree = svg2pdf::usvg::Tree::from_str(svg_str, &options)
-            .map_err(|e| JianPuError::new(Span::new(0, 0), format!("SVG parse error: {}", e)))?;
+            .map_err(|e| JianPuError::new(Span::new(0, 0), format!("SVG parse error: {e}")))?;
 
         let page_width = tree.size().width();
         let page_height = tree.size().height();
 
         let (svg_chunk, svg_ref) = svg2pdf::to_chunk(&tree, conversion_options).map_err(|e| {
-            JianPuError::new(Span::new(0, 0), format!("SVG to PDF chunk failed: {}", e))
+            JianPuError::new(Span::new(0, 0), format!("SVG to PDF chunk failed: {e}"))
         })?;
 
         // Renumber the chunk's internal refs so they don't conflict with our allocator.
         let mut map = HashMap::new();
         let svg_chunk = svg_chunk.renumber(|old| *map.entry(old).or_insert_with(|| alloc.bump()));
-        let svg_ref_new = map[&svg_ref];
+        let svg_ref_new = map.get(&svg_ref).copied().ok_or_else(|| {
+            JianPuError::new(
+                Span::new(0, 0),
+                "internal invariant: SVG chunk ref missing after renumber",
+            )
+        })?;
 
         pdf.extend(&svg_chunk);
 
@@ -59,12 +64,24 @@ pub fn write_pdf(svgs: &[String]) -> Result<Vec<u8>, JianPuError> {
         content.x_object(svg_name);
         let content_bytes = content.finish();
 
-        pdf.stream(content_ids[i], &content_bytes).finish();
+        let content_id = content_ids.get(i).ok_or_else(|| {
+            JianPuError::new(
+                Span::new(0, 0),
+                "internal invariant: content_ids index out of range",
+            )
+        })?;
+        pdf.stream(*content_id, &content_bytes).finish();
 
-        let mut page = pdf.page(page_ids[i]);
+        let page_id = page_ids.get(i).ok_or_else(|| {
+            JianPuError::new(
+                Span::new(0, 0),
+                "internal invariant: page_ids index out of range",
+            )
+        })?;
+        let mut page = pdf.page(*page_id);
         page.media_box(Rect::new(0.0, 0.0, page_width, page_height));
         page.parent(page_tree_id);
-        page.contents(content_ids[i]);
+        page.contents(*content_id);
         let mut resources = page.resources();
         resources.x_objects().pair(svg_name, svg_ref_new);
         resources.finish();
@@ -81,8 +98,7 @@ mod tests {
 
     fn make_pdf(score_str: &str, lyrics_str: &str) -> Vec<u8> {
         let input = format!(
-            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{}\n{}\n",
-            score_str, lyrics_str
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\nparts = notes: lyrics:\n\n[score]\n(time=4/4 key=C4 bpm=120)\n{score_str}\n{lyrics_str}\n"
         );
         let doc = parser::parse(&input, "test.jianpu").unwrap();
         let score = grouper::group(doc).unwrap();

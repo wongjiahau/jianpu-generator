@@ -27,10 +27,7 @@ fn render_to_writer(e: &JianPuError, mut writer: impl std::io::Write) {
         .with_message(&e.message)
         .with_label(Label::new(span).with_message(&e.message))
         .finish()
-        .write(
-            (filename.clone(), Source::from(source.as_str())),
-            &mut writer,
-        )
+        .write((filename, Source::from(source.as_str())), &mut writer)
         .is_err()
     {
         writeln!(writer, "error: {}", e.message).ok();
