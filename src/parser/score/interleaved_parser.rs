@@ -692,10 +692,32 @@ fn last_timed_event_span(events: &[Spanned<ScoreEvent>]) -> Span {
         .unwrap_or(Span::new(0, 1))
 }
 
-fn has_extendable_note_or_rest(events: &[Spanned<ScoreEvent>]) -> bool {
-    events
+fn timed_beats_before_last(events: &[Spanned<ScoreEvent>]) -> (u32, u32) {
+    let mut timed = events
         .iter()
-        .any(|e| matches!(&e.value, ScoreEvent::Note(_) | ScoreEvent::Rest(_)))
+        .filter_map(|e| {
+            let beats = timed_beats(&e.value);
+            (beats > 0).then_some(beats)
+        })
+        .collect::<Vec<_>>();
+
+    if timed.is_empty() {
+        return (0, 0);
+    }
+
+    let last = timed.pop().unwrap();
+    (timed.iter().sum(), last)
+}
+
+/// Implicit trailing `-` extensions apply only when earlier content fills whole beats
+/// and the last note/rest is at least a quarter note (duration >= 4).
+fn can_implicitly_pad(events: &[Spanned<ScoreEvent>], deficit: u32) -> bool {
+    if deficit % 4 != 0 {
+        return false;
+    }
+
+    let (before_last, last_beats) = timed_beats_before_last(events);
+    last_beats >= 4 && before_last % 4 == 0
 }
 
 /// Validates measure capacity and pads omitted trailing `-` extensions when possible.
@@ -722,13 +744,15 @@ fn validate_and_pad_beats(
 
     if total < expected {
         let deficit = expected - total;
-        if deficit % 4 != 0 || !has_extendable_note_or_rest(&events) {
+        if !can_implicitly_pad(&events, deficit) {
             return Err(JianPuError::new(
                 last_timed_event_span(&events),
                 format!("incomplete measure: expected {expected} quarter-beats, got {total}"),
             ));
         }
-        if let Some(last) = events.iter_mut().rev().find(|e| timed_beats(&e.value) > 0) {
+        if let Some(last) = events.iter_mut().rev().find(|e| {
+            matches!(&e.value, ScoreEvent::Note(_) | ScoreEvent::Rest(_))
+        }) {
             match &mut last.value {
                 ScoreEvent::Note(n) => n.duration += deficit,
                 ScoreEvent::Rest(r) => r.duration += deficit,
@@ -1253,6 +1277,14 @@ mod tests {
     #[test]
     fn rejects_underfull_measure_that_cannot_be_padded_with_extensions() {
         let content = "(time=4/4 key=C4 bpm=120)\n4_\n";
+        let declarations = vec![decl("", PartKind::Notes)];
+        let err = parse(content, 0, &declarations).unwrap_err();
+        assert!(err.message.contains("incomplete measure"));
+    }
+
+    #[test]
+    fn rejects_underfull_measure_with_short_trailing_notes() {
+        let content = "(time=4/4 key=C4 bpm=120)\n3_ 1_ 1 0_ 1= 1=\n";
         let declarations = vec![decl("", PartKind::Notes)];
         let err = parse(content, 0, &declarations).unwrap_err();
         assert!(err.message.contains("incomplete measure"));
