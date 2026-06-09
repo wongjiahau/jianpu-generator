@@ -132,6 +132,7 @@ function wasmDevPlugin(): Plugin {
 }
 
 export default defineConfig({
+  base: process.env.VITE_BASE_PATH ?? '/',
   plugins: [react(), wasmDevPlugin()],
   resolve: {
     alias: {
