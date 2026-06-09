@@ -418,6 +418,55 @@
   background: var(--surface);
 }
 
+.preview-audio-frame {
+  position: relative;
+  min-height: 2.5rem;
+}
+
+.preview-audio-placeholder {
+  display: flex;
+  align-items: center;
+  min-height: 2.5rem;
+}
+
+.preview-audio-generating {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  pointer-events: all;
+}
+
+.preview-audio-spinner {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  border: 2px solid var(--border);
+  border-top-color: var(--muted);
+  border-radius: 50%;
+  animation: preview-audio-spin 0.7s linear infinite;
+}
+
+@keyframes preview-audio-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.preview-audio-status {
+  font-style: italic;
+}
+
+.preview-audio-player-wrap {
+  width: 100%;
+}
+
 .preview-audio-player {
   display: block;
   width: 100%;
