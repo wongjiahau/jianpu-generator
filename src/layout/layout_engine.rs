@@ -10,8 +10,8 @@ use crate::layout::types::{
 use crate::utils::is_cjk_char;
 
 use super::{
-    compute_prefix_width, extend_note_chains, flush_beam_buffer, format_chord_symbol,
-    measure_column_width, part_row_height, BeamBufferEntry, PAGE_MARGIN,
+    extend_note_chains, flush_beam_buffer, format_chord_symbol, measure_column_width,
+    part_row_height, BeamBufferEntry, PAGE_MARGIN,
 };
 
 fn measure_has_directive_labels(measure: &MultiPartMeasure) -> bool {
@@ -29,12 +29,11 @@ fn line_has_any_directive_labels(
         if measure_has_directive_labels(measure) {
             return true;
         }
-        let prefix = compute_prefix_width(measure);
         let width = measure_column_width(measure);
-        if col.saturating_add(prefix).saturating_add(width) > columns_per_row {
+        if col.saturating_add(width) > columns_per_row {
             break;
         }
-        col = col.saturating_add(prefix).saturating_add(width);
+        col = col.saturating_add(width);
     }
     false
 }
@@ -254,10 +253,9 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn wrap_line_if_needed(&mut self, measure: &MultiPartMeasure) {
-        let prefix_width = compute_prefix_width(measure);
         let measure_width = measure_column_width(measure);
 
-        if self.current_col + prefix_width + measure_width <= self.columns_per_row {
+        if self.current_col + measure_width <= self.columns_per_row {
             return;
         }
 
@@ -389,12 +387,11 @@ impl<'a> LayoutEngine<'a> {
     }
 
     fn emit_measure_directives(&mut self, measure: &MultiPartMeasure) -> u32 {
-        let directive_col_start = self.current_col;
-        let mut directive_advance = 0u32;
+        let note_col_start = self.current_col;
 
         if self.line_has_directive_row {
             let directive_row = self.current_row_offset;
-            let mut dc = directive_col_start;
+            let mut dc = note_col_start;
 
             if let Some(ts) = &measure.time_signature {
                 self.current_elements.push(GridElement {
@@ -410,7 +407,6 @@ impl<'a> LayoutEngine<'a> {
                     },
                 });
                 dc += 2;
-                directive_advance += 2;
             }
 
             if let Some(bpm) = measure.bpm {
@@ -423,12 +419,10 @@ impl<'a> LayoutEngine<'a> {
                     vertical_alignment: VerticalAlignment::Center,
                     content: GridContent::BpmLabel { bpm },
                 });
-                directive_advance += 2;
             }
         }
 
-        self.current_col = directive_col_start + directive_advance;
-        self.current_col
+        note_col_start
     }
 
     fn max_notes_width(measure: &MultiPartMeasure) -> u32 {
