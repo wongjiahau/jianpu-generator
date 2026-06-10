@@ -6,12 +6,18 @@ mod duration;
 mod groups;
 mod note_head;
 mod timed_lexer;
+mod timed_rd_parser;
 
 #[path = "timed_lexer_tests.rs"]
 #[cfg(test)]
 mod timed_lexer_tests;
 
+#[path = "timed_rd_parser_tests.rs"]
+#[cfg(test)]
+mod timed_rd_parser_tests;
+
 pub use timed_lexer::{lex_line, TimedLexToken};
+pub use timed_rd_parser::TimedRdParser;
 
 pub use chord_head::ChordHead;
 pub use note_head::NoteHead;
@@ -26,6 +32,16 @@ pub use groups::{
 use crate::ast::parsed::ScoreEvent;
 use crate::error::{JianPuError, Span, Spanned};
 use crate::parser::score::tokenizer::RawToken;
+
+/// Parse a single line of timed notation using the lexer + recursive-descent parser.
+pub fn parse_timed_line<H: TimedUnitHead>(
+    line: &str,
+    base_offset: usize,
+    stack: &mut GroupStack,
+) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
+    let tokens = lex_line(line, base_offset)?;
+    TimedRdParser::<H>::parse_line(line, base_offset, &tokens, stack)
+}
 
 pub trait TimedUnitHead: Sized {
     /// Parse one head starting at `chars[start]`. Returns (head, index after head, is_rest).
