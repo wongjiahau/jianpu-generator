@@ -140,6 +140,10 @@ pub(crate) struct GroupedPart {
     /// Per-measure flag: true when every input line of this part in that
     /// measure was a `"` ditto (explicit or implicit trailing omission).
     pub(crate) ditto_measures: Vec<bool>,
+    /// Per-measure flag: true when this part's lyric line in that measure
+    /// was a `"` ditto. The copied lyrics duplicate the part above, so the
+    /// lyric row is not rendered and its space is reclaimed.
+    pub(crate) lyrics_ditto_measures: Vec<bool>,
 }
 
 // ── Shared note types ─────────────────────────────────────────────────────────

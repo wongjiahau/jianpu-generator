@@ -111,16 +111,25 @@ pub fn parse(
     Ok((tracks, directive_events_per_measure))
 }
 
-/// Per track, per measure group: true when every score line of the track in
-/// that group is a ditto — an explicit `"` line or an omitted trailing line
-/// (which desugaring pads as implicit ditto). Computed from the raw groups
-/// before desugaring erases the distinction.
+/// Ditto flags per track, per measure group, computed from the raw groups
+/// before desugaring erases the distinction. A line is a ditto when it is an
+/// explicit `"` or an omitted trailing line (which desugaring pads as
+/// implicit ditto).
+struct DittoMeasures {
+    /// `[track][measure]`: every score line of the track was a ditto.
+    full: Vec<Vec<bool>>,
+    /// `[track][measure]`: the track's lyric line was a ditto. Always false
+    /// for tracks without a lyrics line.
+    lyrics: Vec<Vec<bool>>,
+}
+
 fn compute_ditto_measures(
     groups: &[Vec<(String, usize)>],
     declarations: &[PartDecl],
-) -> Vec<Vec<bool>> {
+) -> DittoMeasures {
     let slots = flatten_score_line_slots(declarations);
-    let mut result = vec![Vec::with_capacity(groups.len()); declarations.len()];
+    let mut full = vec![Vec::with_capacity(groups.len()); declarations.len()];
+    let mut lyrics = vec![Vec::with_capacity(groups.len()); declarations.len()];
 
     for group in groups {
         let directive_count = usize::from(
@@ -130,23 +139,34 @@ fn compute_ditto_measures(
                 .unwrap_or(false),
         );
         let data_lines = group.get(directive_count..).unwrap_or(&[]);
+        let line_is_ditto = |slot_idx: usize| {
+            data_lines
+                .get(slot_idx)
+                .map(|(line, _)| line == "\"")
+                .unwrap_or(true)
+        };
 
-        for (track_index, track_flags) in result.iter_mut().enumerate() {
-            let all_lines_ditto = slots
-                .iter()
-                .enumerate()
-                .filter(|(_, slot)| slot.track_index == track_index)
-                .all(|(slot_idx, _)| {
-                    data_lines
-                        .get(slot_idx)
-                        .map(|(line, _)| line == "\"")
-                        .unwrap_or(true)
-                });
-            track_flags.push(all_lines_ditto);
+        for (track_index, (track_full, track_lyrics)) in
+            full.iter_mut().zip(lyrics.iter_mut()).enumerate()
+        {
+            let mut all_lines_ditto = true;
+            let mut lyric_line_ditto = false;
+            for (slot_idx, slot) in slots.iter().enumerate() {
+                if slot.track_index != track_index {
+                    continue;
+                }
+                let is_ditto = line_is_ditto(slot_idx);
+                all_lines_ditto &= is_ditto;
+                if matches!(slot.role, ScoreLineRole::Lyrics) {
+                    lyric_line_ditto = is_ditto;
+                }
+            }
+            track_full.push(all_lines_ditto);
+            track_lyrics.push(lyric_line_ditto);
         }
     }
 
-    result
+    DittoMeasures { full, lyrics }
 }
 
 fn build_slot_actions(slots: &[ScoreLineSlot]) -> Vec<SlotAction> {
@@ -442,7 +462,7 @@ fn validate_and_pad_group_lines(
 fn build_parse_result(
     declarations: &[PartDecl],
     accumulators: Vec<TrackAccumulator>,
-    mut ditto_measures_per_track: Vec<Vec<bool>>,
+    mut ditto_measures_per_track: DittoMeasures,
 ) -> Result<Vec<ParsedTrack>, JianPuError> {
     if declarations.len() != accumulators.len() {
         return Err(JianPuError::new(
@@ -464,6 +484,12 @@ fn build_parse_result(
                 score: ParsedScore { events },
                 lyrics: syllables.map(|s| ParsedLyrics { syllables: s }),
                 ditto_measures: ditto_measures_per_track
+                    .full
+                    .get_mut(track_index)
+                    .map(std::mem::take)
+                    .unwrap_or_default(),
+                lyrics_ditto_measures: ditto_measures_per_track
+                    .lyrics
                     .get_mut(track_index)
                     .map(std::mem::take)
                     .unwrap_or_default(),

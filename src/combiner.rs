@@ -108,7 +108,7 @@ fn build_part_rows(
                     PartKind::NotesWithLyrics => Some(Lyrics { syllables }),
                     PartKind::Chord | PartKind::Notes => None,
                 };
-                let slice = PartSlice {
+                let mut slice = PartSlice {
                     name: part.name.clone(),
                     kind: part.kind,
                     notes: Notes {
@@ -121,6 +121,18 @@ fn build_part_rows(
                     .get(measure_idx)
                     .copied()
                     .unwrap_or(false);
+                let lyrics_ditto = part
+                    .lyrics_ditto_measures
+                    .get(measure_idx)
+                    .copied()
+                    .unwrap_or(false);
+                // A ditto'd lyric line duplicates the part above's lyrics, so
+                // render this measure as a plain notes part: the copied
+                // syllables are not shown and the lyric row is reclaimed.
+                if lyrics_ditto && !is_ditto && matches!(slice.kind, PartKind::NotesWithLyrics) {
+                    slice.kind = PartKind::Notes;
+                    slice.lyrics = None;
+                }
                 part_rows.push(if is_ditto {
                     PartRow::Ditto(slice)
                 } else {

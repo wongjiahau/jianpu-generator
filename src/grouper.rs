@@ -346,18 +346,21 @@ impl PartGrouper {
             measures: self.measures,
             lyrics: self.part_lyrics,
             ditto_measures: Vec::new(),
+            lyrics_ditto_measures: Vec::new(),
         }
     }
 }
 
 fn group_timed_track(part: ParsedTimedTrack) -> Result<GroupedPart, JianPuError> {
     let ditto_measures = part.ditto_measures.clone();
+    let lyrics_ditto_measures = part.lyrics_ditto_measures.clone();
     let mut grouper = PartGrouper::new(&part);
     for spanned in part.score.events {
         grouper.process_event(spanned)?;
     }
     let mut grouped = grouper.finish();
     grouped.ditto_measures = ditto_measures;
+    grouped.lyrics_ditto_measures = lyrics_ditto_measures;
     Ok(grouped)
 }
 

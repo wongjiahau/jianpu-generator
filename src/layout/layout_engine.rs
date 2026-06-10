@@ -1,4 +1,4 @@
-use crate::ast::grouped::{MultiPartMeasure, PartRow, Score};
+use crate::ast::grouped::{MultiPartMeasure, Score};
 use crate::layout::types::{
     Footer, GridContent, GridElement, GridPosition, Header, HorizontalAlignment, Page, RowGroup,
     VerticalAlignment,
@@ -18,10 +18,12 @@ fn measure_has_directive_labels(measure: &MultiPartMeasure) -> bool {
     measure.time_signature.is_some() || measure.bpm.is_some()
 }
 
-/// Which parts of a measure render: true = ditto (suppressed), false = active.
-/// All measures sharing a system line must have an identical pattern.
-fn measure_ditto_pattern(measure: &MultiPartMeasure) -> Vec<bool> {
-    measure.parts.iter().map(PartRow::is_ditto).collect()
+/// Per-part rendered heights of a measure: 0 = fully ditto (suppressed),
+/// 3 = notes only (including a part whose lyric line is ditto'd), 4 = notes
+/// with lyrics. All measures sharing a system line must render the exact
+/// same shape, so a measure with a different pattern forces a wrap.
+fn measure_row_pattern(measure: &MultiPartMeasure) -> Vec<u32> {
+    measure.parts.iter().map(part_row_height).collect()
 }
 
 fn line_has_any_directive_labels(
@@ -31,9 +33,9 @@ fn line_has_any_directive_labels(
     line_start_col: u32,
 ) -> bool {
     let mut col = line_start_col;
-    let line_pattern = measures.get(start_idx).map(measure_ditto_pattern);
+    let line_pattern = measures.get(start_idx).map(measure_row_pattern);
     for measure in measures.get(start_idx..).into_iter().flatten() {
-        if line_pattern.as_deref() != Some(&measure_ditto_pattern(measure)) {
+        if line_pattern.as_deref() != Some(&measure_row_pattern(measure)) {
             break;
         }
         if measure_has_directive_labels(measure) {
@@ -56,10 +58,9 @@ pub(crate) struct LayoutEngine<'a> {
     /// parts occupy no rows, so lines with different ditto patterns differ.
     row_group_height: u32,
     bar_height: u32,
-    /// Ditto pattern (one bool per part) of the line being filled. A measure
-    /// with a different pattern cannot share the line and forces a wrap.
-    current_line_pattern: Vec<bool>,
-    /// Per-part row heights of the current line, used to locate part rows
+    /// Per-part rendered heights of the line being filled (see
+    /// [`measure_row_pattern`]). A measure with a different pattern cannot
+    /// share the line and forces a wrap; the heights also locate part rows
     /// when flushing buffers at a line wrap.
     line_part_heights: Vec<u32>,
     has_named_parts: bool,
@@ -137,7 +138,6 @@ impl<'a> LayoutEngine<'a> {
             columns_per_row,
             row_group_height,
             bar_height,
-            current_line_pattern: Vec::new(),
             line_part_heights: Vec::new(),
             has_named_parts,
             label_cols,
@@ -185,8 +185,7 @@ impl<'a> LayoutEngine<'a> {
             return;
         }
         if let Some(measure) = self.score.measures.get(self.measure_index) {
-            self.current_line_pattern = measure_ditto_pattern(measure);
-            self.line_part_heights = measure.parts.iter().map(part_row_height).collect();
+            self.line_part_heights = measure_row_pattern(measure);
             self.row_group_height = self.line_part_heights.iter().sum::<u32>().max(3);
             self.bar_height = self.row_group_height - 1;
         }
@@ -277,9 +276,9 @@ impl<'a> LayoutEngine<'a> {
         let measure_width = measure_column_width(measure);
         let width_overflow = self.current_col + measure_width > self.columns_per_row;
         // Every measure on a line shares one vertical layout, so a measure
-        // whose ditto pattern differs from the line's must start a new line.
+        // whose rendered shape differs from the line's must start a new line.
         let pattern_change =
-            !self.is_line_start && measure_ditto_pattern(measure) != self.current_line_pattern;
+            !self.is_line_start && measure_row_pattern(measure) != self.line_part_heights;
 
         if !width_overflow && !pattern_change {
             return;
