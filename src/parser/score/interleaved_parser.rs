@@ -51,6 +51,7 @@ pub fn parse(
     declarations: &[PartDecl],
 ) -> Result<(Vec<ParsedTrack>, DirectiveEventsPerMeasure), JianPuError> {
     let groups = collect_groups(content);
+    let ditto_measures_per_track = compute_ditto_measures(&groups, declarations);
     let groups = crate::desugar::desugar_groups(groups, declarations)?;
 
     let first_notes_track_index = declarations
@@ -106,8 +107,46 @@ pub fn parse(
         }
     }
 
-    let tracks = build_parse_result(declarations, accumulators)?;
+    let tracks = build_parse_result(declarations, accumulators, ditto_measures_per_track)?;
     Ok((tracks, directive_events_per_measure))
+}
+
+/// Per track, per measure group: true when every score line of the track in
+/// that group is a ditto — an explicit `"` line or an omitted trailing line
+/// (which desugaring pads as implicit ditto). Computed from the raw groups
+/// before desugaring erases the distinction.
+fn compute_ditto_measures(
+    groups: &[Vec<(String, usize)>],
+    declarations: &[PartDecl],
+) -> Vec<Vec<bool>> {
+    let slots = flatten_score_line_slots(declarations);
+    let mut result = vec![Vec::with_capacity(groups.len()); declarations.len()];
+
+    for group in groups {
+        let directive_count = usize::from(
+            group
+                .first()
+                .map(|(l, _)| l.starts_with('('))
+                .unwrap_or(false),
+        );
+        let data_lines = group.get(directive_count..).unwrap_or(&[]);
+
+        for (track_index, track_flags) in result.iter_mut().enumerate() {
+            let all_lines_ditto = slots
+                .iter()
+                .enumerate()
+                .filter(|(_, slot)| slot.track_index == track_index)
+                .all(|(slot_idx, _)| {
+                    data_lines
+                        .get(slot_idx)
+                        .map(|(line, _)| line == "\"")
+                        .unwrap_or(true)
+                });
+            track_flags.push(all_lines_ditto);
+        }
+    }
+
+    result
 }
 
 fn build_slot_actions(slots: &[ScoreLineSlot]) -> Vec<SlotAction> {
@@ -403,6 +442,7 @@ fn validate_and_pad_group_lines(
 fn build_parse_result(
     declarations: &[PartDecl],
     accumulators: Vec<TrackAccumulator>,
+    mut ditto_measures_per_track: Vec<Vec<bool>>,
 ) -> Result<Vec<ParsedTrack>, JianPuError> {
     if declarations.len() != accumulators.len() {
         return Err(JianPuError::new(
@@ -414,7 +454,8 @@ fn build_parse_result(
     declarations
         .iter()
         .zip(accumulators)
-        .map(|(decl, acc)| {
+        .enumerate()
+        .map(|(track_index, (decl, acc))| {
             let TrackAccumulator::Timed { events, syllables } = acc;
             Ok(ParsedTrack::Timed(ParsedTimedTrack {
                 abbreviation: decl.abbreviation.clone(),
@@ -422,6 +463,10 @@ fn build_parse_result(
                 kind: decl.kind,
                 score: ParsedScore { events },
                 lyrics: syllables.map(|s| ParsedLyrics { syllables: s }),
+                ditto_measures: ditto_measures_per_track
+                    .get_mut(track_index)
+                    .map(std::mem::take)
+                    .unwrap_or_default(),
             }))
         })
         .collect()

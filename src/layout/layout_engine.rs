@@ -18,6 +18,12 @@ fn measure_has_directive_labels(measure: &MultiPartMeasure) -> bool {
     measure.time_signature.is_some() || measure.bpm.is_some()
 }
 
+/// Which parts of a measure render: true = ditto (suppressed), false = active.
+/// All measures sharing a system line must have an identical pattern.
+fn measure_ditto_pattern(measure: &MultiPartMeasure) -> Vec<bool> {
+    measure.parts.iter().map(PartRow::is_ditto).collect()
+}
+
 fn line_has_any_directive_labels(
     measures: &[MultiPartMeasure],
     start_idx: usize,
@@ -25,7 +31,11 @@ fn line_has_any_directive_labels(
     line_start_col: u32,
 ) -> bool {
     let mut col = line_start_col;
+    let line_pattern = measures.get(start_idx).map(measure_ditto_pattern);
     for measure in measures.get(start_idx..).into_iter().flatten() {
+        if line_pattern.as_deref() != Some(&measure_ditto_pattern(measure)) {
+            break;
+        }
         if measure_has_directive_labels(measure) {
             return true;
         }
@@ -42,8 +52,16 @@ pub(crate) struct LayoutEngine<'a> {
     score: &'a Score,
     page_width_pt: f32,
     columns_per_row: u32,
+    /// Height of the current line's part rows. Recomputed per line: ditto
+    /// parts occupy no rows, so lines with different ditto patterns differ.
     row_group_height: u32,
     bar_height: u32,
+    /// Ditto pattern (one bool per part) of the line being filled. A measure
+    /// with a different pattern cannot share the line and forces a wrap.
+    current_line_pattern: Vec<bool>,
+    /// Per-part row heights of the current line, used to locate part rows
+    /// when flushing buffers at a line wrap.
+    line_part_heights: Vec<u32>,
     has_named_parts: bool,
     label_cols: u32,
     header_rows: u32,
@@ -119,6 +137,8 @@ impl<'a> LayoutEngine<'a> {
             columns_per_row,
             row_group_height,
             bar_height,
+            current_line_pattern: Vec::new(),
+            line_part_heights: Vec::new(),
             has_named_parts,
             label_cols,
             header_rows,
@@ -163,6 +183,12 @@ impl<'a> LayoutEngine<'a> {
     fn refresh_line_row_state(&mut self) {
         if !self.is_line_start {
             return;
+        }
+        if let Some(measure) = self.score.measures.get(self.measure_index) {
+            self.current_line_pattern = measure_ditto_pattern(measure);
+            self.line_part_heights = measure.parts.iter().map(part_row_height).collect();
+            self.row_group_height = self.line_part_heights.iter().sum::<u32>().max(3);
+            self.bar_height = self.row_group_height - 1;
         }
         self.line_has_directive_row = line_has_any_directive_labels(
             &self.score.measures,
@@ -249,13 +275,20 @@ impl<'a> LayoutEngine<'a> {
 
     fn wrap_line_if_needed(&mut self, measure: &MultiPartMeasure) {
         let measure_width = measure_column_width(measure);
+        let width_overflow = self.current_col + measure_width > self.columns_per_row;
+        // Every measure on a line shares one vertical layout, so a measure
+        // whose ditto pattern differs from the line's must start a new line.
+        let pattern_change =
+            !self.is_line_start && measure_ditto_pattern(measure) != self.current_line_pattern;
 
-        if self.current_col + measure_width <= self.columns_per_row {
+        if !width_overflow && !pattern_change {
             return;
         }
 
+        // Flush offsets must come from the current line's part heights, not
+        // the incoming measure's — their ditto patterns may differ.
         let mut flush_row_cursor = self.current_row_offset;
-        for (part_idx_flush, _part_row) in measure.parts.iter().enumerate() {
+        for part_idx_flush in 0..self.per_part_states.len() {
             if let Some(state) = self.per_part_states.get_mut(part_idx_flush) {
                 flush_beam_buffer(
                     &mut state.beam_buffer,
@@ -263,7 +296,11 @@ impl<'a> LayoutEngine<'a> {
                     &mut self.current_elements,
                 );
             }
-            flush_row_cursor += part_row_height(_part_row);
+            flush_row_cursor += self
+                .line_part_heights
+                .get(part_idx_flush)
+                .copied()
+                .unwrap_or(0);
         }
 
         for (part_idx_tie, _part_row) in measure.parts.iter().enumerate() {
@@ -340,7 +377,7 @@ impl<'a> LayoutEngine<'a> {
         if self.has_named_parts {
             let mut row_cursor = self.part_row_base() - 1;
             for part_row in &measure.parts {
-                if let Some(name) = part_row.name() {
+                if let Some(name) = part_row.rendered_slice().and_then(|s| s.name.as_ref()) {
                     self.current_elements.push(GridElement {
                         position: GridPosition {
                             column: 0,
@@ -416,10 +453,7 @@ impl<'a> LayoutEngine<'a> {
         measure
             .parts
             .iter()
-            .map(|row| {
-                let PartRow::Timed(p) = row;
-                measure_beat_width(p)
-            })
+            .map(|row| measure_beat_width(row.slice()))
             .max()
             .unwrap_or(0)
     }
@@ -430,7 +464,10 @@ impl<'a> LayoutEngine<'a> {
 
         for (notes_idx, part_row_enum) in measure.parts.iter().enumerate() {
             let part_row_offset = main_row_cursor;
-            let PartRow::Timed(part_slice) = part_row_enum;
+            let Some(part_slice) = part_row_enum.rendered_slice() else {
+                // Ditto rows render nothing and occupy no vertical space.
+                continue;
+            };
             if let Some(state) = self.per_part_states.get_mut(notes_idx) {
                 let mut part_state = PartNoteState {
                     elements: &mut self.current_elements,

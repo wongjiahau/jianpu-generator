@@ -160,6 +160,8 @@ fn part_row_height(row: &crate::ast::grouped::PartRow) -> u32 {
             PartKind::Notes => 3,
             PartKind::NotesWithLyrics => 4,
         },
+        // Ditto rows are not rendered; they occupy no vertical space.
+        PartRow::Ditto(_) => 0,
     }
 }
 
@@ -269,14 +271,10 @@ fn flush_chain(chain: &[(u32, SlurKey)], chain_row: u32, elements: &mut Vec<Grid
 }
 
 fn measure_column_width(measure: &crate::ast::grouped::MultiPartMeasure) -> u32 {
-    use crate::ast::grouped::PartRow;
     let max_notes: u32 = measure
         .parts
         .iter()
-        .map(|row| {
-            let PartRow::Timed(p) = row;
-            measure_beat_width(p)
-        })
+        .map(|row| measure_beat_width(row.slice()))
         .max()
         .unwrap_or(0);
     max_notes + 1 // +1 for bar line

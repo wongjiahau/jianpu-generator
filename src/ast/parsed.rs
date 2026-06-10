@@ -69,6 +69,9 @@ pub struct ParsedTimedTrack {
     pub kind: PartKind,
     pub score: ParsedScore,
     pub lyrics: Option<ParsedLyrics>,
+    /// Per-measure flag: true when every score line of this track in that
+    /// measure group was a `"` ditto (explicit or implicit trailing omission).
+    pub ditto_measures: Vec<bool>,
 }
 
 #[derive(Debug)]

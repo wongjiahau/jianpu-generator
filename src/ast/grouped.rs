@@ -50,13 +50,40 @@ pub struct MultiPartMeasure {
 #[derive(Clone)]
 pub enum PartRow {
     Timed(PartSlice),
+    /// All of this part's input lines were `"` (or implicit trailing omission)
+    /// in this measure. Carries the resolved content so audio output still
+    /// includes it, but the renderer skips the row entirely.
+    Ditto(PartSlice),
 }
 
 impl PartRow {
     pub fn name(&self) -> Option<&String> {
+        self.slice().name.as_ref()
+    }
+
+    /// The resolved content, whether rendered or not.
+    pub fn slice(&self) -> &PartSlice {
         match self {
-            PartRow::Timed(s) => s.name.as_ref(),
+            PartRow::Timed(s) | PartRow::Ditto(s) => s,
         }
+    }
+
+    pub fn slice_mut(&mut self) -> &mut PartSlice {
+        match self {
+            PartRow::Timed(s) | PartRow::Ditto(s) => s,
+        }
+    }
+
+    /// Content to render; `None` for ditto rows.
+    pub fn rendered_slice(&self) -> Option<&PartSlice> {
+        match self {
+            PartRow::Timed(s) => Some(s),
+            PartRow::Ditto(_) => None,
+        }
+    }
+
+    pub fn is_ditto(&self) -> bool {
+        matches!(self, PartRow::Ditto(_))
     }
 }
 
@@ -110,6 +137,9 @@ pub(crate) struct GroupedPart {
     pub(crate) measures: Vec<GroupedMeasure>,
     /// Flat lyrics list. `None` means no [lyrics] section was provided.
     pub(crate) lyrics: Option<Vec<Syllable>>,
+    /// Per-measure flag: true when every input line of this part in that
+    /// measure was a `"` ditto (explicit or implicit trailing omission).
+    pub(crate) ditto_measures: Vec<bool>,
 }
 
 // ── Shared note types ─────────────────────────────────────────────────────────

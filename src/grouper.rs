@@ -345,16 +345,20 @@ impl PartGrouper {
             kind: self.part_kind,
             measures: self.measures,
             lyrics: self.part_lyrics,
+            ditto_measures: Vec::new(),
         }
     }
 }
 
 fn group_timed_track(part: ParsedTimedTrack) -> Result<GroupedPart, JianPuError> {
+    let ditto_measures = part.ditto_measures.clone();
     let mut grouper = PartGrouper::new(&part);
     for spanned in part.score.events {
         grouper.process_event(spanned)?;
     }
-    Ok(grouper.finish())
+    let mut grouped = grouper.finish();
+    grouped.ditto_measures = ditto_measures;
+    Ok(grouped)
 }
 
 #[cfg(test)]
@@ -377,10 +381,7 @@ mod tests {
     }
 
     fn first_part_notes(score: &Score, measure_idx: usize) -> &Vec<NoteEvent> {
-        use crate::ast::grouped::PartRow;
-        match &score.measures[measure_idx].parts[0] {
-            PartRow::Timed(p) => &p.notes.events,
-        }
+        &score.measures[measure_idx].parts[0].slice().notes.events
     }
 
     #[test]
@@ -583,13 +584,8 @@ mod tests {
         let doc = parser::parse(input, "test.jianpu").unwrap();
         let score = group(doc).unwrap();
         assert_eq!(score.measures.len(), 2);
-        use crate::ast::grouped::PartRow;
-        let m0_lyrics = match &score.measures[0].parts[0] {
-            PartRow::Timed(p) => p.lyrics.as_ref().unwrap(),
-        };
-        let m1_lyrics = match &score.measures[1].parts[0] {
-            PartRow::Timed(p) => p.lyrics.as_ref().unwrap(),
-        };
+        let m0_lyrics = score.measures[0].parts[0].slice().lyrics.as_ref().unwrap();
+        let m1_lyrics = score.measures[1].parts[0].slice().lyrics.as_ref().unwrap();
         assert_eq!(m0_lyrics.syllables.len(), 4);
         assert_eq!(m1_lyrics.syllables.len(), 4);
     }
@@ -663,7 +659,7 @@ mod tests {
                 )
             })
             .unwrap();
-        let PartRow::Timed(slice) = chord_row;
+        let slice = chord_row.slice();
         assert_eq!(slice.notes.events.len(), 1);
         match &slice.notes.events[0] {
             NoteEvent::Chord(c) => {

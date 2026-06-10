@@ -108,14 +108,24 @@ fn build_part_rows(
                     PartKind::NotesWithLyrics => Some(Lyrics { syllables }),
                     PartKind::Chord | PartKind::Notes => None,
                 };
-                part_rows.push(PartRow::Timed(PartSlice {
+                let slice = PartSlice {
                     name: part.name.clone(),
                     kind: part.kind,
                     notes: Notes {
                         events: measure.notes.events.clone(),
                     },
                     lyrics,
-                }));
+                };
+                let is_ditto = part
+                    .ditto_measures
+                    .get(measure_idx)
+                    .copied()
+                    .unwrap_or(false);
+                part_rows.push(if is_ditto {
+                    PartRow::Ditto(slice)
+                } else {
+                    PartRow::Timed(slice)
+                });
             }
         }
     }

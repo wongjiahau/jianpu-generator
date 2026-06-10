@@ -3,7 +3,7 @@ use midly::{Format, Header, MetaMessage, MidiMessage, Smf, Timing, TrackEvent, T
 
 use std::collections::HashMap;
 
-use crate::ast::grouped::{NoteEvent, PartRow, Score};
+use crate::ast::grouped::{NoteEvent, Score};
 use crate::ast::parsed::{Accidental, JianPuPitch, KeyChange, NoteName, PartKind};
 use crate::error::{JianPuError, Span};
 
@@ -88,7 +88,8 @@ fn process_measure(
         .parts
         .iter()
         .filter_map(|r| {
-            let PartRow::Timed(p) = r;
+            // Ditto parts still sound — only rendering skips them.
+            let p = r.slice();
             if p.kind != PartKind::Chord {
                 Some(p)
             } else {
@@ -110,7 +111,7 @@ fn process_measure(
     }
 
     for row in &measure.parts {
-        let PartRow::Timed(part) = row;
+        let part = row.slice();
         if part.kind == PartKind::Chord {
             let chord_duration =
                 process_chord_events(&part.notes.events, current_tick, raw, active_key);
