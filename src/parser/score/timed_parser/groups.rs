@@ -38,32 +38,6 @@ impl GroupStack {
     }
 }
 
-/// Legacy cross-measure group state; kept for call-site compatibility until later refactor tasks.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
-pub struct GroupParseState {
-    pub open: bool,
-    pub open_note_count: usize,
-}
-
-pub fn find_closing_paren(chars: &[char], start: usize) -> Option<usize> {
-    let mut depth = 1usize;
-    let mut i = start;
-    while i < chars.len() {
-        match chars[i] {
-            '(' => depth += 1,
-            ')' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            }
-            _ => {}
-        }
-        i += 1;
-    }
-    None
-}
-
 pub fn validate_group_note_count(count: usize, span: &Span) -> Result<(), JianPuError> {
     if count < 2 {
         return Err(JianPuError::new(

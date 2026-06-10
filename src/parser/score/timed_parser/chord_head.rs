@@ -234,8 +234,7 @@ fn byte_offset_at_char_index_from_chars(chars: &[char], char_index: usize) -> us
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::score::timed_parser::{parse_timed_token, GroupParseState};
-    use crate::parser::score::token_parser::{parse_chord_line, GroupStack};
+    use crate::parser::score::timed_parser::{parse_timed_line, GroupStack};
 
     fn chord(
         degree: JianPuPitch,
@@ -259,18 +258,14 @@ mod tests {
     }
 
     fn try_parse_symbol(token: &str) -> Result<ScoreEvent, JianPuError> {
-        let events = parse_timed_token::<ChordHead>(
-            token,
-            Span::new(0, token.len()),
-            &mut GroupParseState::default(),
-        )?;
+        let events = parse_timed_line::<ChordHead>(token, 0, &mut GroupStack::default())?;
         if events.len() != 1 {
             return Err(JianPuError::new(
                 Span::new(0, token.len()),
                 format!("expected one event, got {}", events.len()),
             ));
         }
-        Ok(events.into_iter().next().unwrap())
+        Ok(events.into_iter().next().unwrap().value)
     }
 
     fn parse_symbol(token: &str) -> ScoreEvent {
@@ -278,7 +273,7 @@ mod tests {
     }
 
     fn parse_line(line: &str) -> Vec<ScoreEvent> {
-        parse_chord_line(line, 0, &mut GroupStack::default())
+        parse_timed_line::<ChordHead>(line, 0, &mut GroupStack::default())
             .unwrap()
             .into_iter()
             .map(|e| e.value)
@@ -411,6 +406,26 @@ mod tests {
         );
     }
 
+    /// Helper that parses a chord symbol directly (bypassing the lexer) to test the symbol parser
+    /// in isolation. Tokens like `1/5` would be lexed as a time-signature by the timed pipeline,
+    /// so slash-chord unit tests must go through this lower-level entry point.
+    fn parse_chord_symbol_as_event(token: &str) -> ScoreEvent {
+        let span = Span::new(0, token.len());
+        let sym = parse_chord_symbol(token, span).unwrap();
+        ScoreEvent::Chord(ParsedChordNote {
+            degree: sym.degree,
+            accidental: sym.accidental,
+            triad: sym.triad,
+            extension: sym.extension,
+            bass: sym.bass,
+            duration: 4,
+            tie: false,
+            group_membership: 0,
+            group_continuation: 0,
+            dotted: false,
+        })
+    }
+
     #[test]
     fn parses_slash_chord() {
         let bass = BassDegree {
@@ -418,7 +433,7 @@ mod tests {
             accidental: Accidental::Natural,
         };
         assert_eq!(
-            parse_symbol("1/5"),
+            parse_chord_symbol_as_event("1/5"),
             chord(
                 JianPuPitch::One,
                 Accidental::Natural,
@@ -436,7 +451,7 @@ mod tests {
             accidental: Accidental::Flat,
         };
         assert_eq!(
-            parse_symbol("1/4b"),
+            parse_chord_symbol_as_event("1/4b"),
             chord(
                 JianPuPitch::One,
                 Accidental::Natural,
@@ -603,12 +618,7 @@ mod tests {
 
     #[test]
     fn rejects_invalid_token() {
-        assert!(parse_timed_token::<ChordHead>(
-            "X",
-            Span::new(0, 1),
-            &mut GroupParseState::default()
-        )
-        .is_err());
+        assert!(parse_timed_line::<ChordHead>("X", 0, &mut GroupStack::default()).is_err());
     }
 
     #[test]
@@ -624,15 +634,11 @@ mod tests {
 
     #[test]
     fn parses_compact_slur_group() {
-        let events = parse_timed_token::<ChordHead>(
-            "(1-6m-)",
-            Span::new(0, 7),
-            &mut GroupParseState::default(),
-        )
-        .unwrap();
+        let events =
+            parse_timed_line::<ChordHead>("(1-6m-)", 0, &mut GroupStack::default()).unwrap();
         let chord_count = events
             .iter()
-            .filter(|e| matches!(e, ScoreEvent::Chord(_)))
+            .filter(|e| matches!(e.value, ScoreEvent::Chord(_)))
             .count();
         assert_eq!(chord_count, 2, "expected chord 1 and 6m in group");
     }
@@ -642,7 +648,7 @@ mod tests {
         let mut state = GroupStack::default();
         let mut chord_count = 0usize;
         for token in ["(1", "-", "6m", "-)"] {
-            let events = parse_chord_line(token, 0, &mut state).unwrap();
+            let events = parse_timed_line::<ChordHead>(token, 0, &mut state).unwrap();
             chord_count += events
                 .iter()
                 .filter(|e| matches!(e.value, ScoreEvent::Chord(_)))
