@@ -16,7 +16,7 @@ mod timed_lexer_tests;
 #[cfg(test)]
 mod timed_rd_parser_tests;
 
-pub use timed_lexer::{lex_line, TimedLexToken};
+pub use timed_lexer::{lex_line, LexContext, TimedLexToken};
 pub use timed_rd_parser::TimedRdParser;
 
 pub use chord_head::ChordHead;
@@ -36,8 +36,9 @@ pub fn parse_timed_line<H: TimedUnitHead>(
     line: &str,
     base_offset: usize,
     stack: &mut GroupStack,
+    context: LexContext,
 ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-    let tokens = lex_line(line, base_offset)?;
+    let tokens = lex_line(line, base_offset, context)?;
     TimedRdParser::<H>::parse_line(line, base_offset, &tokens, stack)
 }
 

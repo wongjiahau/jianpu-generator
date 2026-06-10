@@ -234,7 +234,7 @@ fn byte_offset_at_char_index_from_chars(chars: &[char], char_index: usize) -> us
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::score::timed_parser::{parse_timed_line, GroupStack};
+    use crate::parser::score::timed_parser::{parse_timed_line, GroupStack, LexContext};
 
     fn chord(
         degree: JianPuPitch,
@@ -258,7 +258,12 @@ mod tests {
     }
 
     fn try_parse_symbol(token: &str) -> Result<ScoreEvent, JianPuError> {
-        let events = parse_timed_line::<ChordHead>(token, 0, &mut GroupStack::default())?;
+        let events = parse_timed_line::<ChordHead>(
+            token,
+            0,
+            &mut GroupStack::default(),
+            LexContext::Chords,
+        )?;
         if events.len() != 1 {
             return Err(JianPuError::new(
                 Span::new(0, token.len()),
@@ -273,7 +278,7 @@ mod tests {
     }
 
     fn parse_line(line: &str) -> Vec<ScoreEvent> {
-        parse_timed_line::<ChordHead>(line, 0, &mut GroupStack::default())
+        parse_timed_line::<ChordHead>(line, 0, &mut GroupStack::default(), LexContext::Chords)
             .unwrap()
             .into_iter()
             .map(|e| e.value)
@@ -406,34 +411,16 @@ mod tests {
         );
     }
 
-    /// Helper that parses a chord symbol directly (bypassing the lexer) to test the symbol parser
-    /// in isolation. Tokens like `1/5` would be lexed as a time-signature by the timed pipeline,
-    /// so slash-chord unit tests must go through this lower-level entry point.
-    fn parse_chord_symbol_as_event(token: &str) -> ScoreEvent {
-        let span = Span::new(0, token.len());
-        let sym = parse_chord_symbol(token, span).unwrap();
-        ScoreEvent::Chord(ParsedChordNote {
-            degree: sym.degree,
-            accidental: sym.accidental,
-            triad: sym.triad,
-            extension: sym.extension,
-            bass: sym.bass,
-            duration: 4,
-            tie: false,
-            group_membership: 0,
-            group_continuation: 0,
-            dotted: false,
-        })
-    }
-
     #[test]
     fn parses_slash_chord() {
         let bass = BassDegree {
             degree: JianPuPitch::Five,
             accidental: Accidental::Natural,
         };
+        // Goes through the full pipeline (including the lexer in Chords context) so that
+        // `1/5` is not mistakenly consumed as a time signature.
         assert_eq!(
-            parse_chord_symbol_as_event("1/5"),
+            parse_symbol("1/5"),
             chord(
                 JianPuPitch::One,
                 Accidental::Natural,
@@ -451,7 +438,7 @@ mod tests {
             accidental: Accidental::Flat,
         };
         assert_eq!(
-            parse_chord_symbol_as_event("1/4b"),
+            parse_symbol("1/4b"),
             chord(
                 JianPuPitch::One,
                 Accidental::Natural,
@@ -618,7 +605,13 @@ mod tests {
 
     #[test]
     fn rejects_invalid_token() {
-        assert!(parse_timed_line::<ChordHead>("X", 0, &mut GroupStack::default()).is_err());
+        assert!(parse_timed_line::<ChordHead>(
+            "X",
+            0,
+            &mut GroupStack::default(),
+            LexContext::Chords
+        )
+        .is_err());
     }
 
     #[test]
@@ -634,8 +627,13 @@ mod tests {
 
     #[test]
     fn parses_compact_slur_group() {
-        let events =
-            parse_timed_line::<ChordHead>("(1-6m-)", 0, &mut GroupStack::default()).unwrap();
+        let events = parse_timed_line::<ChordHead>(
+            "(1-6m-)",
+            0,
+            &mut GroupStack::default(),
+            LexContext::Chords,
+        )
+        .unwrap();
         let chord_count = events
             .iter()
             .filter(|e| matches!(e.value, ScoreEvent::Chord(_)))
@@ -648,7 +646,8 @@ mod tests {
         let mut state = GroupStack::default();
         let mut chord_count = 0usize;
         for token in ["(1", "-", "6m", "-)"] {
-            let events = parse_timed_line::<ChordHead>(token, 0, &mut state).unwrap();
+            let events =
+                parse_timed_line::<ChordHead>(token, 0, &mut state, LexContext::Chords).unwrap();
             chord_count += events
                 .iter()
                 .filter(|e| matches!(e.value, ScoreEvent::Chord(_)))

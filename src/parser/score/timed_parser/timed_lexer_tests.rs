@@ -1,7 +1,7 @@
-use super::timed_lexer::{lex_line, TimedLexToken};
+use super::timed_lexer::{lex_line, LexContext, TimedLexToken};
 
 fn kinds(line: &str) -> Vec<TimedLexToken> {
-    lex_line(line, 0)
+    lex_line(line, 0, LexContext::Notes)
         .unwrap()
         .into_iter()
         .map(|t| t.value)
@@ -56,7 +56,7 @@ fn sixteenth_note_not_key_change() {
     // "1=C" has a note name but no octave digit, so try_lex_key_change returns None
     // and "1" is emitted as a HeadStart; the trailing "=C" is skipped at the lex stage
     // and the error is caught at parse time (the 'C' is invalid in parse_duration_suffixes).
-    let tokens: Vec<_> = lex_line("1=C", 0)
+    let tokens: Vec<_> = lex_line("1=C", 0, LexContext::Notes)
         .unwrap()
         .into_iter()
         .map(|t| t.value)
@@ -64,7 +64,7 @@ fn sixteenth_note_not_key_change() {
     assert!(matches!(tokens[0], TimedLexToken::HeadStart { offset: 0 }));
 
     // A proper key change (with octave digit) must succeed.
-    let tokens: Vec<_> = lex_line("1=C4", 0)
+    let tokens: Vec<_> = lex_line("1=C4", 0, LexContext::Notes)
         .unwrap()
         .into_iter()
         .map(|t| t.value)
@@ -91,11 +91,24 @@ fn time_signature_with_low_digit() {
 #[test]
 fn digits_8_9_without_slash_error() {
     // digits 8-9 without a slash are invalid
-    assert!(lex_line("8", 0).is_err());
-    assert!(lex_line("9", 0).is_err());
+    assert!(lex_line("8", 0, LexContext::Notes).is_err());
+    assert!(lex_line("9", 0, LexContext::Notes).is_err());
 }
 
 #[test]
 fn time_signature_zero_denominator_errors() {
-    assert!(lex_line("4/0", 0).is_err());
+    assert!(lex_line("4/0", 0, LexContext::Notes).is_err());
+}
+
+#[test]
+fn chord_context_treats_slash_as_part_of_chord() {
+    // In Chords context, `1/5` must NOT be consumed as a TimeSignature.
+    // The lexer should emit a HeadStart for `1`, and leave `/5` for the RD parser
+    // (which will handle it via parse_head / find_symbol_end).
+    let tokens = lex_line("1/5", 0, LexContext::Chords).unwrap();
+    assert!(
+        matches!(tokens[0].value, TimedLexToken::HeadStart { .. }),
+        "expected HeadStart, got {:?}",
+        tokens[0].value
+    );
 }

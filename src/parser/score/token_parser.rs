@@ -2,7 +2,7 @@
 
 use crate::ast::parsed::ScoreEvent;
 use crate::error::{JianPuError, Spanned};
-use crate::parser::score::timed_parser::{parse_timed_line, ChordHead, NoteHead};
+use crate::parser::score::timed_parser::{parse_timed_line, ChordHead, LexContext, NoteHead};
 
 pub use crate::parser::score::timed_parser::GroupStack;
 
@@ -11,7 +11,7 @@ pub fn parse_notes_line(
     base_offset: usize,
     stack: &mut GroupStack,
 ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-    parse_timed_line::<NoteHead>(line, base_offset, stack)
+    parse_timed_line::<NoteHead>(line, base_offset, stack, LexContext::Notes)
 }
 
 pub fn parse_chord_line(
@@ -19,7 +19,7 @@ pub fn parse_chord_line(
     base_offset: usize,
     stack: &mut GroupStack,
 ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-    parse_timed_line::<ChordHead>(line, base_offset, stack)
+    parse_timed_line::<ChordHead>(line, base_offset, stack, LexContext::Chords)
 }
 
 #[cfg(test)]

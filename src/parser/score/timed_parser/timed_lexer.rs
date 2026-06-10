@@ -4,6 +4,12 @@ use super::directives::{key_change_lexeme_len, parse_key_change_text};
 use crate::ast::parsed::KeyChange;
 use crate::error::{JianPuError, Span, Spanned};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LexContext {
+    Notes,
+    Chords,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum TimedLexToken {
     LParen,
@@ -18,6 +24,7 @@ pub enum TimedLexToken {
 pub fn lex_line(
     line: &str,
     base_offset: usize,
+    context: LexContext,
 ) -> Result<Vec<Spanned<TimedLexToken>>, JianPuError> {
     let mut tokens = Vec::new();
     // `at_word_boundary`: true when the next non-whitespace char starts a new "word"
@@ -37,7 +44,7 @@ pub fn lex_line(
         }
         let start = base_offset + i;
         let (token_opt, consumed, new_boundary) =
-            lex_one_char(line, i, start, len, c, at_word_boundary)?;
+            lex_one_char(line, i, start, len, c, at_word_boundary, context)?;
         if let Some(tok) = token_opt {
             tokens.push(tok);
         }
@@ -57,6 +64,7 @@ fn lex_one_char(
     len: usize,
     c: char,
     at_word_boundary: bool,
+    context: LexContext,
 ) -> Result<(Option<Spanned<TimedLexToken>>, usize, bool), JianPuError> {
     match c {
         '(' => Ok((
@@ -100,8 +108,8 @@ fn lex_one_char(
             ))
         }
         '0'..='7' => {
-            // Check for time signature only at word boundary.
-            if at_word_boundary {
+            // Check for time signature only at word boundary and in Notes context.
+            if at_word_boundary && context == LexContext::Notes {
                 if let Some((tok, consumed)) = try_lex_time_signature(line, i, start)? {
                     return Ok((Some(tok), consumed, true));
                 }
@@ -122,11 +130,17 @@ fn lex_one_char(
             Ok((Some(tok), consumed, true))
         }
         _ if c.is_ascii_digit() => {
-            // Digits 8-9: only valid as time signatures at word boundary.
-            if at_word_boundary {
+            // Digits 8-9: only valid as time signatures at word boundary in Notes context.
+            if at_word_boundary && context == LexContext::Notes {
                 if let Some((tok, consumed)) = try_lex_time_signature(line, i, start)? {
                     return Ok((Some(tok), consumed, true));
                 }
+                return Err(JianPuError::new(
+                    Span::new(start, start + len),
+                    format!("unexpected character: {c}"),
+                ));
+            } else if at_word_boundary {
+                // In Chords context, digits 8-9 are not valid chord degrees.
                 return Err(JianPuError::new(
                     Span::new(start, start + len),
                     format!("unexpected character: {c}"),
