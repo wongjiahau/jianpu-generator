@@ -83,12 +83,11 @@ pub fn lex_line(
                 i += len;
             }
             '0'..='7' => {
-                tokens.push(Spanned::new(
-                    TimedLexToken::HeadStart { offset: start },
-                    Span::new(start, start + len),
-                ));
-                atom_boundary = false;
-                i += len;
+                let (token, consumed, next_boundary) =
+                    lex_digit_note_or_time_sig(line, i, start, len, atom_boundary)?;
+                tokens.push(token);
+                atom_boundary = next_boundary;
+                i += consumed;
             }
             'b' if line[i..].starts_with("bpm=") => {
                 let (token, consumed) = lex_bpm(line, i, start)?;
@@ -119,6 +118,27 @@ pub fn lex_line(
     }
 
     Ok(tokens)
+}
+
+/// Lex a digit `'0'..='7'` as either a time signature (when at an atom boundary and followed by
+/// `/`) or a note head.  Returns `(token, bytes_consumed, new_atom_boundary)`.
+fn lex_digit_note_or_time_sig(
+    line: &str,
+    i: usize,
+    start: usize,
+    len: usize,
+    atom_boundary: bool,
+) -> Result<(Spanned<TimedLexToken>, usize, bool), JianPuError> {
+    if atom_boundary {
+        if let Some((token, consumed)) = try_lex_time_signature(line, i, start)? {
+            return Ok((token, consumed, true));
+        }
+    }
+    let token = Spanned::new(
+        TimedLexToken::HeadStart { offset: start },
+        Span::new(start, start + len),
+    );
+    Ok((token, len, false))
 }
 
 /// Lex a `bpm=<number>` directive starting at byte offset `i` within `line`.

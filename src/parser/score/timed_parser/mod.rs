@@ -7,6 +7,10 @@ mod groups;
 mod note_head;
 mod timed_lexer;
 
+#[path = "timed_lexer_tests.rs"]
+#[cfg(test)]
+mod timed_lexer_tests;
+
 pub use timed_lexer::{lex_line, TimedLexToken};
 
 pub use chord_head::ChordHead;
