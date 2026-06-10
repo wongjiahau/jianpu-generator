@@ -14,6 +14,9 @@ mod directives;
 use beat_padding::{beats_per_measure, validate_and_pad_beats};
 use directives::{collect_groups, split_directive};
 
+/// One entry per bar group: all directive events emitted by that group's directive row.
+pub(super) type DirectiveEventsPerMeasure = Vec<Vec<Spanned<ScoreEvent>>>;
+
 enum SlotAction {
     Chord { track_index: usize },
     Notes { track_index: usize },
@@ -39,13 +42,14 @@ struct BarGroupContext<'a> {
     lyric_tie_states: &'a mut [LyricTieState],
     group_states: &'a mut [GroupStack],
     bar_lyric_slots: &'a mut [Option<u32>],
+    directive_events_per_measure: &'a mut DirectiveEventsPerMeasure,
 }
 
 pub fn parse(
     content: &str,
     base_offset: usize,
     declarations: &[PartDecl],
-) -> Result<Vec<ParsedTrack>, JianPuError> {
+) -> Result<(Vec<ParsedTrack>, DirectiveEventsPerMeasure), JianPuError> {
     let groups = collect_groups(content);
     let groups = crate::desugar::desugar_groups(groups, declarations)?;
 
@@ -68,6 +72,7 @@ pub fn parse(
     let mut lyric_tie_states = vec![LyricTieState::default(); declarations.len()];
     let mut group_states = vec![GroupStack::default(); declarations.len()];
     let mut bar_lyric_slots = vec![None; declarations.len()];
+    let mut directive_events_per_measure: DirectiveEventsPerMeasure = Vec::new();
 
     let mut ctx = BarGroupContext {
         base_offset,
@@ -81,6 +86,7 @@ pub fn parse(
         lyric_tie_states: &mut lyric_tie_states,
         group_states: &mut group_states,
         bar_lyric_slots: &mut bar_lyric_slots,
+        directive_events_per_measure: &mut directive_events_per_measure,
     };
 
     for (bar_idx, group_lines) in groups.iter().enumerate() {
@@ -100,7 +106,8 @@ pub fn parse(
         }
     }
 
-    build_parse_result(declarations, accumulators)
+    let tracks = build_parse_result(declarations, accumulators)?;
+    Ok((tracks, directive_events_per_measure))
 }
 
 fn build_slot_actions(slots: &[ScoreLineSlot]) -> Vec<SlotAction> {
@@ -159,6 +166,13 @@ fn process_bar_group(
         *slot = None;
     }
 
+    // Collect directive events into the dedicated per-measure accumulator.
+    // Also forward ALL directive events to the first notes track so the existing
+    // pipeline (PartGrouper, layout, renderer) continues to function.
+    // Future tasks will remove the notes-track forwarding once DirectiveGrouper
+    // consumes directive_events_per_measure directly.
+    ctx.directive_events_per_measure
+        .push(directive_events.clone());
     if !directive_events.is_empty() {
         let events_acc = timed_events_mut(
             ctx.accumulators

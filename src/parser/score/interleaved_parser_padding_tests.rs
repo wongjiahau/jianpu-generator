@@ -1,7 +1,7 @@
 use super::*;
 use crate::ast::parsed::{Accidental, ParsedTrack};
 
-use super::test_helpers::{chord_track, decl, notes_track};
+use super::test_helpers::{chord_track, decl, notes_track, parse};
 
 #[test]
 fn rejects_overfull_measure() {

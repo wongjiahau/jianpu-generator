@@ -1,6 +1,6 @@
 use crate::ast::grouped::{
-    GroupedChordNote, GroupedMeasure, GroupedNote, GroupedPart, GroupedRest, GroupedTrack,
-    Metadata, NoteEvent, Notes, Score, TimeSignature,
+    GroupedChordNote, GroupedMeasure, GroupedNote, GroupedPart, GroupedRest, GroupedScore,
+    GroupedTrack, MeasureDirectives, Metadata, NoteEvent, Notes, Score, TimeSignature,
 };
 use crate::ast::parsed::{
     Accidental, KeyChange, Note, NoteName, ParsedChordNote, ParsedDocument, ParsedNote, ParsedRest,
@@ -18,7 +18,14 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
         });
     }
 
-    let measures = combiner::combine(&grouped_tracks)?;
+    let measure_directives = DirectiveGrouper::new().process_all(&doc.directive_events_per_measure);
+
+    let grouped_score = GroupedScore {
+        measure_directives,
+        parts: grouped_tracks,
+    };
+
+    let measures = combiner::combine(&grouped_score)?;
 
     Ok(Score {
         metadata: Metadata {
@@ -34,32 +41,110 @@ pub fn group(doc: ParsedDocument) -> Result<Score, JianPuError> {
     })
 }
 
+struct DirectiveGrouper {
+    current_bpm: u32,
+    current_time_sig: TimeSignature,
+    current_key: KeyChange,
+    bpm_changed: bool,
+    time_sig_changed: bool,
+    key_changed: bool,
+}
+
+impl DirectiveGrouper {
+    fn new() -> Self {
+        Self {
+            current_bpm: 120,
+            current_time_sig: TimeSignature {
+                numerator: 4,
+                denominator: 4,
+            },
+            current_key: KeyChange {
+                note: Note {
+                    name: NoteName::C,
+                    octave: 4,
+                    accidental: Accidental::Natural,
+                },
+            },
+            bpm_changed: true,
+            time_sig_changed: true,
+            key_changed: true,
+        }
+    }
+
+    fn process_all(
+        mut self,
+        directive_events_per_measure: &[Vec<crate::error::Spanned<ScoreEvent>>],
+    ) -> Vec<MeasureDirectives> {
+        let mut result = Vec::new();
+        for events in directive_events_per_measure {
+            let mut pending_label: Option<String> = None;
+            for event in events {
+                match &event.value {
+                    ScoreEvent::BpmChange(bpm) => {
+                        self.current_bpm = *bpm;
+                        self.bpm_changed = true;
+                    }
+                    ScoreEvent::TimeSignatureChange {
+                        numerator,
+                        denominator,
+                    } => {
+                        self.current_time_sig = TimeSignature {
+                            numerator: *numerator,
+                            denominator: *denominator,
+                        };
+                        self.time_sig_changed = true;
+                    }
+                    ScoreEvent::KeyChange(kc) => {
+                        self.current_key = kc.clone();
+                        self.key_changed = true;
+                    }
+                    ScoreEvent::LabelChange(text) => {
+                        pending_label = Some(text.clone());
+                    }
+                    _ => {}
+                }
+            }
+            result.push(MeasureDirectives {
+                bpm: if self.bpm_changed {
+                    Some(self.current_bpm)
+                } else {
+                    None
+                },
+                time_signature: if self.time_sig_changed {
+                    Some(TimeSignature {
+                        numerator: self.current_time_sig.numerator,
+                        denominator: self.current_time_sig.denominator,
+                    })
+                } else {
+                    None
+                },
+                key: if self.key_changed {
+                    Some(self.current_key.clone())
+                } else {
+                    None
+                },
+                label: pending_label,
+            });
+            self.bpm_changed = false;
+            self.time_sig_changed = false;
+            self.key_changed = false;
+        }
+        result
+    }
+}
+
 struct PartGrouper {
     part_kind: PartKind,
-    current_bpm: u32,
-    current_key: KeyChange,
-    current_time_sig: TimeSignature,
-    bpm_changed: bool,
-    key_changed: bool,
-    time_sig_changed: bool,
     measures: Vec<GroupedMeasure>,
     current_notes: Vec<NoteEvent>,
     current_beat: u32,
     capacity: u32,
-    pending_label: Option<String>,
     part_name: Option<String>,
     part_lyrics: Option<Vec<Syllable>>,
 }
 
 impl PartGrouper {
     fn new(part: &ParsedTimedTrack) -> Self {
-        let default_key = KeyChange {
-            note: Note {
-                name: NoteName::C,
-                octave: 4,
-                accidental: Accidental::Natural,
-            },
-        };
         let current_time_sig = TimeSignature {
             numerator: 4,
             denominator: 4,
@@ -68,17 +153,10 @@ impl PartGrouper {
 
         Self {
             part_kind: part.kind,
-            current_bpm: 120,
-            current_key: default_key,
-            current_time_sig,
-            bpm_changed: true,
-            key_changed: true,
-            time_sig_changed: true,
             measures: Vec::new(),
             current_notes: Vec::new(),
             current_beat: 0,
             capacity,
-            pending_label: None,
             part_name: Some(part.abbreviation.clone()),
             part_lyrics: part.lyrics.as_ref().map(|l| l.syllables.clone()),
         }
@@ -88,41 +166,16 @@ impl PartGrouper {
         (ts.numerator as u32) * 16 / (ts.denominator as u32)
     }
 
-    // Directive flags reset here are immediately overwritten at directive-change
-    // call sites; the resulting assignments are never read before the overwrite.
-    #[allow(unused_assignments)]
     fn flush_measure(&mut self) {
         if self.current_notes.is_empty() {
             return;
         }
         self.measures.push(GroupedMeasure {
-            time_signature: if self.time_sig_changed {
-                Some(TimeSignature {
-                    numerator: self.current_time_sig.numerator,
-                    denominator: self.current_time_sig.denominator,
-                })
-            } else {
-                None
-            },
-            bpm: if self.bpm_changed {
-                Some(self.current_bpm)
-            } else {
-                None
-            },
-            key: if self.key_changed {
-                Some(self.current_key.clone())
-            } else {
-                None
-            },
-            label: self.pending_label.take(),
             notes: Notes {
                 events: std::mem::take(&mut self.current_notes),
             },
         });
         self.current_beat = 0;
-        self.bpm_changed = false;
-        self.key_changed = false;
-        self.time_sig_changed = false;
     }
 
     fn flush_if_full(&mut self) {
@@ -154,28 +207,6 @@ impl PartGrouper {
             self.flush_measure();
         }
         Ok(())
-    }
-
-    fn handle_bpm_change(&mut self, bpm: u32) {
-        self.flush_measure();
-        self.current_bpm = bpm;
-        self.bpm_changed = true;
-    }
-
-    fn handle_key_change(&mut self, kc: KeyChange) {
-        self.flush_measure();
-        self.current_key = kc;
-        self.key_changed = true;
-    }
-
-    fn handle_time_signature_change(&mut self, numerator: u8, denominator: u8) {
-        self.flush_measure();
-        self.current_time_sig = TimeSignature {
-            numerator,
-            denominator,
-        };
-        self.capacity = Self::measure_capacity(&self.current_time_sig);
-        self.time_sig_changed = true;
     }
 
     fn handle_extension(&mut self, span: Span) -> Result<(), JianPuError> {
@@ -265,11 +296,6 @@ impl PartGrouper {
         )
     }
 
-    fn handle_label_change(&mut self, text: String) {
-        self.flush_measure();
-        self.pending_label = Some(text);
-    }
-
     fn handle_rest(&mut self, span: Span, pr: &ParsedRest) -> Result<(), JianPuError> {
         self.push_timed_event(
             span,
@@ -287,29 +313,20 @@ impl PartGrouper {
         spanned: crate::error::Spanned<ScoreEvent>,
     ) -> Result<(), JianPuError> {
         match spanned.value {
-            ScoreEvent::BpmChange(bpm) => {
-                self.handle_bpm_change(bpm);
-                Ok(())
-            }
-            ScoreEvent::KeyChange(kc) => {
-                self.handle_key_change(kc);
-                Ok(())
+            ScoreEvent::BpmChange(_) | ScoreEvent::KeyChange(_) | ScoreEvent::LabelChange(_) => {
+                Ok(()) // handled by DirectiveGrouper
             }
             ScoreEvent::TimeSignatureChange {
                 numerator,
                 denominator,
             } => {
-                self.handle_time_signature_change(numerator, denominator);
+                self.capacity = (numerator as u32) * 16 / (denominator as u32);
                 Ok(())
             }
             ScoreEvent::Extension => self.handle_extension(spanned.span),
             ScoreEvent::TieMarker => self.handle_tie_marker(spanned.span),
             ScoreEvent::Note(pn) => self.handle_note(spanned.span, pn),
             ScoreEvent::Chord(pc) => self.handle_chord(spanned.span, pc),
-            ScoreEvent::LabelChange(text) => {
-                self.handle_label_change(text);
-                Ok(())
-            }
             ScoreEvent::Rest(pr) => self.handle_rest(spanned.span, &pr),
         }
     }
@@ -317,25 +334,6 @@ impl PartGrouper {
     fn finish(mut self) -> GroupedPart {
         if !self.current_notes.is_empty() {
             self.measures.push(GroupedMeasure {
-                time_signature: if self.time_sig_changed {
-                    Some(TimeSignature {
-                        numerator: self.current_time_sig.numerator,
-                        denominator: self.current_time_sig.denominator,
-                    })
-                } else {
-                    None
-                },
-                bpm: if self.bpm_changed {
-                    Some(self.current_bpm)
-                } else {
-                    None
-                },
-                key: if self.key_changed {
-                    Some(self.current_key.clone())
-                } else {
-                    None
-                },
-                label: self.pending_label.take(),
                 notes: Notes {
                     events: std::mem::take(&mut self.current_notes),
                 },

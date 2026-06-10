@@ -804,4 +804,20 @@ mod tests {
         );
         assert!(svgs[0].contains("1♯"), "expected '1♯' in SVG");
     }
+
+    #[test]
+    fn bpm_respected_when_chord_track_declared_first() {
+        let input = concat!(
+            "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n",
+            "[parts]\nchord = chord\nMelody = notes\n\n",
+            "[score]\n(time=4/4 key=C4 bpm=80)\n",
+            "1 - 4 5\n",
+            "1 2 3 4\n",
+        );
+        let svgs = crate::render_svgs_from_source(input, "test.jianpu").unwrap();
+        assert!(
+            svgs[0].contains("♩=80"),
+            "expected ♩=80 in SVG output but got ♩=120 — directive BPM lost to chord track default"
+        );
+    }
 }

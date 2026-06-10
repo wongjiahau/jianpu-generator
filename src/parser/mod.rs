@@ -49,13 +49,15 @@ pub fn parse(input: &str, filename: &str) -> Result<ParsedDocument, JianPuError>
 
     let metadata = metadata_parser::parse_metadata(&meta_content, meta_offset)?;
     let declarations = parts_parser::parse_parts(&parts_content, parts_offset)?;
-    let tracks = score::interleaved_parser::parse(&score_content, score_offset, &declarations)?;
+    let (tracks, directive_events_per_measure) =
+        score::interleaved_parser::parse(&score_content, score_offset, &declarations)?;
 
     Ok(ParsedDocument {
         filename: filename.to_string(),
         metadata,
         declarations,
         tracks,
+        directive_events_per_measure,
     })
 }
 
