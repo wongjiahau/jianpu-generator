@@ -169,7 +169,9 @@ Note names: `A` `B` `C` `D` `E` `F` `G`, with optional `#` or `b` accidental, fo
 
 ## Notes syntax
 
-Note lines are whitespace-separated **tokens**. The `|` character is accepted but ignored (legacy bar separator).
+Note lines are a sequence of **atoms** (notes, rests, chords, extensions, groups). Whitespace is optional between atoms and is ignored inside `(…)` groups. The `|` character is accepted but ignored (legacy bar separator).
+
+Example: `((1 1) 5 5)` is equivalent to `((11)55)`.
 
 ### Pitch and rest
 
