@@ -100,6 +100,7 @@ pub(crate) struct GroupedScore {
     pub(crate) parts: Vec<GroupedTrack>,
 }
 
+#[allow(dead_code)]
 pub(crate) struct GroupedMeasure {
     pub(crate) time_signature: Option<TimeSignature>,
     pub(crate) bpm: Option<u32>,

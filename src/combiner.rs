@@ -1,23 +1,24 @@
 use crate::ast::grouped::{
-    GroupedMeasure, GroupedTrack, Lyrics, MultiPartMeasure, NoteEvent, Notes, PartRow, PartSlice,
+    GroupedMeasure, GroupedScore, GroupedTrack, Lyrics, MultiPartMeasure, NoteEvent, Notes,
+    PartRow, PartSlice,
 };
 use crate::ast::parsed::{JianPuPitch, PartKind, Syllable};
 use crate::error::{JianPuError, Span};
 
-pub(crate) fn combine(
-    grouped_tracks: &[GroupedTrack],
-) -> Result<Vec<MultiPartMeasure>, JianPuError> {
-    if grouped_tracks.is_empty() {
+pub(crate) fn combine(grouped_score: &GroupedScore) -> Result<Vec<MultiPartMeasure>, JianPuError> {
+    if grouped_score.parts.is_empty() {
         return Ok(Vec::new());
     }
 
-    let expected_len = grouped_tracks
+    let expected_len = grouped_score
+        .parts
         .first()
         .map(GroupedTrack::measure_count)
         .unwrap_or(0);
-    validate_measure_counts(grouped_tracks, expected_len)?;
+    validate_measure_counts(&grouped_score.parts, expected_len)?;
 
-    let lyrics_per_track: Vec<Vec<Vec<Syllable>>> = grouped_tracks
+    let lyrics_per_track: Vec<Vec<Vec<Syllable>>> = grouped_score
+        .parts
         .iter()
         .map(|track| match track {
             GroupedTrack::Timed(part) => match part.kind {
@@ -35,23 +36,21 @@ pub(crate) fn combine(
 
     let mut combined = Vec::with_capacity(expected_len);
     for measure_idx in 0..expected_len {
-        let first_measure = grouped_tracks
-            .iter()
-            .find_map(|track| match track {
-                GroupedTrack::Timed(part) => part.measures.get(measure_idx),
-            })
+        let directives = grouped_score
+            .measure_directives
+            .get(measure_idx)
             .ok_or_else(|| {
                 JianPuError::new(
                     Span::new(0, 0),
-                    "internal invariant: no timed track for measure metadata",
+                    "internal invariant: measure_directives shorter than measure count",
                 )
             })?;
-        let part_rows = build_part_rows(grouped_tracks, measure_idx, &lyrics_per_track)?;
+        let part_rows = build_part_rows(&grouped_score.parts, measure_idx, &lyrics_per_track)?;
         combined.push(MultiPartMeasure {
-            time_signature: first_measure.time_signature.clone(),
-            bpm: first_measure.bpm,
-            key: first_measure.key.clone(),
-            label: first_measure.label.clone(),
+            time_signature: directives.time_signature.clone(),
+            bpm: directives.bpm,
+            key: directives.key.clone(),
+            label: directives.label.clone(),
             parts: part_rows,
         });
     }
