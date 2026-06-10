@@ -30,7 +30,9 @@ impl GroupStack {
     }
 
     pub fn increment_note_count(&mut self) {
-        if let Some(frame) = self.frames.last_mut() {
+        // Every open frame (at every nesting level) gets the count, because each
+        // note belongs to all enclosing groups.
+        for frame in self.frames.iter_mut() {
             frame.note_count += 1;
         }
     }

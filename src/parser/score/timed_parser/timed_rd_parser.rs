@@ -97,6 +97,13 @@ impl<'a, H: TimedUnitHead> TimedRdParser<'a, H> {
         tokens: &'a [Spanned<TimedLexToken>],
         stack: &'a mut GroupStack,
     ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
+        // Frames carried over from a previous bar have segment_start values that
+        // refer to the old staging vec.  Reset them to 0 so they cover all events
+        // produced in this new call.
+        for frame in stack.frames.iter_mut() {
+            frame.segment_start = 0;
+        }
+
         let mut parser = Self {
             source,
             base_offset,
