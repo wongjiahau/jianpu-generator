@@ -20,125 +20,130 @@ pub fn lex_line(
     base_offset: usize,
 ) -> Result<Vec<Spanned<TimedLexToken>>, JianPuError> {
     let mut tokens = Vec::new();
-    let mut atom_boundary = true;
+    // `at_word_boundary`: true when the next non-whitespace char starts a new "word"
+    // (i.e. we are after whitespace, `|`, `(`, or `)`, or at the start of the line).
+    let mut at_word_boundary = true;
     let mut i = 0;
-    let bytes = line.as_bytes();
 
-    while i < bytes.len() {
+    while i < line.len() {
         let (c, len) = match line[i..].chars().next() {
             Some(ch) => (ch, ch.len_utf8()),
             None => break,
         };
-
         if c.is_whitespace() || c == '|' {
             i += len;
-            atom_boundary = true;
+            at_word_boundary = true;
             continue;
         }
-
         let start = base_offset + i;
-
-        match c {
-            '(' => {
-                tokens.push(Spanned::new(
-                    TimedLexToken::LParen,
-                    Span::new(start, start + len),
-                ));
-                atom_boundary = true;
-                i += len;
-            }
-            ')' => {
-                tokens.push(Spanned::new(
-                    TimedLexToken::RParen,
-                    Span::new(start, start + len),
-                ));
-                atom_boundary = true;
-                i += len;
-            }
-            '-' if atom_boundary => {
-                tokens.push(Spanned::new(
-                    TimedLexToken::Extension,
-                    Span::new(start, start + len),
-                ));
-                atom_boundary = true;
-                i += len;
-            }
-            '-' => {
-                // Duration suffix immediately after a digit — belongs to the previous head,
-                // skip it (the recursive descent parser will consume suffixes separately).
-                i += len;
-            }
-            '1' if line[i..].starts_with("1=") => {
-                if let Some((token, consumed)) = try_lex_key_change(line, i, start)? {
-                    tokens.push(token);
-                    atom_boundary = true;
-                    i += consumed;
-                    continue;
-                }
-                tokens.push(Spanned::new(
-                    TimedLexToken::HeadStart { offset: start },
-                    Span::new(start, start + len),
-                ));
-                atom_boundary = false;
-                i += len;
-            }
-            '0'..='7' => {
-                let (token, consumed, next_boundary) =
-                    lex_digit_note_or_time_sig(line, i, start, len, atom_boundary)?;
-                tokens.push(token);
-                atom_boundary = next_boundary;
-                i += consumed;
-            }
-            'b' if line[i..].starts_with("bpm=") => {
-                let (token, consumed) = lex_bpm(line, i, start)?;
-                tokens.push(token);
-                atom_boundary = true;
-                i += consumed;
-            }
-            _ if c.is_ascii_digit() => {
-                // Digit 8 or 9 — try time signature (e.g. "9/8").
-                if let Some((token, consumed)) = try_lex_time_signature(line, i, start)? {
-                    tokens.push(token);
-                    atom_boundary = true;
-                    i += consumed;
-                    continue;
-                }
-                return Err(JianPuError::new(
-                    Span::new(start, start + len),
-                    format!("unexpected character: {c}"),
-                ));
-            }
-            _ => {
-                return Err(JianPuError::new(
-                    Span::new(start, start + len),
-                    format!("unexpected character: {c}"),
-                ));
-            }
+        let (token_opt, consumed, new_boundary) =
+            lex_one_char(line, i, start, len, c, at_word_boundary)?;
+        if let Some(tok) = token_opt {
+            tokens.push(tok);
         }
+        at_word_boundary = new_boundary;
+        i += consumed;
     }
 
     Ok(tokens)
 }
 
-/// Lex a digit `'0'..='7'` as either a time signature (when at an atom boundary and followed by
-/// `/`) or a note head.  Returns `(token, bytes_consumed, new_atom_boundary)`.
-fn lex_digit_note_or_time_sig(
+/// Lex one non-whitespace character.  Returns `(token, bytes_consumed, new_at_word_boundary)`.
+/// When the character is a suffix that belongs to the current head, `token` is `None`.
+fn lex_one_char(
     line: &str,
     i: usize,
     start: usize,
     len: usize,
-    atom_boundary: bool,
-) -> Result<(Spanned<TimedLexToken>, usize, bool), JianPuError> {
-    if atom_boundary {
-        if let Some((token, consumed)) = try_lex_time_signature(line, i, start)? {
-            return Ok((token, consumed, true));
+    c: char,
+    at_word_boundary: bool,
+) -> Result<(Option<Spanned<TimedLexToken>>, usize, bool), JianPuError> {
+    match c {
+        '(' => Ok((
+            Some(Spanned::new(
+                TimedLexToken::LParen,
+                Span::new(start, start + len),
+            )),
+            len,
+            true,
+        )),
+        ')' => Ok((
+            Some(Spanned::new(
+                TimedLexToken::RParen,
+                Span::new(start, start + len),
+            )),
+            len,
+            true,
+        )),
+        '-' if at_word_boundary => Ok((
+            Some(Spanned::new(
+                TimedLexToken::Extension,
+                Span::new(start, start + len),
+            )),
+            len,
+            true,
+        )),
+        // `-` inside a word: duration-suffix dash; skip it.
+        '-' => Ok((None, len, false)),
+        '1' if at_word_boundary && line[i..].starts_with("1=") => {
+            if let Some((tok, consumed)) = try_lex_key_change(line, i, start)? {
+                return Ok((Some(tok), consumed, true));
+            }
+            // Not a key change — emit HeadStart for digit `1`.
+            Ok((
+                Some(Spanned::new(
+                    TimedLexToken::HeadStart { offset: start },
+                    Span::new(start, start + len),
+                )),
+                len,
+                false,
+            ))
         }
+        '0'..='7' => {
+            // Check for time signature only at word boundary.
+            if at_word_boundary {
+                if let Some((tok, consumed)) = try_lex_time_signature(line, i, start)? {
+                    return Ok((Some(tok), consumed, true));
+                }
+            }
+            // Emit HeadStart.  If inside a word, the RD parser will skip stale HeadStart tokens
+            // that fall within an already-parsed multi-char unit (e.g. `7` in `1m7`).
+            Ok((
+                Some(Spanned::new(
+                    TimedLexToken::HeadStart { offset: start },
+                    Span::new(start, start + len),
+                )),
+                len,
+                false,
+            ))
+        }
+        'b' if at_word_boundary && line[i..].starts_with("bpm=") => {
+            let (tok, consumed) = lex_bpm(line, i, start)?;
+            Ok((Some(tok), consumed, true))
+        }
+        _ if c.is_ascii_digit() => {
+            // Digits 8-9: only valid as time signatures at word boundary.
+            if at_word_boundary {
+                if let Some((tok, consumed)) = try_lex_time_signature(line, i, start)? {
+                    return Ok((Some(tok), consumed, true));
+                }
+                return Err(JianPuError::new(
+                    Span::new(start, start + len),
+                    format!("unexpected character: {c}"),
+                ));
+            }
+            // Inside a word suffix — skip.
+            Ok((None, len, false))
+        }
+        _ if !at_word_boundary => {
+            // Any other suffix character inside a word belongs to the current head; skip it.
+            Ok((None, len, false))
+        }
+        _ => Err(JianPuError::new(
+            Span::new(start, start + len),
+            format!("unexpected character: {c}"),
+        )),
     }
-    let token = Spanned::new(
-        TimedLexToken::HeadStart { offset: start },
-        Span::new(start, start + len),
-    );
-    Ok((token, len, false))
 }
 
 /// Lex a `bpm=<number>` directive starting at byte offset `i` within `line`.

@@ -54,8 +54,14 @@ fn extension_vs_suffix_dash() {
 #[test]
 fn sixteenth_note_not_key_change() {
     // "1=C" has a note name but no octave digit, so try_lex_key_change returns None
-    // and "1" is emitted as a HeadStart; the trailing "=C" then causes a lex error.
-    assert!(lex_line("1=C", 0).is_err());
+    // and "1" is emitted as a HeadStart; the trailing "=C" is skipped at the lex stage
+    // and the error is caught at parse time (the 'C' is invalid in parse_duration_suffixes).
+    let tokens: Vec<_> = lex_line("1=C", 0)
+        .unwrap()
+        .into_iter()
+        .map(|t| t.value)
+        .collect();
+    assert!(matches!(tokens[0], TimedLexToken::HeadStart { offset: 0 }));
 
     // A proper key change (with octave digit) must succeed.
     let tokens: Vec<_> = lex_line("1=C4", 0)

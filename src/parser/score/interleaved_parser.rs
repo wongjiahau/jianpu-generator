@@ -3,8 +3,7 @@ use crate::ast::parsed::{
     PartKind, ScoreEvent, ScoreLineRole, ScoreLineSlot,
 };
 use crate::error::{JianPuError, Span, Spanned};
-use crate::parser::score::token_parser::GroupParseState;
-use crate::parser::score::{token_parser, tokenizer};
+use crate::parser::score::token_parser::{self, GroupStack};
 use crate::utils::{count_lyric_slots_in_events, tokenize_lyrics, LyricTieState};
 
 #[path = "interleaved_beat_padding.rs"]
@@ -38,7 +37,7 @@ struct BarGroupContext<'a> {
     time_den: &'a mut u8,
     accumulators: &'a mut [TrackAccumulator],
     lyric_tie_states: &'a mut [LyricTieState],
-    group_states: &'a mut [GroupParseState],
+    group_states: &'a mut [GroupStack],
     bar_lyric_slots: &'a mut [Option<u32>],
 }
 
@@ -67,7 +66,7 @@ pub fn parse(
     let mut time_num: u8 = 4;
     let mut time_den: u8 = 4;
     let mut lyric_tie_states = vec![LyricTieState::default(); declarations.len()];
-    let mut group_states = vec![GroupParseState::default(); declarations.len()];
+    let mut group_states = vec![GroupStack::default(); declarations.len()];
     let mut bar_lyric_slots = vec![None; declarations.len()];
 
     let mut ctx = BarGroupContext {
@@ -89,7 +88,7 @@ pub fn parse(
     }
 
     for (track_index, state) in group_states.iter().enumerate() {
-        if state.open {
+        if state.is_open() {
             let part_label = declarations
                 .get(track_index)
                 .map(|d| d.abbreviation.as_str())
@@ -296,7 +295,6 @@ fn process_column_line(
                     "'_' is only valid on lyrics lines; use '-' for rests in notes".to_string(),
                 ));
             }
-            let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
             let group_state = ctx.group_states.get_mut(*track_index).ok_or_else(|| {
                 JianPuError::new(
                     line_span.clone(),
@@ -304,7 +302,7 @@ fn process_column_line(
                 )
             })?;
             let events = validate_and_pad_beats(
-                token_parser::parse_tokens(tokens, group_state)?,
+                token_parser::parse_notes_line(line, ctx.base_offset + line_offset, group_state)?,
                 beats_expected,
                 *ctx.time_num,
                 *ctx.time_den,
@@ -333,7 +331,6 @@ fn process_column_line(
                     "'_' is only valid on lyrics lines".to_string(),
                 ));
             }
-            let tokens = tokenizer::tokenize(line, ctx.base_offset + line_offset);
             let group_state = ctx.group_states.get_mut(*track_index).ok_or_else(|| {
                 JianPuError::new(
                     line_span.clone(),
@@ -341,7 +338,7 @@ fn process_column_line(
                 )
             })?;
             let events = validate_and_pad_beats(
-                token_parser::parse_chord_tokens(tokens, group_state)?,
+                token_parser::parse_chord_line(line, ctx.base_offset + line_offset, group_state)?,
                 beats_expected,
                 *ctx.time_num,
                 *ctx.time_den,

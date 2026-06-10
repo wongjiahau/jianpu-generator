@@ -235,8 +235,7 @@ fn byte_offset_at_char_index_from_chars(chars: &[char], char_index: usize) -> us
 mod tests {
     use super::*;
     use crate::parser::score::timed_parser::{parse_timed_token, GroupParseState};
-    use crate::parser::score::token_parser::parse_chord_tokens;
-    use crate::parser::score::tokenizer::tokenize;
+    use crate::parser::score::token_parser::{parse_chord_line, GroupStack};
 
     fn chord(
         degree: JianPuPitch,
@@ -279,7 +278,7 @@ mod tests {
     }
 
     fn parse_line(line: &str) -> Vec<ScoreEvent> {
-        parse_chord_tokens(tokenize(line, 0), &mut GroupParseState::default())
+        parse_chord_line(line, 0, &mut GroupStack::default())
             .unwrap()
             .into_iter()
             .map(|e| e.value)
@@ -640,16 +639,16 @@ mod tests {
 
     #[test]
     fn parses_spaced_slur_group_across_tokens() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         let mut chord_count = 0usize;
         for token in ["(1", "-", "6m", "-)"] {
-            let events = parse_chord_tokens(tokenize(token, 0), &mut state).unwrap();
+            let events = parse_chord_line(token, 0, &mut state).unwrap();
             chord_count += events
                 .iter()
                 .filter(|e| matches!(e.value, ScoreEvent::Chord(_)))
                 .count();
         }
         assert_eq!(chord_count, 2, "expected chord 1 and 6m in group");
-        assert!(!state.open);
+        assert!(!state.is_open());
     }
 }

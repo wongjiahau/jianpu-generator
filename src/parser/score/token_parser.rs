@@ -1,198 +1,41 @@
 #![allow(clippy::indexing_slicing)]
 
-use crate::ast::parsed::{Accidental, KeyChange, Note, NoteName, ScoreEvent};
-use crate::error::{JianPuError, Span, Spanned};
-use crate::parser::score::timed_parser::{parse_timed_token, ChordHead, NoteHead};
+use crate::ast::parsed::ScoreEvent;
+use crate::error::{JianPuError, Spanned};
+use crate::parser::score::timed_parser::{parse_timed_line, ChordHead, NoteHead};
 
-pub use crate::parser::score::timed_parser::GroupParseState;
-use crate::parser::score::tokenizer::RawToken;
+pub use crate::parser::score::timed_parser::GroupStack;
 
-pub fn parse_tokens(
-    tokens: Vec<RawToken>,
-    group_state: &mut GroupParseState,
+pub fn parse_notes_line(
+    line: &str,
+    base_offset: usize,
+    stack: &mut GroupStack,
 ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-    let mut events = Vec::new();
-
-    for token in tokens {
-        let span = Span::new(token.offset, token.offset + token.text.len());
-        let parsed = parse_single_token_with_directives(&token.text, span.clone(), group_state)?;
-        for event in parsed {
-            events.push(Spanned::new(event, span.clone()));
-        }
-    }
-
-    Ok(events)
+    parse_timed_line::<NoteHead>(line, base_offset, stack)
 }
 
-pub fn parse_chord_tokens(
-    tokens: Vec<RawToken>,
-    group_state: &mut GroupParseState,
+pub fn parse_chord_line(
+    line: &str,
+    base_offset: usize,
+    stack: &mut GroupStack,
 ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-    let mut events = Vec::new();
-
-    for token in tokens {
-        let span = Span::new(token.offset, token.offset + token.text.len());
-        let parsed = if token.text == "-" {
-            vec![ScoreEvent::Extension]
-        } else {
-            parse_timed_token::<ChordHead>(&token.text, span.clone(), group_state)?
-        };
-        for event in parsed {
-            events.push(Spanned::new(event, span.clone()));
-        }
-    }
-
-    Ok(events)
-}
-
-fn parse_single_token_with_directives(
-    text: &str,
-    span: Span,
-    group_state: &mut GroupParseState,
-) -> Result<Vec<ScoreEvent>, JianPuError> {
-    if let Some(rest) = text.strip_prefix("bpm=") {
-        let bpm = rest
-            .parse::<u32>()
-            .map_err(|_| JianPuError::new(span.clone(), format!("invalid bpm value: {rest}")))?;
-        return Ok(vec![ScoreEvent::BpmChange(bpm)]);
-    }
-
-    if text.starts_with("1=") {
-        let after_eq = text.get(2..).unwrap_or("");
-        if after_eq
-            .chars()
-            .next()
-            .is_some_and(|c| matches!(c, 'A' | 'B' | 'C' | 'D' | 'E' | 'F' | 'G'))
-        {
-            return Ok(vec![parse_key_change(text, &span)?]);
-        }
-    }
-
-    if text.contains('/') {
-        return Ok(vec![parse_time_signature(text, span)?]);
-    }
-
-    if text == "-" {
-        return Ok(vec![ScoreEvent::Extension]);
-    }
-
-    parse_timed_token::<NoteHead>(text, span, group_state)
-}
-
-fn parse_key_change(text: &str, span: &Span) -> Result<ScoreEvent, JianPuError> {
-    let after_eq = text.strip_prefix("1=").ok_or_else(|| {
-        JianPuError::new(
-            span.clone(),
-            format!("expected key change starting with '1=', got: {text}"),
-        )
-    })?;
-    let mut chars = after_eq.chars().peekable();
-
-    let name_char = chars.next().ok_or_else(|| {
-        JianPuError::new(
-            span.clone(),
-            format!("expected note name after '1=', got: {text}"),
-        )
-    })?;
-
-    let name = match name_char {
-        'A' => NoteName::A,
-        'B' => NoteName::B,
-        'C' => NoteName::C,
-        'D' => NoteName::D,
-        'E' => NoteName::E,
-        'F' => NoteName::F,
-        'G' => NoteName::G,
-        _ => {
-            return Err(JianPuError::new(
-                span.clone(),
-                format!("invalid note name: {name_char}"),
-            ))
-        }
-    };
-
-    let accidental = match chars.peek() {
-        Some('b') => {
-            chars.next();
-            Accidental::Flat
-        }
-        Some('#') => {
-            chars.next();
-            Accidental::Sharp
-        }
-        _ => Accidental::Natural,
-    };
-
-    let octave_str: String = chars.collect();
-    let octave = octave_str.parse::<u8>().map_err(|_| {
-        JianPuError::new(
-            span.clone(),
-            format!("invalid octave number in key change: {text}"),
-        )
-    })?;
-
-    Ok(ScoreEvent::KeyChange(KeyChange {
-        note: Note {
-            name,
-            octave,
-            accidental,
-        },
-    }))
-}
-
-fn parse_time_signature(text: &str, span: Span) -> Result<ScoreEvent, JianPuError> {
-    let parts: Vec<&str> = text.split('/').collect();
-    if parts.len() != 2 {
-        return Err(JianPuError::new(
-            span,
-            format!("invalid time signature: {text}"),
-        ));
-    }
-    let numerator_str = parts
-        .first()
-        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid time signature: {text}")))?;
-    let denominator_str = parts
-        .get(1)
-        .ok_or_else(|| JianPuError::new(span.clone(), format!("invalid time signature: {text}")))?;
-    let numerator = numerator_str.parse::<u8>().map_err(|_| {
-        JianPuError::new(
-            span.clone(),
-            format!("invalid time signature numerator: {numerator_str}"),
-        )
-    })?;
-    let denominator = denominator_str.parse::<u8>().map_err(|_| {
-        JianPuError::new(
-            span.clone(),
-            format!("invalid time signature denominator: {denominator_str}"),
-        )
-    })?;
-    if denominator == 0 {
-        return Err(JianPuError::new(
-            span,
-            "time signature denominator cannot be zero".to_string(),
-        ));
-    }
-    Ok(ScoreEvent::TimeSignatureChange {
-        numerator,
-        denominator,
-    })
+    parse_timed_line::<ChordHead>(line, base_offset, stack)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ast::parsed::{JianPuPitch, ParsedNote, ParsedRest};
-    use crate::parser::score::tokenizer::tokenize;
 
     fn parse(input: &str) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-        parse_tokens(tokenize(input, 0), &mut GroupParseState::default())
+        parse_notes_line(input, 0, &mut GroupStack::default())
     }
 
     fn parse_with_state(
         input: &str,
-        state: &mut GroupParseState,
+        state: &mut GroupStack,
     ) -> Result<Vec<Spanned<ScoreEvent>>, JianPuError> {
-        parse_tokens(tokenize(input, 0), state)
+        parse_notes_line(input, 0, state)
     }
 
     fn note(events: &[Spanned<ScoreEvent>], i: usize) -> &ParsedNote {
@@ -394,7 +237,7 @@ mod tests {
 
     #[test]
     fn rejects_single_note_cross_measure_group() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         parse_with_state("(1", &mut state).unwrap();
         assert!(parse_with_state(")", &mut state).is_err());
     }
@@ -409,28 +252,27 @@ mod tests {
 
     #[test]
     fn parses_open_group_at_end_of_token() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         let events = parse_with_state("111(1", &mut state).unwrap();
         assert_eq!(events.len(), 4);
         assert!(note(&events, 3).tie);
-        assert!(state.open);
+        assert!(state.is_open());
     }
 
     #[test]
     fn parses_cross_measure_group_continuation() {
-        let mut state = GroupParseState {
-            open: true,
-            open_note_count: 1,
-        };
+        let mut state = GroupStack::default();
+        // Open a group with one note so state.is_open() is true
+        parse_with_state("(1", &mut state).unwrap();
         let events = parse_with_state("2)345", &mut state).unwrap();
         assert_eq!(events.len(), 4);
         assert!(!note(&events, 0).tie);
-        assert!(!state.open);
+        assert!(!state.is_open());
     }
 
     #[test]
     fn cross_measure_group_sets_tie_on_opening_note() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         parse_with_state("111(1", &mut state).unwrap();
         let events = parse_with_state("2)345", &mut state).unwrap();
         assert!(note(&events, 0).pitch == JianPuPitch::Two);
@@ -439,11 +281,11 @@ mod tests {
 
     #[test]
     fn open_group_continues_across_spaced_tokens_in_same_measure() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         parse_with_state("(6", &mut state).unwrap();
         parse_with_state("-", &mut state).unwrap();
         let events = parse_with_state("7", &mut state).unwrap();
-        assert!(state.open);
+        assert!(state.is_open());
         assert_eq!(events.len(), 1);
         assert!(note(&events, 0).pitch == JianPuPitch::Seven);
         assert!(note(&events, 0).tie);
@@ -451,13 +293,13 @@ mod tests {
 
     #[test]
     fn parses_nested_tie_group() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         let events1 = parse_with_state("(3=", &mut state).unwrap();
         assert_eq!(events1.len(), 1);
-        assert!(state.open);
+        assert!(state.is_open());
         let events2 = parse_with_state("(2_1_))", &mut state).unwrap();
         assert_eq!(events2.len(), 2);
-        assert!(!state.open);
+        assert!(!state.is_open());
         let events = parse("(3= (2_1_))").unwrap();
         assert_eq!(events.len(), 3);
         let n0 = note(&events, 0);
@@ -479,13 +321,13 @@ mod tests {
 
     #[test]
     fn open_group_closes_on_spaced_tokens_across_measures() {
-        let mut state = GroupParseState::default();
+        let mut state = GroupStack::default();
         parse_with_state("(6", &mut state).unwrap();
         parse_with_state("-", &mut state).unwrap();
         parse_with_state("7", &mut state).unwrap();
         parse_with_state("-", &mut state).unwrap();
         let events = parse_with_state("7)", &mut state).unwrap();
-        assert!(!state.open);
+        assert!(!state.is_open());
         assert_eq!(events.len(), 1);
         assert!(note(&events, 0).pitch == JianPuPitch::Seven);
         assert!(!note(&events, 0).tie);

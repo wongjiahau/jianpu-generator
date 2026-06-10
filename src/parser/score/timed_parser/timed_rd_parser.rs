@@ -217,21 +217,13 @@ impl<'a, H: TimedUnitHead> TimedRdParser<'a, H> {
         // Relative byte offset from the start of `source`.
         let rel = digit_offset - self.base_offset;
 
-        // Determine where to stop: either the start of the next token or end of source.
-        // We look one token ahead (pos+1, since pos is still at the current HeadStart).
-        let next_token_abs_offset = self.tokens.get(self.pos + 1).map(|t| t.span.start);
-
-        // Build chars only up to the next token boundary (or end of source).
-        let raw_text = match next_token_abs_offset {
-            Some(next_abs) if next_abs > digit_offset => {
-                let next_rel = next_abs - self.base_offset;
-                &self.source[rel..next_rel.min(self.source.len())]
-            }
-            _ => &self.source[rel..],
-        };
-
-        // Strip trailing whitespace so duration suffix parsing doesn't choke on inter-token gaps.
-        let text = raw_text.trim_end();
+        // Slice from the head offset to the end of the current non-whitespace word.
+        // Duration suffixes are never whitespace, so the unit ends at the first whitespace char.
+        let raw_text = &self.source[rel..];
+        let text = raw_text
+            .find(|c: char| c.is_whitespace() || c == '|' || c == '(' || c == ')')
+            .map(|ws_pos| &raw_text[..ws_pos])
+            .unwrap_or(raw_text);
 
         let chars: Vec<char> = text.chars().collect();
 
@@ -255,7 +247,8 @@ impl<'a, H: TimedUnitHead> TimedRdParser<'a, H> {
             .iter()
             .map(|c| c.len_utf8())
             .sum();
-        let unit_span = Span::new(digit_offset, digit_offset + unit_byte_len);
+        let unit_end_abs = digit_offset + unit_byte_len;
+        let unit_span = Span::new(digit_offset, unit_end_abs);
 
         let event = H::to_event(
             &head,
@@ -271,8 +264,19 @@ impl<'a, H: TimedUnitHead> TimedRdParser<'a, H> {
         // Increment note count in the innermost open group frame.
         self.stack.increment_note_count();
 
-        // Consume the HeadStart token.
+        // Consume the HeadStart token for this unit.
         self.bump();
+
+        // Skip any HeadStart tokens that fall within the byte range of the unit we just parsed.
+        // This happens when the lexer emits a HeadStart for a digit inside a multi-char symbol
+        // (e.g. the `7` in chord `1m7`).
+        while let Some(TimedLexToken::HeadStart { offset }) = self.peek() {
+            if *offset < unit_end_abs {
+                self.bump();
+            } else {
+                break;
+            }
+        }
 
         Ok(())
     }
