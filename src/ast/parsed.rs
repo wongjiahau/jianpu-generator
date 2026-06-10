@@ -79,6 +79,7 @@ pub struct ParsedDocument {
     #[allow(dead_code)] // reserved for future legend rendering
     pub declarations: Vec<PartDecl>,
     pub tracks: Vec<ParsedTrack>,
+    pub directive_events_per_measure: Vec<Vec<Spanned<ScoreEvent>>>,
 }
 
 #[allow(dead_code)]

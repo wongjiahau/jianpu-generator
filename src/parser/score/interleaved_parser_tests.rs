@@ -1,7 +1,7 @@
 use super::*;
 use crate::ast::parsed::{Accidental, JianPuPitch, ParsedChordNote, ScoreEvent, TriadQuality};
 
-use super::test_helpers::{chord_track, decl, notes_track};
+use super::test_helpers::{chord_track, decl, notes_track, parse};
 
 #[test]
 fn chord_line_parses_spaced_slur_group() {

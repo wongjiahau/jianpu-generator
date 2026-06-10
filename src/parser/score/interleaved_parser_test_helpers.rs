@@ -1,4 +1,25 @@
 use crate::ast::parsed::{ParsedTimedTrack, ParsedTrack, PartDecl, PartKind};
+use crate::error::JianPuError;
+
+/// Convenience wrapper that calls `parse` and returns only the tracks,
+/// discarding the directive-events accumulator. Used in unit tests.
+pub(super) fn parse(
+    content: &str,
+    base_offset: usize,
+    declarations: &[PartDecl],
+) -> Result<Vec<ParsedTrack>, JianPuError> {
+    super::parse(content, base_offset, declarations).map(|(tracks, _)| tracks)
+}
+
+/// Like `parse`, but also returns the directive-events-per-measure accumulator.
+#[allow(dead_code)]
+pub(super) fn parse_with_directives(
+    content: &str,
+    base_offset: usize,
+    declarations: &[PartDecl],
+) -> Result<(Vec<ParsedTrack>, super::DirectiveEventsPerMeasure), JianPuError> {
+    super::parse(content, base_offset, declarations)
+}
 
 pub(super) fn decl(name: &str, kind: PartKind) -> PartDecl {
     PartDecl {
