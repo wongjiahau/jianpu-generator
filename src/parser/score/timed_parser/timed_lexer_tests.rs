@@ -73,3 +73,23 @@ fn lexes_directives() {
     assert!(matches!(tokens[0], Bpm(120)));
     assert!(matches!(tokens[1], TimeSignature { num: 4, den: 4 }));
 }
+
+#[test]
+fn time_signature_with_low_digit() {
+    // digits 0-7 at atom boundary should be parsed as time signatures when followed by /
+    use TimedLexToken::*;
+    let tokens = kinds("4/4");
+    assert_eq!(tokens, vec![TimeSignature { num: 4, den: 4 }]);
+}
+
+#[test]
+fn digits_8_9_without_slash_error() {
+    // digits 8-9 without a slash are invalid
+    assert!(lex_line("8", 0).is_err());
+    assert!(lex_line("9", 0).is_err());
+}
+
+#[test]
+fn time_signature_zero_denominator_errors() {
+    assert!(lex_line("4/0", 0).is_err());
+}
