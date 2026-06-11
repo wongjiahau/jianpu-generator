@@ -431,6 +431,18 @@ fn compile_note(
     *state.prev_tie = note.tie;
     *state.prev_slur_key = Some(slur_key);
 
+    // Emit a visual dash at each beat column within the note's span beyond the first.
+    // Dotted notes carry duration visually via the dot; only non-dotted notes get dashes.
+    if !note.dotted {
+        let note_col = *state.col;
+        for dash_col in (note_col + 4..note_col + note.duration).step_by(4) {
+            state.elements.push(ColumnElement {
+                column: dash_col,
+                content: ElementContent::NoteDash,
+            });
+        }
+    }
+
     if underline_count > 0 {
         state.beam_buf.push(BeamEntry {
             column: *state.col,

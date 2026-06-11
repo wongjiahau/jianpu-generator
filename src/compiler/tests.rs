@@ -212,6 +212,30 @@ Tenor (T) = notes
 }
 
 #[test]
+fn extended_note_produces_note_dash_at_each_extra_beat() {
+    // "1- 2-" = two half notes filling a 4/4 measure (8+8=16 quarter-beats).
+    // Each half note should produce one NoteDash at the beat following the note head.
+    let score = score_from(&notes_doc("(time=4/4 key=C4 bpm=120)\n1- 2-\n"));
+    let blocks = compile(&score);
+    let row = &blocks[0].rows[0];
+    let dashes: Vec<_> = row
+        .elements
+        .iter()
+        .filter(|e| matches!(e.content, ElementContent::NoteDash))
+        .collect();
+    assert_eq!(
+        dashes.len(),
+        2,
+        "two half notes should produce two NoteDash elements"
+    );
+    assert_eq!(dashes[0].column, 4, "first NoteDash should be at column 4");
+    assert_eq!(
+        dashes[1].column, 12,
+        "second NoteDash should be at column 12"
+    );
+}
+
+#[test]
 fn note_head_column_is_zero_indexed() {
     // First note in measure should be at column 0
     let score = score_from(&notes_doc("(time=4/4 key=C4 bpm=120)\n1\n"));

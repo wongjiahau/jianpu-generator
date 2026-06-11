@@ -186,6 +186,53 @@ fn emit_decorations(
     }
 }
 
+fn emit_underline_element(
+    ctx: &SysCtx,
+    measure_start: u32,
+    from_column: u32,
+    last_head_column: u32,
+    level: u32,
+    part_y_base: f32,
+    out: &mut Vec<AbsoluteElement>,
+) {
+    let rh = ctx.row_height_pt;
+    let x1 = ctx.x_col(measure_start, from_column) + ctx.column_width * 0.1;
+    let x2 = ctx.x_col(measure_start, last_head_column)
+        + ctx.column_width * 0.5
+        + ctx.note_number_width * 0.5;
+    let y = part_y_base + rh * 2.0 + rh * 0.1 + level as f32 * (rh * 0.15);
+    out.push(AbsoluteElement {
+        x: x1,
+        y,
+        content: AbsoluteContent::Underline {
+            width: (x2 - x1).max(0.0),
+            level,
+        },
+    });
+}
+
+fn emit_note_dash_element(
+    ctx: &SysCtx,
+    x_base: f32,
+    part_y_base: f32,
+    out: &mut Vec<AbsoluteElement>,
+) {
+    let rh = ctx.row_height_pt;
+    out.push(AbsoluteElement {
+        x: x_base + ctx.column_width * 0.5,
+        y: part_y_base + rh * 1.5,
+        content: AbsoluteContent::Text {
+            content: "—".to_string(),
+            font_size: ctx.base_font_size,
+            anchor: TextAnchor::Middle,
+            baseline: DominantBaseline::Middle,
+            font: FontFamily::Monospace,
+            weight: FontWeight::Normal,
+            italic: false,
+        },
+    });
+}
+
 fn emit_row_content(
     ctx: &SysCtx,
     row: &MeasureRow,
@@ -232,21 +279,15 @@ fn emit_row_content(
                 last_head_column,
                 level,
                 ..
-            } => {
-                let x1 = ctx.x_col(measure_start, *from_column) + ctx.column_width * 0.1;
-                let x2 = ctx.x_col(measure_start, *last_head_column)
-                    + ctx.column_width * 0.5
-                    + ctx.note_number_width * 0.5;
-                let y = part_y_base + rh * 2.0 + rh * 0.1 + *level as f32 * (rh * 0.15);
-                out.push(AbsoluteElement {
-                    x: x1,
-                    y,
-                    content: AbsoluteContent::Underline {
-                        width: (x2 - x1).max(0.0),
-                        level: *level,
-                    },
-                });
-            }
+            } => emit_underline_element(
+                ctx,
+                measure_start,
+                *from_column,
+                *last_head_column,
+                *level,
+                part_y_base,
+                out,
+            ),
             ElementContent::TieOrSlur {
                 from_column,
                 to_column,
@@ -287,6 +328,9 @@ fn emit_row_content(
                     y: part_y_base + rh * 3.0,
                     content: AbsoluteContent::Lyric(text.clone()),
                 });
+            }
+            ElementContent::NoteDash => {
+                emit_note_dash_element(ctx, x_base, part_y_base, out);
             }
         }
     }

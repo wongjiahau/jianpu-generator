@@ -49,6 +49,8 @@ pub enum ElementContent {
         to_column: u32,
     },
     BarLine,
+    /// Visual dash rendered after a note head for each extra beat of duration (e.g. `1-`).
+    NoteDash,
     Lyric(String),
 }
 
