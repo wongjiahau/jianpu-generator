@@ -174,6 +174,37 @@ fn bar_line_column_equals_total_duration() {
 }
 
 #[test]
+fn all_parts_ditto_except_first_produces_all_label() {
+    let score = score_from(
+        "[metadata]
+title=\"t\"
+author=\"a\"
+
+[parts]
+Soprano (S) = notes
+Alto (A) = notes
+Tenor (T) = notes
+
+[score]
+(time=4/4 key=C4 bpm=120)
+1 2 3 4
+\"
+\"
+",
+    );
+    let blocks = compile(&score);
+    assert_eq!(
+        blocks[0].rows.len(),
+        1,
+        "all ditto parts should collapse to one row"
+    );
+    assert_eq!(
+        blocks[0].rows[0].label, "[ALL]",
+        "label should be [ALL] when all parts except first are ditto"
+    );
+}
+
+#[test]
 fn note_head_column_is_zero_indexed() {
     // First note in measure should be at column 0
     let score = score_from(&notes_doc("(time=4/4 key=C4 bpm=120)\n1\n"));

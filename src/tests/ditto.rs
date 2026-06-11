@@ -137,7 +137,7 @@ fn ditto_part_label_is_merged_into_source_row_label() {
         "ditto Alto should produce no separate row"
     );
     assert_eq!(
-        blocks[0].rows[0].label, "S, A",
-        "source row label should include ditto part label"
+        blocks[0].rows[0].label, "[ALL]",
+        "source row label should be [ALL] when all other parts are ditto"
     );
 }

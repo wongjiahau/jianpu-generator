@@ -47,6 +47,11 @@ fn compile_measure(measure: &MultiPartMeasure, bar_number: usize) -> MeasureBloc
             }
         }
     }
+    if rows.len() == 1 && measure.parts.len() > 1 {
+        if let Some(row) = rows.get_mut(0) {
+            row.label = "[ALL]".to_string();
+        }
+    }
     MeasureBlock { rows, decorations }
 }
 
