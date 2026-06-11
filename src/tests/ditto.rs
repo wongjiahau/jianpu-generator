@@ -141,3 +141,29 @@ fn ditto_part_label_is_merged_into_source_row_label() {
         "source row label should be [ALL] when all other parts are ditto"
     );
 }
+
+#[test]
+fn ditto_part_promoted_to_timed_when_source_is_filtered_out() {
+    let input = concat!(
+        "[metadata]\n",
+        "title = \"t\"\n",
+        "author = \"a\"\n",
+        "\n",
+        "[parts]\n",
+        "Soprano (S) = notes\n",
+        "Alto (A) = notes\n",
+        "\n",
+        "[score]\n",
+        "(time=4/4 key=C4 bpm=120)\n",
+        "1 2 3 4\n",
+        "\"\n",
+    );
+    let mut score = compile(input, "test.jianpu").unwrap();
+    // Alto is ditto. Filter to Alto only — Soprano (the source) is removed.
+    apply_track_filter(&mut score, Some(&["A".to_string()]));
+    assert_eq!(score.measures[0].parts.len(), 1, "only Alto should remain");
+    assert!(
+        matches!(score.measures[0].parts[0], PartRow::Timed(_)),
+        "Alto should be promoted from Ditto to Timed when its source Soprano is filtered out"
+    );
+}

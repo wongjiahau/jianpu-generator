@@ -21,7 +21,7 @@ pub mod pdf;
 #[cfg(feature = "wav")]
 pub mod wav;
 
-use ast::grouped::Score;
+use ast::grouped::{PartRow, Score};
 use ast::parsed::PartKind;
 use error::JianPuError;
 
@@ -119,6 +119,14 @@ pub fn apply_track_filter(score: &mut Score, enabled_tracks: Option<&[String]>) 
                 .as_ref()
                 .is_some_and(|name| tracks.contains(name))
         });
+        // If the source part was filtered out, a leading ditto has no row to
+        // merge into and its content would silently disappear. Promote the
+        // first ditto part to Timed so it renders independently.
+        if let Some(first) = measure.parts.first_mut() {
+            if let PartRow::Ditto(slice) = first {
+                *first = PartRow::Timed(slice.clone());
+            }
+        }
     }
 }
 
