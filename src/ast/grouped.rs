@@ -173,6 +173,7 @@ pub struct GroupedChordNote {
     pub group_membership: u8,
     pub group_continuation: u8,
     pub dotted: bool,
+    pub slur_group_close_at_duration: Option<u32>,
 }
 
 #[derive(Clone)]
@@ -189,6 +190,7 @@ pub struct GroupedNote {
     pub group_continuation: u8,
     /// True if this note was written with `*` (dotted duration).
     pub dotted: bool,
+    pub slur_group_close_at_duration: Option<u32>,
 }
 
 impl GroupedChordNote {
@@ -253,4 +255,6 @@ pub struct GroupedRest {
     /// True if this rest was written with `*` (dotted duration). Reserved for future use.
     #[allow(dead_code)]
     pub dotted: bool,
+    pub group_membership: u8,
+    pub group_continuation: u8,
 }

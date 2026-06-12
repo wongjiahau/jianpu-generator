@@ -198,6 +198,7 @@ enum SlurKey {
         extension: Option<Extension>,
         bass_degree: Option<JianPuPitch>,
     },
+    Rest,
 }
 
 impl SlurKey {
@@ -402,6 +403,20 @@ fn compile_note(
         &slur_key,
         state.elements,
     );
+    // When the slur group closes on an extension within this note, close the chain at the
+    // extension-dash column rather than letting it become a cross-measure open chain.
+    if let Some(close_offset) = note.slur_group_close_at_duration {
+        if note.group_membership > 0 {
+            extend_note_chains(
+                state.pending_chains,
+                note.group_membership,
+                0,
+                *state.col + close_offset,
+                &SlurKey::Rest,
+                state.elements,
+            );
+        }
+    }
 
     let is_tie_continuation = *state.prev_tie && state.prev_slur_key.as_ref() == Some(&slur_key);
 
@@ -476,6 +491,17 @@ fn compile_rest(state: &mut PartState<'_>, rest: &GroupedRest, measure_col_start
             dotted: rest.dotted,
         },
     });
+
+    if rest.group_membership > 0 {
+        extend_note_chains(
+            state.pending_chains,
+            rest.group_membership,
+            rest.group_continuation,
+            *state.col,
+            &SlurKey::Rest,
+            state.elements,
+        );
+    }
 
     if underline_count > 0 {
         state.beam_buf.push(BeamEntry {
