@@ -71,6 +71,58 @@ fn apply_depth_to_event(event: &mut ScoreEvent, membership: u8, continuation: u8
             c.group_continuation = c.group_continuation.saturating_add(continuation);
             c.tie = c.group_continuation > 0;
         }
+        ScoreEvent::Rest(r) => {
+            r.group_membership = r.group_membership.saturating_add(membership);
+            r.group_continuation = r.group_continuation.saturating_add(continuation);
+        }
+        _ => {}
+    }
+}
+
+/// When a slur group's last element is an Extension (i.e., `)` follows a `-`), the arc should
+/// end at the extension dash position rather than at the note head. This function scans the
+/// group slice (after `apply_closed_group_depth` has run), finds such a pattern, and sets
+/// `slur_group_close_at_duration` on the last Note/Chord in the group so the compiler can
+/// close the arc at the right column.
+fn annotate_slur_close_via_extension(group_slice: &mut [DepthEvent]) {
+    // Check if the last element in the group is a closing Extension (continuation == 0).
+    let last_is_closing_ext = group_slice
+        .last()
+        .map(|e| matches!(e.spanned.value, ScoreEvent::Extension) && e.group_continuation == 0)
+        .unwrap_or(false);
+
+    if !last_is_closing_ext {
+        return;
+    }
+
+    // Find the last Note or Chord in the group slice — this is the note being extended.
+    let last_note_idx = group_slice
+        .iter()
+        .rposition(|e| matches!(e.spanned.value, ScoreEvent::Note(_) | ScoreEvent::Chord(_)));
+
+    let Some(note_idx) = last_note_idx else {
+        return;
+    };
+
+    // Count Extension events with continuation > 0 that appear after the note — these are
+    // the "continuing" extensions that precede the final closing extension.
+    let num_continuing_exts = group_slice[note_idx + 1..]
+        .iter()
+        .filter(|e| matches!(e.spanned.value, ScoreEvent::Extension) && e.group_continuation > 0)
+        .count() as u32;
+
+    let note_initial_duration = match &group_slice[note_idx].spanned.value {
+        ScoreEvent::Note(n) => n.duration,
+        ScoreEvent::Chord(c) => c.duration,
+        _ => return,
+    };
+
+    // close_offset = position of the last extension dash relative to the note's start col.
+    let close_offset = note_initial_duration + num_continuing_exts * 4;
+
+    match &mut group_slice[note_idx].spanned.value {
+        ScoreEvent::Note(n) => n.slur_group_close_at_duration = Some(close_offset),
+        ScoreEvent::Chord(c) => c.slur_group_close_at_duration = Some(close_offset),
         _ => {}
     }
 }
@@ -336,6 +388,7 @@ impl<'a, H: TimedUnitHead> TimedRdParser<'a, H> {
         let note_count = frame.note_count;
         validate_group_note_count(note_count, &rparen_span)?;
         apply_closed_group_depth(&mut self.staging[frame.segment_start..]);
+        annotate_slur_close_via_extension(&mut self.staging[frame.segment_start..]);
 
         Ok(())
     }

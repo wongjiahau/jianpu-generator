@@ -79,7 +79,12 @@ impl TimedUnitHead for ChordHead {
         group_continuation: u8,
     ) -> ScoreEvent {
         if head.is_rest {
-            ScoreEvent::Rest(ParsedRest { duration, dotted })
+            ScoreEvent::Rest(ParsedRest {
+                duration,
+                dotted,
+                group_membership: 0,
+                group_continuation: 0,
+            })
         } else {
             ScoreEvent::Chord(ParsedChordNote {
                 degree: head.degree.clone(),
@@ -92,6 +97,7 @@ impl TimedUnitHead for ChordHead {
                 group_membership,
                 group_continuation,
                 dotted,
+                slur_group_close_at_duration: None,
             })
         }
     }

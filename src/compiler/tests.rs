@@ -284,6 +284,51 @@ fn cross_measure_tie_does_not_consume_lyric_slot_for_continuation_note() {
 }
 
 #[test]
+fn cross_system_slur_closing_on_rest_ends_at_rest_not_barline() {
+    // Bar 1: "1 2 3 (4" — slur opens on note 4 (col 12); arc to barline (col 16).
+    // Bar 2: "5 -) - -" — slur closes at the first extension dash (col 4); arc from note 5
+    //   (col 0) to col 4, NOT to the barline (col 16). The `-` before `)` is an
+    //   extension of note 5, not a rest.
+    let score = score_from(&notes_doc(concat!(
+        "(time=4/4 key=C4 bpm=120)\n",
+        "1 2 3 (4\n",
+        "\n",
+        "5 -) - -\n",
+    )));
+    let blocks = compile(&score);
+
+    let bar2_row = &blocks[1].rows[0];
+    // There must be a slur arc from note 5 (col 0) to the rest (col 4).
+    let close_arc = bar2_row.elements.iter().find(|e| {
+        matches!(
+            &e.content,
+            ElementContent::TieOrSlur {
+                from_column: 0,
+                to_column: 4
+            }
+        )
+    });
+    assert!(
+        close_arc.is_some(),
+        "bar 2 should have a TieOrSlur arc from col 0 (note 5) to col 4 (closing rest), got: {:?}",
+        bar2_row
+            .elements
+            .iter()
+            .map(|e| &e.content)
+            .collect::<Vec<_>>()
+    );
+    // No slur arc should extend to the barline (col 16) in bar 2.
+    let barline_arc = bar2_row
+        .elements
+        .iter()
+        .find(|e| matches!(&e.content, ElementContent::TieOrSlur { to_column: 16, .. }));
+    assert!(
+        barline_arc.is_none(),
+        "bar 2 should NOT have a slur arc reaching the barline (col 16)"
+    );
+}
+
+#[test]
 fn cross_measure_tie_emits_slur_arc_at_end_of_bar_and_start_of_next() {
     // Bar 1: "1 2 3 (4" — the tied note 4 is at column 12; a slur arc should be
     //   emitted from column 12 toward the barline (column 16).

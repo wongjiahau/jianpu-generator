@@ -267,10 +267,11 @@ impl PartGrouper {
                 pitch: pn.pitch,
                 octave: pn.octave,
                 duration: pn.duration,
-                tie: pn.tie,
+                tie: pn.tie && pn.slur_group_close_at_duration.is_none(),
                 group_membership: pn.group_membership,
                 group_continuation: pn.group_continuation,
                 dotted: pn.dotted,
+                slur_group_close_at_duration: pn.slur_group_close_at_duration,
             }),
             "note",
         )
@@ -287,10 +288,11 @@ impl PartGrouper {
                 extension: pc.extension,
                 bass: pc.bass,
                 duration: pc.duration,
-                tie: pc.tie,
+                tie: pc.tie && pc.slur_group_close_at_duration.is_none(),
                 group_membership: pc.group_membership,
                 group_continuation: pc.group_continuation,
                 dotted: pc.dotted,
+                slur_group_close_at_duration: pc.slur_group_close_at_duration,
             }),
             "chord",
         )
@@ -303,6 +305,8 @@ impl PartGrouper {
             NoteEvent::Rest(GroupedRest {
                 duration: pr.duration,
                 dotted: pr.dotted,
+                group_membership: pr.group_membership,
+                group_continuation: pr.group_continuation,
             }),
             "rest",
         )

@@ -164,6 +164,10 @@ pub struct ParsedNote {
     pub group_continuation: u8,
     /// Whether `.` was present as a dotted-note suffix.
     pub dotted: bool,
+    /// When the slur group closes on an extension within this note (e.g. `(5 -)`),
+    /// this holds the offset in quarter-beats from the note's start where the slur arc
+    /// should end. `None` means the slur closes at the note's head position (normal case).
+    pub slur_group_close_at_duration: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -178,6 +182,7 @@ pub struct ParsedChordNote {
     pub group_membership: u8,
     pub group_continuation: u8,
     pub dotted: bool,
+    pub slur_group_close_at_duration: Option<u32>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -186,6 +191,8 @@ pub struct ParsedRest {
     pub duration: u32,
     /// Whether `.` was present as a dotted-rest suffix.
     pub dotted: bool,
+    pub group_membership: u8,
+    pub group_continuation: u8,
 }
 
 #[derive(Debug, Clone, PartialEq)]

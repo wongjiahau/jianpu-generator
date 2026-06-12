@@ -19,6 +19,7 @@ fn chord(
         group_membership: 0,
         group_continuation: 0,
         dotted: false,
+        slur_group_close_at_duration: None,
     })
 }
 
