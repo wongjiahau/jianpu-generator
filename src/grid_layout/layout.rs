@@ -69,7 +69,7 @@ pub(crate) fn chord_part_sub_row_heights(base: f32) -> [f32; 4] {
 }
 
 pub(crate) fn lyric_row_height(base: f32) -> f32 {
-    base * 0.50
+    base * 1.5
 }
 
 pub(crate) fn decoration_row_height(base: f32) -> f32 {
