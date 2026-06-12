@@ -1,11 +1,14 @@
 pub mod types;
 pub use types::*;
 
+mod header_footer;
+use header_footer::{emit_footer, emit_header};
+
 use crate::compiler::types::{Decoration, ElementContent, MeasureBlock, MeasureRow};
 use crate::layout::new_types::{Page, System};
 use crate::render_config::RenderConfig;
 
-const PAGE_MARGIN: f32 = 25.0;
+pub(crate) const PAGE_MARGIN: f32 = 25.0;
 
 #[allow(dead_code)]
 fn is_cjk(s: &str) -> bool {
@@ -83,82 +86,86 @@ impl SysCtx {
 
 // ── Per-measure helper functions ─────────────────────────────────────────────
 
+/// Estimates how wide the section label or bar number renders, so that
+/// directives (time sig, BPM) can be placed immediately to its right.
+fn estimate_label_width(decorations: &[Decoration], fs: f32) -> f32 {
+    decorations
+        .iter()
+        .find_map(|d| match d {
+            // Bold italic sans-serif: ~0.75× font_size per char + small gap.
+            Decoration::SectionLabel(label) => {
+                Some(label.chars().count() as f32 * fs * 0.75 + fs * 0.4)
+            }
+            // Smaller font: ~0.6× (0.7 × fs) per digit + small gap.
+            Decoration::BarNumber(n) => {
+                let digits = format!("{n}").len();
+                Some(digits as f32 * fs * 0.7 * 0.6 + fs * 0.3)
+            }
+            _ => None,
+        })
+        .unwrap_or(0.0)
+}
+
+fn emit_time_signature_fraction(
+    x_center: f32,
+    directive_y: f32,
+    row_height_pt: f32,
+    numerator: u32,
+    denominator: u32,
+    fs: f32,
+    out: &mut Vec<AbsoluteElement>,
+) {
+    let text = |content: String, y: f32| AbsoluteElement {
+        x: x_center,
+        y,
+        content: AbsoluteContent::Text {
+            content,
+            font_size: fs,
+            anchor: TextAnchor::Middle,
+            baseline: DominantBaseline::Middle,
+            font: FontFamily::SansSerif,
+            weight: FontWeight::Normal,
+            italic: false,
+        },
+    };
+    out.push(text(
+        numerator.to_string(),
+        directive_y - row_height_pt * 0.25,
+    ));
+    out.push(AbsoluteElement {
+        x: x_center - fs * 0.5,
+        y: directive_y,
+        content: AbsoluteContent::Underline {
+            width: fs,
+            level: 0,
+        },
+    });
+    out.push(text(
+        denominator.to_string(),
+        directive_y + row_height_pt * 0.25,
+    ));
+}
+
 fn emit_decorations(
     ctx: &SysCtx,
     block: &MeasureBlock,
     measure_start: u32,
     out: &mut Vec<AbsoluteElement>,
 ) {
-    let col_w = block_column_width(block);
     let block_x_base = PAGE_MARGIN + ctx.label_width_pt + measure_start as f32 * ctx.column_width;
-    let slot_width = col_w as f32 * ctx.column_width;
     let directive_y = ctx.system_y + ctx.row_height_pt * 0.5;
+    let fs = ctx.base_font_size;
 
+    // Phase 1: section label / bar number at the left edge of the measure.
     for decoration in &block.decorations {
         match decoration {
-            Decoration::Bpm(bpm) => {
-                out.push(AbsoluteElement {
-                    x: block_x_base + slot_width * 0.5,
-                    y: directive_y,
-                    content: AbsoluteContent::Text {
-                        content: format!("♩={bpm}"),
-                        font_size: ctx.base_font_size,
-                        anchor: TextAnchor::Middle,
-                        baseline: DominantBaseline::Middle,
-                        font: FontFamily::SansSerif,
-                        weight: FontWeight::Normal,
-                        italic: false,
-                    },
-                });
-            }
-            Decoration::TimeSignature {
-                numerator,
-                denominator,
-            } => {
-                let x = block_x_base + slot_width * 0.5;
-                out.push(AbsoluteElement {
-                    x,
-                    y: directive_y - ctx.row_height_pt * 0.25,
-                    content: AbsoluteContent::Text {
-                        content: numerator.to_string(),
-                        font_size: ctx.base_font_size,
-                        anchor: TextAnchor::Middle,
-                        baseline: DominantBaseline::Middle,
-                        font: FontFamily::SansSerif,
-                        weight: FontWeight::Normal,
-                        italic: false,
-                    },
-                });
-                let line_width = ctx.base_font_size;
-                out.push(AbsoluteElement {
-                    x: x - line_width * 0.5,
-                    y: directive_y,
-                    content: AbsoluteContent::Underline {
-                        width: line_width,
-                        level: 0,
-                    },
-                });
-                out.push(AbsoluteElement {
-                    x,
-                    y: directive_y + ctx.row_height_pt * 0.25,
-                    content: AbsoluteContent::Text {
-                        content: denominator.to_string(),
-                        font_size: ctx.base_font_size,
-                        anchor: TextAnchor::Middle,
-                        baseline: DominantBaseline::Middle,
-                        font: FontFamily::SansSerif,
-                        weight: FontWeight::Normal,
-                        italic: false,
-                    },
-                });
-            }
             Decoration::SectionLabel(label) => {
                 out.push(AbsoluteElement {
                     x: block_x_base,
                     y: directive_y,
                     content: AbsoluteContent::Text {
                         content: label.clone(),
-                        font_size: ctx.base_font_size,
+                        font_size: fs,
                         anchor: TextAnchor::Start,
                         baseline: DominantBaseline::Middle,
                         font: FontFamily::SansSerif,
@@ -173,7 +180,7 @@ fn emit_decorations(
                     y: directive_y,
                     content: AbsoluteContent::Text {
                         content: n.to_string(),
-                        font_size: ctx.base_font_size * 0.7,
+                        font_size: fs * 0.7,
                         anchor: TextAnchor::Start,
                         baseline: DominantBaseline::Ideographic,
                         font: FontFamily::SansSerif,
@@ -182,6 +189,48 @@ fn emit_decorations(
                     },
                 });
             }
+            _ => {}
+        }
+    }
+
+    let mut directive_x = block_x_base + estimate_label_width(&block.decorations, fs);
+
+    // Phase 2: time signature (before BPM, matching jianpu convention).
+    for decoration in &block.decorations {
+        if let Decoration::TimeSignature {
+            numerator,
+            denominator,
+        } = decoration
+        {
+            emit_time_signature_fraction(
+                directive_x + fs * 0.6,
+                directive_y,
+                ctx.row_height_pt,
+                *numerator,
+                *denominator,
+                fs,
+                out,
+            );
+            directive_x += fs * 1.5;
+        }
+    }
+
+    // Phase 3: BPM after time signature.
+    for decoration in &block.decorations {
+        if let Decoration::Bpm(bpm) = decoration {
+            out.push(AbsoluteElement {
+                x: directive_x,
+                y: directive_y,
+                content: AbsoluteContent::Text {
+                    content: format!("♩={bpm}"),
+                    font_size: fs,
+                    anchor: TextAnchor::Start,
+                    baseline: DominantBaseline::Middle,
+                    font: FontFamily::SansSerif,
+                    weight: FontWeight::Normal,
+                    italic: false,
+                },
+            });
         }
     }
 }
@@ -425,83 +474,6 @@ fn emit_system(
         }
         part_y_base += part_row_units as f32 * row_height_pt;
     }
-}
-
-// ── Header / footer helpers ───────────────────────────────────────────────────
-
-fn emit_header(
-    page: &Page,
-    row_height_pt: f32,
-    base_font_size: f32,
-    out: &mut Vec<AbsoluteElement>,
-) {
-    let page_width_pt = page.page_width_pt;
-    let title_y = PAGE_MARGIN + row_height_pt * 0.75;
-    out.push(AbsoluteElement {
-        x: page_width_pt / 2.0,
-        y: title_y,
-        content: AbsoluteContent::Text {
-            content: page.header.title.clone(),
-            font_size: row_height_pt * 1.5,
-            anchor: TextAnchor::Middle,
-            baseline: DominantBaseline::Middle,
-            font: FontFamily::SansSerif,
-            weight: FontWeight::Normal,
-            italic: false,
-        },
-    });
-
-    let subtitle_author_y = PAGE_MARGIN + row_height_pt * 2.25;
-    if let Some(subtitle) = &page.header.subtitle {
-        out.push(AbsoluteElement {
-            x: page_width_pt / 2.0,
-            y: subtitle_author_y,
-            content: AbsoluteContent::Text {
-                content: subtitle.clone(),
-                font_size: row_height_pt * 0.8,
-                anchor: TextAnchor::Middle,
-                baseline: DominantBaseline::Middle,
-                font: FontFamily::SansSerif,
-                weight: FontWeight::Normal,
-                italic: true,
-            },
-        });
-    }
-    out.push(AbsoluteElement {
-        x: page_width_pt - PAGE_MARGIN,
-        y: subtitle_author_y,
-        content: AbsoluteContent::Text {
-            content: page.header.author.clone(),
-            font_size: base_font_size,
-            anchor: TextAnchor::End,
-            baseline: DominantBaseline::Middle,
-            font: FontFamily::SansSerif,
-            weight: FontWeight::Normal,
-            italic: false,
-        },
-    });
-}
-
-fn emit_footer(
-    page: &Page,
-    row_height_pt: f32,
-    base_font_size: f32,
-    out: &mut Vec<AbsoluteElement>,
-) {
-    let footer_y = page.page_height_pt - PAGE_MARGIN - row_height_pt * 0.5;
-    out.push(AbsoluteElement {
-        x: page.page_width_pt / 2.0,
-        y: footer_y,
-        content: AbsoluteContent::Text {
-            content: format!("{}/{}", page.footer.page, page.footer.total),
-            font_size: base_font_size,
-            anchor: TextAnchor::Middle,
-            baseline: DominantBaseline::Middle,
-            font: FontFamily::SansSerif,
-            weight: FontWeight::Normal,
-            italic: false,
-        },
-    });
 }
 
 // ── Public entry point ────────────────────────────────────────────────────────
