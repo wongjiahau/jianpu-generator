@@ -51,8 +51,8 @@ fn serialize_element(el: &SvgElement, out: &mut String) {
                 String::new()
             };
             out.push_str(&format!(
-                r#"<text x="{:.1}" y="{:.1}" font-size="{:.1}" text-anchor="{}" dominant-baseline="{}" font-family="{}" font-weight="{}" {}>{}</text>"#,
-                el.x, el.y, font_size, anchor_str, baseline_str, font_str, weight_str, style_str,
+                r#"<text x="{:.1}" y="{:.1}" data-variant="{}" font-size="{:.1}" text-anchor="{}" dominant-baseline="{}" font-family="{}" font-weight="{}" {}>{}</text>"#,
+                el.x, el.y, el.variant, font_size, anchor_str, baseline_str, font_str, weight_str, style_str,
                 escape_xml(content)
             ));
         }
@@ -62,14 +62,14 @@ fn serialize_element(el: &SvgElement, out: &mut String) {
             stroke_width,
         } => {
             out.push_str(&format!(
-                r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" stroke="black" stroke-width="{:.1}"/>"#,
-                el.x, el.y, x2, y2, stroke_width
+                r#"<line x1="{:.1}" y1="{:.1}" x2="{:.1}" y2="{:.1}" data-variant="{}" stroke="black" stroke-width="{:.1}"/>"#,
+                el.x, el.y, x2, y2, el.variant, stroke_width
             ));
         }
         SvgKind::Circle { r } => {
             out.push_str(&format!(
-                r#"<circle cx="{:.1}" cy="{:.1}" r="{:.1}" fill="black"/>"#,
-                el.x, el.y, r
+                r#"<circle cx="{:.1}" cy="{:.1}" data-variant="{}" r="{:.1}" fill="black"/>"#,
+                el.x, el.y, el.variant, r
             ));
         }
         SvgKind::Path {
@@ -80,8 +80,8 @@ fn serialize_element(el: &SvgElement, out: &mut String) {
             stroke_width,
         } => {
             out.push_str(&format!(
-                r#"<path d="M {:.1} {:.1} Q {:.1} {:.1} {:.1} {:.1}" fill="none" stroke="black" stroke-width="{:.1}"/>"#,
-                el.x, el.y, control_x, control_y, end_x, end_y, stroke_width
+                r#"<path d="M {:.1} {:.1} Q {:.1} {:.1} {:.1} {:.1}" data-variant="{}" fill="none" stroke="black" stroke-width="{:.1}"/>"#,
+                el.x, el.y, control_x, control_y, end_x, end_y, el.variant, stroke_width
             ));
         }
     }
@@ -107,6 +107,7 @@ mod tests {
             elements: vec![SvgElement {
                 x: 10.0,
                 y: 20.0,
+                variant: "text",
                 kind: SvgKind::Text {
                     content: content.to_string(),
                     font_size: 12.0,
@@ -142,6 +143,7 @@ mod tests {
             elements: vec![SvgElement {
                 x: 5.0,
                 y: 5.0,
+                variant: "note-head",
                 kind: SvgKind::Circle { r: 3.0 },
             }],
         };
@@ -158,6 +160,7 @@ mod tests {
             elements: vec![SvgElement {
                 x: 0.0,
                 y: 0.0,
+                variant: "bar-line",
                 kind: SvgKind::Line {
                     x2: 50.0,
                     y2: 0.0,
@@ -177,6 +180,7 @@ mod tests {
             elements: vec![SvgElement {
                 x: 0.0,
                 y: 0.0,
+                variant: "tie-or-slur",
                 kind: SvgKind::Path {
                     control_x: 25.0,
                     control_y: -10.0,
@@ -189,5 +193,69 @@ mod tests {
         let result = serialize(&[doc]);
         assert!(result[0].contains("<path"), "should contain path");
         assert!(result[0].contains("fill=\"none\""));
+    }
+
+    #[test]
+    fn text_element_has_data_variant() {
+        let result = serialize(&[text_doc("hello")]);
+        assert!(result[0].contains(r#"data-variant="text""#));
+    }
+
+    #[test]
+    fn circle_element_has_data_variant() {
+        let doc = SvgDocument {
+            width_pt: 100.0,
+            height_pt: 100.0,
+            elements: vec![SvgElement {
+                x: 5.0,
+                y: 5.0,
+                variant: "note-head",
+                kind: SvgKind::Circle { r: 3.0 },
+            }],
+        };
+        let result = serialize(&[doc]);
+        assert!(result[0].contains(r#"data-variant="note-head""#));
+    }
+
+    #[test]
+    fn line_element_has_data_variant() {
+        let doc = SvgDocument {
+            width_pt: 100.0,
+            height_pt: 100.0,
+            elements: vec![SvgElement {
+                x: 0.0,
+                y: 0.0,
+                variant: "bar-line",
+                kind: SvgKind::Line {
+                    x2: 50.0,
+                    y2: 0.0,
+                    stroke_width: 1.0,
+                },
+            }],
+        };
+        let result = serialize(&[doc]);
+        assert!(result[0].contains(r#"data-variant="bar-line""#));
+    }
+
+    #[test]
+    fn path_element_has_data_variant() {
+        let doc = SvgDocument {
+            width_pt: 100.0,
+            height_pt: 100.0,
+            elements: vec![SvgElement {
+                x: 0.0,
+                y: 0.0,
+                variant: "tie-or-slur",
+                kind: SvgKind::Path {
+                    control_x: 25.0,
+                    control_y: -10.0,
+                    end_x: 50.0,
+                    end_y: 0.0,
+                    stroke_width: 1.5,
+                },
+            }],
+        };
+        let result = serialize(&[doc]);
+        assert!(result[0].contains(r#"data-variant="tie-or-slur""#));
     }
 }

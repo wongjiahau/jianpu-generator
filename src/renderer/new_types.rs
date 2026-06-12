@@ -9,6 +9,7 @@ pub struct SvgDocument {
 pub struct SvgElement {
     pub x: f32,
     pub y: f32,
+    pub variant: &'static str,
     pub kind: SvgKind,
 }
 

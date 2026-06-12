@@ -79,6 +79,7 @@ fn render_element(
             vec![SvgElement {
                 x: elem.x,
                 y: elem.y,
+                variant: "text",
                 kind: SvgKind::Text {
                     content: content.clone(),
                     font_size: *font_size,
@@ -108,6 +109,7 @@ fn render_note_head(
     results.push(SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "note-head",
         kind: SvgKind::Text {
             content: pitch_to_digit(pitch).to_string(),
             font_size: *base_font_size,
@@ -126,6 +128,7 @@ fn render_note_head(
         results.push(SvgElement {
             x: dot_x,
             y: elem.y,
+            variant: "note-head",
             kind: SvgKind::Circle { r: dot_radius },
         });
     }
@@ -140,6 +143,7 @@ fn render_note_head(
             results.push(SvgElement {
                 x: elem.x,
                 y: dot_y,
+                variant: "note-head",
                 kind: SvgKind::Circle { r: dot_radius },
             });
         }
@@ -154,6 +158,7 @@ fn render_note_head(
             results.push(SvgElement {
                 x: elem.x,
                 y: dot_y,
+                variant: "note-head",
                 kind: SvgKind::Circle { r: dot_radius },
             });
         }
@@ -175,6 +180,7 @@ fn render_rest(
     results.push(SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "rest",
         kind: SvgKind::Text {
             content: "0".to_string(),
             font_size: *base_font_size,
@@ -193,6 +199,7 @@ fn render_rest(
         results.push(SvgElement {
             x: dot_x,
             y: elem.y,
+            variant: "rest",
             kind: SvgKind::Circle { r: dot_radius },
         });
     }
@@ -204,6 +211,7 @@ fn render_chord_symbol(elem: &AbsoluteElement, s: &str, base_font_size: &f32) ->
     vec![SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "chord-symbol",
         kind: SvgKind::Text {
             content: s.to_string(),
             font_size: *base_font_size,
@@ -220,6 +228,7 @@ fn render_horizontal_line(elem: &AbsoluteElement, width: &f32) -> Vec<SvgElement
     vec![SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "horizontal-line",
         kind: SvgKind::Line {
             x2: elem.x + width,
             y2: elem.y,
@@ -232,6 +241,7 @@ fn render_underline(elem: &AbsoluteElement, width: &f32) -> Vec<SvgElement> {
     vec![SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "underline",
         kind: SvgKind::Line {
             x2: elem.x + width,
             y2: elem.y,
@@ -246,6 +256,7 @@ fn render_tie_or_slur(elem: &AbsoluteElement, width: &f32, row_height: &f32) -> 
     vec![SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "tie-or-slur",
         kind: SvgKind::Path {
             control_x: cx,
             control_y: cy,
@@ -260,6 +271,7 @@ fn render_bar_line(elem: &AbsoluteElement, height: &f32) -> Vec<SvgElement> {
     vec![SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "bar-line",
         kind: SvgKind::Line {
             x2: elem.x,
             y2: elem.y + height,
@@ -283,6 +295,7 @@ fn render_lyric(
     vec![SvgElement {
         x: elem.x,
         y: elem.y,
+        variant: "lyric",
         kind: SvgKind::Text {
             content: s.to_string(),
             font_size,
