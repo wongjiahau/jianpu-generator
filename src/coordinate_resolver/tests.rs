@@ -17,7 +17,7 @@ fn single_row_page(element: GridElement) -> GridPage {
 
 #[test]
 fn resolve_empty_pages_returns_empty() {
-    assert!(resolve(&[]).is_empty());
+    assert!(resolve(&[], 12.0).is_empty());
 }
 
 #[test]
@@ -36,7 +36,7 @@ fn note_head_halign_center_has_x_at_center_of_column() {
         },
     };
     let page = single_row_page(el);
-    let abs = resolve(&[page]);
+    let abs = resolve(&[page], 12.0);
     let note = abs[0]
         .elements
         .iter()
@@ -76,7 +76,7 @@ fn valign_top_places_y_at_row_top() {
             },
         ],
     };
-    let abs = resolve(&[page]);
+    let abs = resolve(&[page], 12.0);
     let line = abs[0]
         .elements
         .iter()
@@ -101,7 +101,7 @@ fn halign_end_places_x_at_right_of_column_span() {
         },
     };
     let page = single_row_page(el);
-    let abs = resolve(&[page]);
+    let abs = resolve(&[page], 12.0);
     let text = abs[0]
         .elements
         .iter()
@@ -128,7 +128,7 @@ fn octave_dot_grid_content_emits_nothing() {
         content: GridContent::OctaveDot,
     };
     let page = single_row_page(el);
-    let abs = resolve(&[page]);
+    let abs = resolve(&[page], 12.0);
     assert!(
         abs[0].elements.is_empty(),
         "OctaveDot should emit no AbsoluteElement"

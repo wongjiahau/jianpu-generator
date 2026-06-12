@@ -201,6 +201,50 @@ fn apply_lyrics_filter_downgrades_kind_to_notes() {
     );
 }
 
+#[test]
+fn adjacent_beat_group_underlines_have_gap_between_them() {
+    // "2_3=4=" is beat 2 and "6_7_" is beat 3 — both get a level-0 beam underline.
+    // The underline for beat 2 must end strictly before the underline for beat 3 starts.
+    let source = concat!(
+        "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n",
+        "[parts]\nS = notes\n\n",
+        "[score]\n(time=4/4 key=C4 bpm=120)\n0 2_3=4= 6_7_ 0\n",
+    );
+    let score = compile(source, "test").unwrap();
+    let config = render_config::RenderConfig::from_metadata(&score.metadata);
+    let header = grid_layout::types::Header {
+        title: score.metadata.title.clone(),
+        subtitle: score.metadata.subtitle.clone(),
+        author: score.metadata.author.clone(),
+    };
+    let blocks = compiler::compile(&score);
+    let grid_pages = grid_layout::layout(&blocks, &config, &header, 595.0, 842.0);
+    let abs = coordinate_resolver::resolve(&grid_pages, config.note_number_width as f32);
+
+    let mut underlines: Vec<(f32, f32)> = abs[0]
+        .elements
+        .iter()
+        .filter_map(|e| {
+            if let compositor::types::AbsoluteContent::Underline { width, level: 0 } = &e.content {
+                Some((e.x, *width))
+            } else {
+                None
+            }
+        })
+        .collect();
+    underlines.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+
+    assert_eq!(underlines.len(), 2, "expected two level-0 underlines");
+    let (x1, w1) = underlines[0];
+    let (x2, _) = underlines[1];
+    assert!(
+        x2 > x1 + w1,
+        "underlines should have a gap but they touch: beat2 ends at {:.1}, beat3 starts at {:.1}",
+        x1 + w1,
+        x2
+    );
+}
+
 #[cfg(feature = "pdf")]
 mod split_pdf_tests {
     use super::*;

@@ -54,7 +54,7 @@ pub fn render_svgs(score: &Score) -> Vec<String> {
     };
     let blocks = compiler::compile(score);
     let grid_pages = grid_layout::layout(&blocks, &config, &header, 595.0, 842.0);
-    let abs = coordinate_resolver::resolve(&grid_pages);
+    let abs = coordinate_resolver::resolve(&grid_pages, config.note_number_width as f32);
     let docs = renderer::new_renderer::render_new(&abs, &config);
     serializer::serialize(&docs)
 }

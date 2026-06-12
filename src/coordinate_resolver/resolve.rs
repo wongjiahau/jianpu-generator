@@ -5,11 +5,14 @@ use crate::compositor::types::{
 use crate::grid_layout::types::{GridContent, GridPage, HAlign, VAlign};
 use crate::grid_layout::PAGE_MARGIN;
 
-pub fn resolve(pages: &[GridPage]) -> Vec<AbsolutePage> {
-    pages.iter().map(resolve_page).collect()
+pub fn resolve(pages: &[GridPage], note_number_width: f32) -> Vec<AbsolutePage> {
+    pages
+        .iter()
+        .map(|page| resolve_page(page, note_number_width))
+        .collect()
 }
 
-fn resolve_page(page: &GridPage) -> AbsolutePage {
+fn resolve_page(page: &GridPage, note_number_width: f32) -> AbsolutePage {
     let usable_width = page.width_pt - 2.0 * PAGE_MARGIN;
     let mut elements: Vec<AbsoluteElement> = Vec::new();
     let mut row_y = PAGE_MARGIN;
@@ -29,6 +32,23 @@ fn resolve_page(page: &GridPage) -> AbsolutePage {
                 VAlign::Center => row_y + row.height_pt * 0.5,
                 VAlign::Bottom => row_y + row.height_pt,
             };
+            // Beam underlines span from the left edge of the first note character
+            // to the right edge of the last note character so adjacent beat groups
+            // have a natural gap (the inter-note spacing minus the note width).
+            if let GridContent::Underline { level } = &el.content {
+                let note_center_x = x_start + col_width * 0.5;
+                let ul_x = note_center_x - note_number_width * 0.5;
+                let ul_width = (el.column_span as f32 - 1.0) * col_width + note_number_width;
+                elements.push(AbsoluteElement {
+                    x: ul_x,
+                    y,
+                    content: AbsoluteContent::Underline {
+                        width: ul_width,
+                        level: *level,
+                    },
+                });
+                continue;
+            }
             if let Some(content) = grid_to_absolute(&el.content, span_width, el.halign) {
                 elements.push(AbsoluteElement { x, y, content });
             }
