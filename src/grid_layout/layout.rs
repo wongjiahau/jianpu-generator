@@ -6,6 +6,20 @@ use crate::render_config::RenderConfig;
 // ── Row classification ────────────────────────────────────────────────────────
 
 pub(crate) fn is_lyric_row(row: &MeasureRow) -> bool {
+    let has_lyric = row
+        .elements
+        .iter()
+        .any(|e| matches!(e.content, ElementContent::Lyric(_)));
+    let has_note = row.elements.iter().any(|e| {
+        matches!(
+            e.content,
+            ElementContent::NoteHead { .. } | ElementContent::Rest { .. }
+        )
+    });
+    has_lyric && !has_note
+}
+
+fn has_lyrics(row: &MeasureRow) -> bool {
     row.elements
         .iter()
         .any(|e| matches!(e.content, ElementContent::Lyric(_)))
@@ -113,7 +127,7 @@ pub(crate) fn system_musical_height_pt(block: &MeasureBlock, base: f32) -> f32 {
 
 /// Total height in points for lyric rows in a system.
 pub(crate) fn system_lyric_height_pt(block: &MeasureBlock, base: f32) -> f32 {
-    block.rows.iter().filter(|r| is_lyric_row(r)).count() as f32 * lyric_row_height(base)
+    block.rows.iter().filter(|r| has_lyrics(r)).count() as f32 * lyric_row_height(base)
 }
 
 // ── System packing ───────────────────────────────────────────────────────────
@@ -292,6 +306,9 @@ pub(crate) fn expand_system_to_rows(system: &[MeasureBlock], base: f32) -> Vec<G
                 column_count,
                 bar_height,
             ));
+            if has_lyrics(part_template) {
+                all_rows.push(expand_lyric_part(system, part_idx, base, column_count));
+            }
         }
     }
     all_rows
