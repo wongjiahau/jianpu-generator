@@ -52,7 +52,7 @@ pub fn parse(
 ) -> Result<(Vec<ParsedTrack>, DirectiveEventsPerMeasure), JianPuError> {
     let groups = collect_groups(content);
     let ditto_measures_per_track = compute_ditto_measures(&groups, declarations);
-    let groups = crate::desugar::desugar_groups(groups, declarations)?;
+    let groups = crate::desugar::desugar_groups(groups, declarations, base_offset)?;
 
     let first_notes_track_index = declarations
         .iter()

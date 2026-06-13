@@ -160,6 +160,54 @@ mod tests {
     }
 
     #[test]
+    fn error_span_points_to_absolute_file_position() {
+        // One notes part but two data lines in a group → "expected at most 1 lines, got 2".
+        // The span must point to the second line's position in the *full* input, not its
+        // offset within the score section.
+        let input = concat!(
+            "[metadata]\n",
+            "title=\"t\"\n",
+            "author=\"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Melody = notes\n",
+            "\n",
+            "[score]\n",
+            "1 2 3 4\n",
+            "5 6 7 1\n",
+        );
+        let expected_offset = input.find("5 6 7 1").unwrap();
+        let err = parse(input, "test.jianpu").unwrap_err();
+        assert_eq!(
+            err.span.start, expected_offset,
+            "error span should point to the absolute file position of the extra line"
+        );
+    }
+
+    #[test]
+    fn too_many_lines_error_lists_declared_parts() {
+        // One notes part but two data lines → error should name the declared part.
+        let input = concat!(
+            "[metadata]\n",
+            "title=\"t\"\n",
+            "author=\"a\"\n",
+            "\n",
+            "[parts]\n",
+            "Melody = notes\n",
+            "\n",
+            "[score]\n",
+            "1 2 3 4\n",
+            "5 6 7 1\n",
+        );
+        let err = parse(input, "test.jianpu").unwrap_err();
+        assert!(
+            err.message.contains("Melody"),
+            "error message should list the declared part 'Melody', got: {}",
+            err.message
+        );
+    }
+
+    #[test]
     fn single_unnamed_part_remains_compatible() {
         let input = concat!(
             "[metadata]\ntitle=\"t\"\nauthor=\"a\"\n\n",

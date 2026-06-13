@@ -9,13 +9,14 @@ use crate::error::{JianPuError, Span};
 pub fn desugar_groups(
     groups: Vec<Vec<(String, usize)>>,
     declarations: &[PartDecl],
+    base_offset: usize,
 ) -> Result<Vec<Vec<(String, usize)>>, JianPuError> {
     let slots = flatten_score_line_slots(declarations);
     groups
         .into_iter()
         .map(|group| {
-            let padded = pad_implicit_ditto_group(&group, declarations, &slots)?;
-            desugar_group(&padded, declarations, &slots)
+            let padded = pad_implicit_ditto_group(&group, declarations, &slots, base_offset)?;
+            desugar_group(&padded, declarations, &slots, base_offset)
         })
         .collect()
 }
@@ -24,6 +25,7 @@ fn pad_implicit_ditto_group(
     group: &[(String, usize)],
     declarations: &[PartDecl],
     slots: &[crate::ast::parsed::ScoreLineSlot],
+    base_offset: usize,
 ) -> Result<Vec<(String, usize)>, JianPuError> {
     let directive_count = if group
         .first()
@@ -41,8 +43,8 @@ fn pad_implicit_ditto_group(
     let span = data_lines
         .last()
         .or(group.last())
-        .map(|(_, off)| Span::new(*off, *off + 1))
-        .unwrap_or(Span::new(0, 1));
+        .map(|(_, off)| Span::new(base_offset + *off, base_offset + *off + 1))
+        .unwrap_or(Span::new(base_offset, base_offset + 1));
 
     if data_lines.is_empty() {
         return Err(JianPuError::new(
@@ -52,12 +54,18 @@ fn pad_implicit_ditto_group(
     }
 
     if data_lines.len() > slots.len() {
+        let part_list = declarations
+            .iter()
+            .map(|d| d.abbreviation.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
         return Err(JianPuError::new(
             span,
             format!(
-                "expected at most {} lines (one per score line), got {}",
+                "this measure has {} lines but only {} expected (declared parts: {})",
+                data_lines.len(),
                 slots.len(),
-                data_lines.len()
+                part_list,
             ),
         ));
     }
@@ -86,7 +94,7 @@ fn pad_implicit_ditto_group(
                 "write content or '\"' ditto"
             };
             return Err(JianPuError::new(
-                Span::new(pad_offset, pad_offset + 1),
+                Span::new(base_offset + pad_offset, base_offset + pad_offset + 1),
                 format!("expected {} line for '{abbrev}'; {hint}", role_name(role)),
             ));
         }
@@ -101,6 +109,7 @@ fn desugar_group(
     group: &[(String, usize)],
     _declarations: &[PartDecl],
     slots: &[crate::ast::parsed::ScoreLineSlot],
+    base_offset: usize,
 ) -> Result<Vec<(String, usize)>, JianPuError> {
     let directive_count = if group
         .first()
@@ -138,7 +147,7 @@ fn desugar_group(
                 Some(src_content) => resolved.push((src_content, *offset)),
                 None => {
                     return Err(JianPuError::new(
-                        Span::new(*offset, *offset + 1),
+                        Span::new(base_offset + *offset, base_offset + *offset + 1),
                         format!(
                             "ditto '\"' has no preceding {} line in this measure group",
                             role_name(role)
@@ -196,7 +205,7 @@ mod tests {
     fn notes_ditto_copies_preceding_notes_line() {
         let groups = vec![group(&["1 2 3 4", "\""])];
         let declarations = vec![decl("A", PartKind::Notes), decl("B", PartKind::Notes)];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][1].0, "1 2 3 4");
     }
 
@@ -207,7 +216,7 @@ mod tests {
             decl("A", PartKind::NotesWithLyrics),
             decl("B", PartKind::NotesWithLyrics),
         ];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][3].0, "hello world");
     }
 
@@ -220,7 +229,7 @@ mod tests {
             decl("main2", PartKind::Chord),
             decl("B", PartKind::Notes),
         ];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][2].0, "1 - - -");
     }
 
@@ -231,7 +240,7 @@ mod tests {
             decl("A", PartKind::NotesWithLyrics),
             decl("B", PartKind::Notes),
         ];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][2].0, "1 2 3 4");
     }
 
@@ -243,7 +252,7 @@ mod tests {
             decl("B", PartKind::Notes),
             decl("C", PartKind::Notes),
         ];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][1].0, "1 2 3 4");
         assert_eq!(result[0][2].0, "1 2 3 4");
     }
@@ -252,7 +261,7 @@ mod tests {
     fn ditto_with_no_preceding_line_is_an_error() {
         let groups = vec![group(&["\""])];
         let declarations = vec![decl("A", PartKind::Notes)];
-        let err = desugar_groups(groups, &declarations).unwrap_err();
+        let err = desugar_groups(groups, &declarations, 0).unwrap_err();
         assert!(
             err.message.contains("no preceding notes line"),
             "got: {}",
@@ -264,7 +273,7 @@ mod tests {
     fn ditto_with_no_preceding_line_of_same_type_is_an_error() {
         let groups = vec![group(&["1 2 3 4", "\""])];
         let declarations = vec![decl("A", PartKind::NotesWithLyrics)];
-        let err = desugar_groups(groups, &declarations).unwrap_err();
+        let err = desugar_groups(groups, &declarations, 0).unwrap_err();
         assert!(
             err.message.contains("no preceding lyrics line"),
             "got: {}",
@@ -276,7 +285,7 @@ mod tests {
     fn directive_line_is_not_a_ditto_target() {
         let groups = vec![group(&["(time=4/4)", "\""])];
         let declarations = vec![decl("A", PartKind::Notes)];
-        let err = desugar_groups(groups, &declarations).unwrap_err();
+        let err = desugar_groups(groups, &declarations, 0).unwrap_err();
         assert!(
             err.message.contains("no preceding notes line"),
             "got: {}",
@@ -288,7 +297,7 @@ mod tests {
     fn directive_line_is_not_a_ditto_source() {
         let groups = vec![group(&["(time=4/4)", "1 2 3 4", "\""])];
         let declarations = vec![decl("A", PartKind::Notes), decl("B", PartKind::Notes)];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][0].0, "(time=4/4)");
         assert_eq!(result[0][2].0, "1 2 3 4");
     }
@@ -297,7 +306,7 @@ mod tests {
     fn non_ditto_lines_are_passed_through_unchanged() {
         let groups = vec![group(&["1 2 3 4", "hello"])];
         let declarations = vec![decl("A", PartKind::NotesWithLyrics)];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][0].0, "1 2 3 4");
         assert_eq!(result[0][1].0, "hello");
     }
@@ -306,7 +315,7 @@ mod tests {
     fn multiple_groups_are_desugared_independently() {
         let groups = vec![group(&["1 2 3 4"]), group(&["\""])];
         let declarations = vec![decl("A", PartKind::Notes)];
-        let err = desugar_groups(groups, &declarations).unwrap_err();
+        let err = desugar_groups(groups, &declarations, 0).unwrap_err();
         assert!(
             err.message.contains("no preceding notes line"),
             "got: {}",
@@ -318,7 +327,7 @@ mod tests {
     fn omitted_trailing_notes_line_is_padded_as_implicit_ditto() {
         let groups = vec![group(&["1 2 3 4"])];
         let declarations = vec![decl("A", PartKind::Notes), decl("B", PartKind::Notes)];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][0].0, "1 2 3 4");
         assert_eq!(result[0][1].0, "1 2 3 4");
     }
@@ -331,7 +340,7 @@ mod tests {
             decl("A", PartKind::NotesWithLyrics),
             decl("B", PartKind::NotesWithLyrics),
         ];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][3].0, "1 2 3 4");
         assert_eq!(result[0][4].0, "hello");
     }
@@ -340,7 +349,7 @@ mod tests {
     fn omitted_trailing_lyrics_without_precedent_is_an_error() {
         let groups = vec![group(&["1 2 3 4"])];
         let declarations = vec![decl("A", PartKind::NotesWithLyrics)];
-        let err = desugar_groups(groups, &declarations).unwrap_err();
+        let err = desugar_groups(groups, &declarations, 0).unwrap_err();
         assert!(
             err.message.contains("expected lyrics line"),
             "got: {}",
@@ -355,7 +364,7 @@ mod tests {
             decl("A", PartKind::NotesWithLyrics),
             decl("B", PartKind::NotesWithLyrics),
         ];
-        let result = desugar_groups(groups, &declarations).unwrap();
+        let result = desugar_groups(groups, &declarations, 0).unwrap();
         assert_eq!(result[0][3].0, "_");
     }
 }
