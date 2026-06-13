@@ -85,7 +85,7 @@ pub(crate) fn header_title_row_height(base: f32) -> f32 {
 }
 
 pub(crate) fn header_subtitle_author_row_height(base: f32) -> f32 {
-    base * 0.50
+    base * 1.75
 }
 
 pub(crate) fn footer_row_height(base: f32) -> f32 {
