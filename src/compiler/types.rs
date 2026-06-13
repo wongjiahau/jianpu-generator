@@ -39,19 +39,28 @@ pub enum ElementContent {
         last_head_column: u32,
         level: u32,
     },
-    TieOrSlur {
-        from_column: u32,
-        to_column: u32,
-    },
-    /// Tie arc drawn at the start of a measure to close a cross-measure tie.
-    /// Rendered from the left edge of `to_column` into the note center.
-    TieOrSlurClose {
-        to_column: u32,
-    },
     BarLine,
     /// Visual dash rendered after a note head for each extra beat of duration (e.g. `1-`).
     NoteDash,
     Lyric(String),
+}
+
+/// The full logical extent of one slur or tie arc across measures.
+/// Resolved into grid arc elements by the layout stage.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SlurSpan {
+    pub part_index: usize,
+    pub from_measure: usize, // 0-indexed global measure index
+    pub from_column: u32,    // measure-relative column of the opening note
+    pub to_measure: usize,
+    pub to_column: u32, // measure-relative column of the closing note
+}
+
+/// Return value of `compiler::compile`.
+#[derive(Debug, Clone)]
+pub struct CompileResult {
+    pub blocks: Vec<MeasureBlock>,
+    pub slur_spans: Vec<SlurSpan>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

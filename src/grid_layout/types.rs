@@ -65,10 +65,12 @@ pub enum GridContent {
     Underline {
         level: u32,
     },
-    /// Tie/slur arc. Width = column_span × column_width_pt.
+    /// Same-system tie/slur arc: from center of from-column to center of to-column.
     TieOrSlur,
-    /// Closing arc at measure start. Arc runs from left edge to center of column.
-    TieOrSlurClose,
+    /// Cross-system arc, first system: center of from-column to right edge of system.
+    TieOrSlurTail,
+    /// Cross-system arc, last system: left edge of system to center of to-column.
+    TieOrSlurHead,
     /// Vertical bar line. `height_pt` baked in by grid layout layer.
     BarLine {
         height_pt: f32,
