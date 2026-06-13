@@ -1,7 +1,7 @@
 use crate::ast::parsed::JianPuPitch;
 use crate::compiler::types::{ColumnElement, ElementContent, MeasureRow, RowId};
 use crate::grid_layout::types::Header;
-use crate::grid_layout::types::{GridContent, GridRow};
+use crate::grid_layout::types::{GridContent, GridRow, VAlign};
 use crate::render_config::RenderConfig;
 
 #[test]
@@ -455,4 +455,44 @@ fn multiple_decorations_occupy_consecutive_columns_starting_at_1() {
         .column;
     assert_eq!(bpm_col, 1, "Bpm should be at column 1");
     assert_eq!(time_col, 2, "TimeSignature should be at column 2");
+}
+
+#[test]
+fn footer_row_fills_remaining_page_height() {
+    let blocks = vec![make_block("S", 3)];
+    let compile_result = CompileResult {
+        blocks,
+        slur_spans: vec![],
+    };
+    let page_height = 842.0_f32;
+    let pages = layout(&compile_result, &cfg_wide(), &hdr(), 595.0, page_height);
+    let page = &pages[0];
+    let non_footer_height: f32 = page.rows[..page.rows.len() - 1]
+        .iter()
+        .map(|r| r.height_pt)
+        .sum();
+    let footer_height = page.rows.last().unwrap().height_pt;
+    let expected = page_height - 2.0 * crate::grid_layout::PAGE_MARGIN - non_footer_height;
+    assert!(
+        (footer_height - expected).abs() < 0.001,
+        "footer_height={footer_height} expected={expected}"
+    );
+}
+
+#[test]
+fn footer_element_valign_is_bottom() {
+    let blocks = vec![make_block("S", 3)];
+    let compile_result = CompileResult {
+        blocks,
+        slur_spans: vec![],
+    };
+    let pages = layout(&compile_result, &cfg_wide(), &hdr(), 595.0, 842.0);
+    let footer_row = pages[0].rows.last().unwrap();
+    assert!(
+        footer_row
+            .elements
+            .iter()
+            .all(|e| e.valign == VAlign::Bottom),
+        "footer elements should be VAlign::Bottom"
+    );
 }

@@ -92,10 +92,6 @@ pub(crate) fn header_subtitle_author_row_height(base: f32) -> f32 {
     base * 1.75
 }
 
-pub(crate) fn footer_row_height(base: f32) -> f32 {
-    base * 0.40
-}
-
 // ── Column width helper ───────────────────────────────────────────────────────
 
 /// Number of columns in a MeasureBlock (BarLine column + 1).
@@ -471,15 +467,15 @@ fn make_header_rows(header: &Header, base: f32) -> Vec<GridRow> {
     vec![title_row, subtitle_author_row]
 }
 
-fn make_footer_row(page_num: u32, total_pages: u32, base: f32) -> GridRow {
+fn make_footer_row(page_num: u32, total_pages: u32, base: f32, height_pt: f32) -> GridRow {
     GridRow {
-        height_pt: footer_row_height(base),
+        height_pt,
         column_count: 1,
         elements: vec![GridElement {
             column: 0,
             column_span: 1,
             halign: HAlign::Center,
-            valign: VAlign::Center,
+            valign: VAlign::Bottom,
             content: GridContent::Text {
                 content: format!("{page_num} / {total_pages}"),
                 font_size: base * 0.6,
@@ -555,7 +551,7 @@ pub fn layout(
         .iter()
         .map(|r| r.height_pt)
         .sum();
-    let footer_h = footer_row_height(base);
+    let footer_h = base * 0.40;
     let usable_h = page_height_pt - 2.0 * super::PAGE_MARGIN - header_h - footer_h;
 
     let mut page_systems: Vec<Vec<Vec<MeasureBlock>>> = Vec::new();
@@ -583,7 +579,14 @@ pub fn layout(
     let mut pages: Vec<GridPage> = Vec::new();
     for (page_idx, page_sys) in page_systems.into_iter().enumerate() {
         let mut rows = build_page_rows(&page_sys, header, base, &arc_map, abs_system_index_start);
-        rows.push(make_footer_row(page_idx as u32 + 1, total_pages, base));
+        let body_height: f32 = rows.iter().map(|r| r.height_pt).sum();
+        let remaining_height = page_height_pt - 2.0 * super::PAGE_MARGIN - body_height;
+        rows.push(make_footer_row(
+            page_idx as u32 + 1,
+            total_pages,
+            base,
+            remaining_height,
+        ));
         abs_system_index_start += page_sys.len();
         pages.push(GridPage {
             width_pt: page_width_pt,
