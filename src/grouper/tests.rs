@@ -303,3 +303,58 @@ fn chord_part_produces_one_chord_event_per_measure() {
         NoteEvent::Note(_) | NoteEvent::Rest(_) => panic!("expected Chord event"),
     }
 }
+
+#[test]
+fn measure_span_covers_first_note_byte_offset() {
+    let source = concat!(
+        "[metadata]\n",
+        "title = \"t\"\n",
+        "author = \"a\"\n",
+        "\n",
+        "[parts]\n",
+        "Melody = notes\n",
+        "\n",
+        "[score]\n",
+        "(time=4/4 key=C4 bpm=120)\n",
+        "1 2 3 4\n",
+    );
+    let score = parse_and_group(source);
+    let span = &score.measures[0].source_span;
+    let first_note_offset = source.find("1 2 3 4").unwrap();
+    assert!(
+        span.start <= first_note_offset && first_note_offset < span.end,
+        "span {:?} should contain first note offset {}",
+        span,
+        first_note_offset
+    );
+}
+
+#[test]
+fn second_measure_span_covers_its_first_note() {
+    let source = concat!(
+        "[metadata]\n",
+        "title = \"t\"\n",
+        "author = \"a\"\n",
+        "\n",
+        "[parts]\n",
+        "Melody = notes\n",
+        "\n",
+        "[score]\n",
+        "(time=4/4 key=C4 bpm=120)\n",
+        "1 2 3 4\n",
+        "\n",
+        "5 6 7 1\n",
+    );
+    let score = parse_and_group(source);
+    assert_eq!(score.measures.len(), 2);
+    let span = &score.measures[1].source_span;
+    let second_note_offset = source.rfind("5 6 7 1").unwrap();
+    assert!(
+        span.start <= second_note_offset && second_note_offset < span.end,
+        "span {:?} should contain second measure offset {}",
+        span,
+        second_note_offset
+    );
+    // Second measure span must not overlap with first
+    assert!(span.start > score.measures[0].source_span.start);
+}

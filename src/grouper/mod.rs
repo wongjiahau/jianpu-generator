@@ -141,6 +141,8 @@ struct PartGrouper {
     capacity: u32,
     part_name: Option<String>,
     part_lyrics: Option<Vec<Syllable>>,
+    measure_span_start: Option<usize>,
+    measure_span_end: usize,
 }
 
 impl PartGrouper {
@@ -159,6 +161,8 @@ impl PartGrouper {
             capacity,
             part_name: Some(part.abbreviation.clone()),
             part_lyrics: part.lyrics.as_ref().map(|l| l.syllables.clone()),
+            measure_span_start: None,
+            measure_span_end: 0,
         }
     }
 
@@ -170,12 +174,16 @@ impl PartGrouper {
         if self.current_notes.is_empty() {
             return;
         }
+        let source_span = Span::new(self.measure_span_start.unwrap_or(0), self.measure_span_end);
         self.measures.push(GroupedMeasure {
             notes: Notes {
                 events: std::mem::take(&mut self.current_notes),
             },
+            source_span,
         });
         self.current_beat = 0;
+        self.measure_span_start = None;
+        self.measure_span_end = 0;
     }
 
     fn flush_if_full(&mut self) {
@@ -192,6 +200,10 @@ impl PartGrouper {
         overflow_label: &str,
     ) -> Result<(), JianPuError> {
         self.flush_if_full();
+        if self.measure_span_start.is_none() {
+            self.measure_span_start = Some(span.start);
+        }
+        self.measure_span_end = span.end;
         self.current_notes.push(event);
         self.current_beat += duration;
         if self.current_beat > self.capacity {
@@ -337,10 +349,13 @@ impl PartGrouper {
 
     fn finish(mut self) -> GroupedPart {
         if !self.current_notes.is_empty() {
+            let source_span =
+                Span::new(self.measure_span_start.unwrap_or(0), self.measure_span_end);
             self.measures.push(GroupedMeasure {
                 notes: Notes {
                     events: std::mem::take(&mut self.current_notes),
                 },
+                source_span,
             });
         }
 

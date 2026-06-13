@@ -469,6 +469,7 @@ mod tests {
                     },
                     lyrics: None,
                 })],
+                source_span: crate::error::Span::new(0, 0),
             }],
         };
         let midi_bytes = write_midi(&score).unwrap();

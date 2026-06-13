@@ -46,12 +46,21 @@ pub(crate) fn combine(grouped_score: &GroupedScore) -> Result<Vec<MultiPartMeasu
                 )
             })?;
         let part_rows = build_part_rows(&grouped_score.parts, measure_idx, &lyrics_per_track)?;
+        let source_span = grouped_score
+            .parts
+            .first()
+            .and_then(|track| match track {
+                GroupedTrack::Timed(part) => part.measures.get(measure_idx),
+            })
+            .map(|m| m.source_span.clone())
+            .unwrap_or_else(|| Span::new(0, 0));
         combined.push(MultiPartMeasure {
             time_signature: directives.time_signature.clone(),
             bpm: directives.bpm,
             key: directives.key.clone(),
             label: directives.label.clone(),
             parts: part_rows,
+            source_span,
         });
     }
 

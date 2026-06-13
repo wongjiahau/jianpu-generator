@@ -1,6 +1,7 @@
 use crate::ast::parsed::{
     Accidental, BassDegree, Extension, JianPuPitch, KeyChange, Syllable, TriadQuality,
 };
+use crate::error::Span;
 
 // ── Public final types ────────────────────────────────────────────────────────
 
@@ -45,6 +46,9 @@ pub struct MultiPartMeasure {
     pub key: Option<KeyChange>,
     pub label: Option<String>,
     pub parts: Vec<PartRow>,
+    /// Byte range of this measure's note events in the original source.
+    /// Used to map editor cursor position to a measure index.
+    pub source_span: Span,
 }
 
 #[derive(Clone)]
@@ -129,6 +133,7 @@ pub(crate) struct GroupedScore {
 
 pub(crate) struct GroupedMeasure {
     pub(crate) notes: Notes,
+    pub(crate) source_span: Span,
 }
 
 pub(crate) struct GroupedPart {
