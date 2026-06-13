@@ -2,21 +2,21 @@ pub mod types;
 pub use types::*;
 
 mod slur_chains;
-use slur_chains::{extend_note_chains, flush_chain, PartCrossState, PendingSlurOpen, SlurKey};
+use slur_chains::{extend_note_chains, PartCrossState, PendingSlurOpen, SlurKey};
 
 use crate::ast::grouped::{
     GroupedChordNote, GroupedNote, GroupedRest, MultiPartMeasure, NoteEvent, PartSlice, Score,
 };
 use crate::ast::parsed::PartKind;
 
-type PartSliceResult = (
-    Vec<ColumnElement>,
-    bool,
-    Option<u32>,
-    Option<usize>,
-    Option<SlurKey>,
-    Vec<Option<PendingSlurOpen>>,
-);
+struct PartSliceResult {
+    elements: Vec<ColumnElement>,
+    final_tie: bool,
+    final_tie_column: Option<u32>,
+    final_tie_measure: Option<usize>,
+    final_slur_key: Option<SlurKey>,
+    final_pending_opens: Vec<Option<PendingSlurOpen>>,
+}
 
 pub fn compile(score: &Score) -> CompileResult {
     let max_parts = score
@@ -70,14 +70,7 @@ fn compile_measure(
         let init_key = cs.prev_slur_key.clone();
         let init_pending_opens = cs.clone_pending_opens();
 
-        let (
-            elements,
-            final_tie,
-            final_tie_column,
-            final_tie_measure,
-            final_key,
-            final_pending_opens,
-        ) = compile_part_slice(
+        let slice_result = compile_part_slice(
             part_row.slice(),
             init_tie,
             init_tie_column,
@@ -92,11 +85,11 @@ fn compile_measure(
         let Some(cs) = cross_states.get_mut(part_idx) else {
             continue;
         };
-        cs.prev_tie = final_tie;
-        cs.prev_tie_column = final_tie_column;
-        cs.prev_tie_measure = final_tie_measure;
-        cs.prev_slur_key = final_key;
-        cs.pending_slur_opens = final_pending_opens;
+        cs.prev_tie = slice_result.final_tie;
+        cs.prev_tie_column = slice_result.final_tie_column;
+        cs.prev_tie_measure = slice_result.final_tie_measure;
+        cs.prev_slur_key = slice_result.final_slur_key;
+        cs.pending_slur_opens = slice_result.final_pending_opens;
 
         match part_row.rendered_slice() {
             Some(_) => {
@@ -110,7 +103,7 @@ fn compile_measure(
                 rows.push(MeasureRow {
                     id,
                     label,
-                    elements,
+                    elements: slice_result.elements,
                 });
             }
             None => {
@@ -313,27 +306,45 @@ fn compile_part_slice(
     let _ = state;
 
     // Flush remaining chains at end of measure.
-    // Multi-note chains (len > 1) close as same-measure spans.
-    // Single-note chains (len == 1) are cross-measure opens: save as PendingSlurOpen.
+    // Multi-note chains (len > 1): slur is still open across the measure boundary.
+    //   Preserve the original origin (don't emit an arc yet).
+    // Single-note chains (len == 1): cross-measure open, save as PendingSlurOpen
+    //   only if no existing origin is already present.
     for (depth, chain) in pending_chains.iter().enumerate() {
         if chain.len() > 1 {
-            let pending_open = pending_slur_opens.get_mut(depth).and_then(|o| o.take());
-            flush_chain(
-                chain,
-                pending_open.as_ref(),
-                slur_spans,
-                measure_index,
-                part_index,
-            );
-        } else if let Some((chain_col, _)) = chain.first() {
+            // Slur is still open across the measure boundary.
+            // Preserve the original origin (or use first chain note if none exists).
+            // Do NOT emit an arc — flush_chain would produce a premature span.
+            let origin = pending_slur_opens
+                .get(depth)
+                .and_then(|o| o.as_ref())
+                .map(|o| (o.measure_index, o.from_column))
+                .or_else(|| chain.first().map(|(c, _)| (measure_index, *c)));
             while pending_slur_opens.len() <= depth {
                 pending_slur_opens.push(None);
             }
-            if let Some(slot) = pending_slur_opens.get_mut(depth) {
+            if let (Some(origin), Some(slot)) = (origin, pending_slur_opens.get_mut(depth)) {
                 *slot = Some(PendingSlurOpen {
-                    measure_index,
-                    from_column: *chain_col,
+                    measure_index: origin.0,
+                    from_column: origin.1,
                 });
+            }
+        } else if let Some((chain_col, _)) = chain.first() {
+            // Only save if no cross-measure origin is already preserved.
+            while pending_slur_opens.len() <= depth {
+                pending_slur_opens.push(None);
+            }
+            if pending_slur_opens
+                .get(depth)
+                .and_then(|o| o.as_ref())
+                .is_none()
+            {
+                if let Some(slot) = pending_slur_opens.get_mut(depth) {
+                    *slot = Some(PendingSlurOpen {
+                        measure_index,
+                        from_column: *chain_col,
+                    });
+                }
             }
         }
     }
@@ -343,14 +354,14 @@ fn compile_part_slice(
         content: ElementContent::BarLine,
     });
 
-    (
+    PartSliceResult {
         elements,
         final_tie,
         final_tie_column,
         final_tie_measure,
-        final_key,
-        pending_slur_opens,
-    )
+        final_slur_key: final_key,
+        final_pending_opens: pending_slur_opens,
+    }
 }
 
 fn compile_note(

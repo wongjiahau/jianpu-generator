@@ -399,3 +399,57 @@ fn cross_measure_slur_closing_on_extension_dash() {
         "no slur span should end at barline col 16"
     );
 }
+
+#[test]
+fn three_measure_slur_emits_single_slur_span() {
+    // Bar 1: "(1 2 3 4" — slur opens on note 1 at col 0, multiple notes in slur.
+    // Bar 2: "5 6 7 1" — all notes in slur continue.
+    // Bar 3: "2) 3 4 5" — slur closes on note 2 at col 0.
+    let score = score_from(&notes_doc(concat!(
+        "(time=4/4 key=C4 bpm=120)\n",
+        "(1 2 3 4\n",
+        "\n",
+        "5 6 7 1\n",
+        "\n",
+        "2) 3 4 5\n",
+    )));
+    let result = compile(&score);
+    assert!(
+        result.slur_spans.iter().any(|s| {
+            s.part_index == 0
+                && s.from_measure == 0
+                && s.from_column == 0
+                && s.to_measure == 2
+                && s.to_column == 0
+        }),
+        "expected SlurSpan (measure=0, col=0) → (measure=2, col=0), got: {:?}",
+        result.slur_spans
+    );
+}
+
+#[test]
+fn three_measure_slur_with_single_note_middle_measure() {
+    // Bar 1: "1 2 3 (4" — slur opens on note 4 at col 12.
+    // Bar 2: "5 6 7 1" — single measure with all notes in slur continuation.
+    // Bar 3: "2) 3 4 5" — slur closes on note 2 at col 0.
+    let score = score_from(&notes_doc(concat!(
+        "(time=4/4 key=C4 bpm=120)\n",
+        "1 2 3 (4\n",
+        "\n",
+        "5 6 7 1\n",
+        "\n",
+        "2) 3 4 5\n",
+    )));
+    let result = compile(&score);
+    assert!(
+        result.slur_spans.iter().any(|s| {
+            s.part_index == 0
+                && s.from_measure == 0
+                && s.from_column == 12
+                && s.to_measure == 2
+                && s.to_column == 0
+        }),
+        "expected SlurSpan (measure=0, col=12) → (measure=2, col=0), got: {:?}",
+        result.slur_spans
+    );
+}
