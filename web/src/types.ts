@@ -43,6 +43,14 @@ type GeneratePdfErr = { status: 'err'; diagnostics: Diagnostic[] }
 
 export type GeneratePdfResult = GeneratePdfOk | GeneratePdfErr
 
+type MeasureAtOffsetOk = { status: 'ok'; measure_index: number }
+
+type MeasureAtOffsetNotInMeasure = { status: 'notInMeasure' }
+
+export type MeasureAtOffsetResult =
+  | MeasureAtOffsetOk
+  | MeasureAtOffsetNotInMeasure
+
 interface EditorSelection {
   start: number
   end: number

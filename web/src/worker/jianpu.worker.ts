@@ -1,10 +1,11 @@
 import init, * as jianpuWasm from 'jianpu-wasm'
-import { list_parts, render } from 'jianpu-wasm'
+import { get_measure_index_at_offset, list_parts, render } from 'jianpu-wasm'
 import type {
   Diagnostic,
   GeneratePdfResult,
   GenerateWavResult,
   ListPartsResult,
+  MeasureAtOffsetResult,
   PartInfo,
   RenderResult,
 } from '../types'
@@ -13,6 +14,15 @@ const generateWav =
   'generate_wav' in jianpuWasm
     ? (jianpuWasm.generate_wav as (
         source: string,
+        enabledTracks?: string[],
+      ) => GenerateWavResult)
+    : null
+
+const generateWavForMeasure =
+  'generate_wav_for_measure' in jianpuWasm
+    ? (jianpuWasm.generate_wav_for_measure as (
+        source: string,
+        measureIndex: number,
         enabledTracks?: string[],
       ) => GenerateWavResult)
     : null
@@ -66,6 +76,19 @@ export type WorkerRequest =
       id: number
       enabledTracks?: string[]
     }
+  | {
+      type: 'getMeasureAtOffset'
+      source: string
+      id: number
+      byteOffset: number
+    }
+  | {
+      type: 'generateMeasureAudio'
+      source: string
+      id: number
+      measureIndex: number
+      enabledTracks?: string[]
+    }
 
 export type WorkerResponse =
   | { type: 'ready'; audioAvailable: boolean; pdfAvailable: boolean }
@@ -78,6 +101,9 @@ export type WorkerResponse =
   | { type: 'pdfErr'; id: number; diagnostics: Diagnostic[] }
   | { type: 'splitPdf'; id: number; zip: ArrayBuffer }
   | { type: 'splitPdfErr'; id: number; diagnostics: Diagnostic[] }
+  | { type: 'measureAtOffset'; id: number; measureIndex: number | null }
+  | { type: 'measureAudio'; id: number; wav: ArrayBuffer }
+  | { type: 'measureAudioErr'; id: number }
 
 let initialized = false
 
@@ -232,6 +258,51 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
 
     postMessage({
       type: 'audioErr',
+      id: msg.id,
+    } satisfies WorkerResponse)
+    return
+  }
+
+  if (msg.type === 'getMeasureAtOffset') {
+    const result = get_measure_index_at_offset(
+      msg.source,
+      msg.byteOffset,
+    ) as MeasureAtOffsetResult
+    postMessage({
+      type: 'measureAtOffset',
+      id: msg.id,
+      measureIndex: result.status === 'ok' ? result.measure_index : null,
+    } satisfies WorkerResponse)
+    return
+  }
+
+  if (msg.type === 'generateMeasureAudio') {
+    if (!generateWavForMeasure) {
+      postMessage({
+        type: 'measureAudioErr',
+        id: msg.id,
+      } satisfies WorkerResponse)
+      return
+    }
+    const wavResult = generateWavForMeasure(
+      msg.source,
+      msg.measureIndex,
+      msg.enabledTracks,
+    )
+    if (wavResult.status === 'ok') {
+      const wavBuffer = binaryBufferFromResult(wavResult.wav)
+      postMessage(
+        {
+          type: 'measureAudio',
+          id: msg.id,
+          wav: wavBuffer,
+        } satisfies WorkerResponse,
+        { transfer: [wavBuffer] },
+      )
+      return
+    }
+    postMessage({
+      type: 'measureAudioErr',
       id: msg.id,
     } satisfies WorkerResponse)
     return
