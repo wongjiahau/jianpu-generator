@@ -9,7 +9,10 @@ import {
   useRef,
 } from 'react'
 import type { Diagnostic, EditorHandle } from '../types'
-import { byteOffsetToStringIndex } from '../utils/byteSpan'
+import {
+  byteOffsetToStringIndex,
+  stringIndexToByteOffset,
+} from '../utils/byteSpan'
 
 export interface EditorProps {
   value: string
@@ -149,13 +152,17 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
     applyDiagnostics()
 
     if (onCursorByteOffsetChange) {
-      ed.onDidChangeCursorPosition(() => {
+      const notifyOffset = () => {
         const model = ed.getModel()
         if (!model) return
         const position = ed.getPosition()
         if (!position) return
-        onCursorByteOffsetChange(model.getOffsetAt(position))
-      })
+        const charIndex = model.getOffsetAt(position)
+        const byteOffset = stringIndexToByteOffset(model.getValue(), charIndex)
+        onCursorByteOffsetChange(byteOffset)
+      }
+      ed.onDidChangeCursorPosition(notifyOffset)
+      notifyOffset()
     }
   }
 

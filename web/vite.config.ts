@@ -10,6 +10,7 @@ const WASM_PACK_ARGS = [
   'web',
   '--out-dir',
   'pkg',
+  '--no-opt',
   '--',
   '--features',
   'wav,pdf',

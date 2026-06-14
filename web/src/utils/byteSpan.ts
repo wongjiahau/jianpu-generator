@@ -10,6 +10,17 @@ function utf8ByteLengthOfCodePoint(ch: string): number {
 }
 
 /**
+ * Map a JS string index (UTF-16 code unit count from Monaco) to a UTF-8 byte offset
+ * suitable for passing to the Rust parser.
+ */
+export function stringIndexToByteOffset(
+  source: string,
+  charIndex: number,
+): number {
+  return utf8Encoder.encode(source.slice(0, charIndex)).length
+}
+
+/**
  * Map a UTF-8 byte offset (from the Rust parser) to a JS string index (UTF-16).
  */
 export function byteOffsetToStringIndex(

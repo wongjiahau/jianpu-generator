@@ -271,7 +271,7 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
     postMessage({
       type: 'measureAtOffset',
       id: msg.id,
-      measureIndex: result.status === 'ok' ? result.measure_index : null,
+      measureIndex: result.status === 'ok' ? result.measureIndex : null,
     } satisfies WorkerResponse)
     return
   }

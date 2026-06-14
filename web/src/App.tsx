@@ -203,6 +203,11 @@ export default function App() {
                         currentMeasureIndex === null || measureAudioGenerating
                       }
                       loading={measureAudioGenerating}
+                      measureNumber={
+                        currentMeasureIndex !== null
+                          ? currentMeasureIndex + 1
+                          : null
+                      }
                       onClick={playCurrentMeasure}
                     />
                   ) : null

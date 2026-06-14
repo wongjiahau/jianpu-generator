@@ -5,7 +5,7 @@ use jianpu_generator::write_wav_for_measure_from_source;
 #[cfg(feature = "wav")]
 use jianpu_generator::write_wav_from_source_filtered;
 use jianpu_generator::{
-    compile, find_measure_at_byte_offset, list_parts_from_source,
+    compile, list_parts_from_source,
     render_svgs_from_source_filtered_with_lyrics,
 };
 #[cfg(feature = "pdf")]
@@ -57,12 +57,20 @@ fn list_parts_response(source: &str) -> ListPartsResponse {
 
 fn get_measure_at_offset_response(source: &str, byte_offset: usize) -> MeasureAtOffsetResponse {
     match compile(source, "input.jianpu") {
-        Ok(score) => match find_measure_at_byte_offset(&score, byte_offset) {
-            Some(index) => MeasureAtOffsetResponse::Ok {
-                measure_index: index,
-            },
-            None => MeasureAtOffsetResponse::NotInMeasure,
-        },
+        Ok(score) => {
+            let clamped = byte_offset.min(source.len());
+            let target_line = source[..clamped].bytes().filter(|&b| b == b'\n').count();
+            let index = score.measures.iter().position(|m| {
+                let start_line = source[..m.source_span.start].bytes().filter(|&b| b == b'\n').count();
+                let end = m.source_span.end.min(source.len());
+                let end_line = source[..end].bytes().filter(|&b| b == b'\n').count();
+                start_line <= target_line && target_line <= end_line
+            });
+            match index {
+                Some(i) => MeasureAtOffsetResponse::Ok { measure_index: i },
+                None => MeasureAtOffsetResponse::NotInMeasure,
+            }
+        }
         Err(_) => MeasureAtOffsetResponse::NotInMeasure,
     }
 }
@@ -157,7 +165,7 @@ pub fn list_parts(source: &str) -> JsValue {
 
 /// Find the measure index at a UTF-8 byte offset in the source.
 ///
-/// Returns `{ "status": "ok", "measure_index": N }` when the offset falls
+/// Returns `{ "status": "ok", "measureIndex": N }` when the offset falls
 /// inside a measure's note events, or `{ "status": "notInMeasure" }` otherwise
 /// (e.g. when the cursor is in `[metadata]`, `[parts]`, or a directive line).
 #[wasm_bindgen]
