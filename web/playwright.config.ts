@@ -17,15 +17,42 @@ export default defineConfig({
   retries: 0,
   use: {
     baseURL: 'http://localhost:5173',
+    // Needed for Synced Share scenarios: the local `wrangler dev` instance
+    // below serves over HTTPS with a self-signed cert (`--local-protocol
+    // https`), which every browser rejects by default.
+    ignoreHTTPSErrors: true,
   },
-  webServer: {
-    // Skip `predev` (the cargo-component/jco build) since pkg-component is
-    // already built; just start Vite.
-    command: 'pnpm exec vite',
-    url: 'http://localhost:5173',
-    reuseExistingServer: true,
-    timeout: 60_000,
-  },
+  webServer: [
+    {
+      // Skip `predev` (the cargo-component/jco build) since pkg-component is
+      // already built; just start Vite.
+      command: 'pnpm exec vite',
+      url: 'http://localhost:5173',
+      reuseExistingServer: true,
+      timeout: 60_000,
+      env: {
+        // Redirects Synced Share's owner/viewer fetches (both hardcoded to
+        // `https://`, see `syncedShareEndpointUrl`/`useSyncedShareViewer`)
+        // at the local `live-share-worker` below instead of the real,
+        // deployed one — otherwise every Synced Share scenario would burn
+        // real Workers KV writes/reads (and its 1,000/day free-tier write
+        // quota) on every e2e run.
+        VITE_SYNCED_SHARE_HOST: 'localhost:8787',
+      },
+    },
+    {
+      // `--local-protocol https` is required: the app code always fetches
+      // `https://${host}/...` (see above), and plain `wrangler dev` only
+      // serves HTTP. Runs against Miniflare's in-memory KV emulation (no
+      // real Cloudflare account involved), so it's free to hit as often as
+      // the suite wants and needs no `wrangler login`.
+      command: 'npx wrangler dev --local-protocol https --port 8787',
+      cwd: '../live-share-worker',
+      port: 8787,
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+  ],
   projects: [
     {
       name: 'chromium',
