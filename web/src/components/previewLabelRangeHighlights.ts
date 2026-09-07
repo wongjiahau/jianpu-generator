@@ -1,6 +1,6 @@
 import { DATA_VARIANT } from '../dataVariant'
 import type { LyricSpan, NoteSpan } from '../types'
-import type { DragPoint } from './previewDragHighlights'
+import type { AnchorPoint } from './previewRangeHighlights'
 import {
   type LyricLabelHit,
   lyricCellsForLyricLabels,
@@ -11,22 +11,22 @@ import type { LyricCell, NoteCell } from './previewSelection'
 
 /** Every part-label click target whose rect overlaps the axis-aligned
  * marquee spanned by `anchor`/`current`, restricted to `anchorSystem` — the
- * `measureIndexStart`/`measureIndexEnd` of the label the drag started on.
+ * `measureIndexStart`/`measureIndexEnd` of the label the selection started on.
  *
  * Every part label in a given system shares the same `measureIndexStart`/
  * `measureIndexEnd` (one `PartLabelClickTarget` per part *per system*, see
  * `grid_layout::click_targets::compute_all_part_label_click_targets`), so
  * that pair is a reliable key for "which system". Without this filter, a
- * vertical drag that travels far enough to reach a different system's label
+ * vertical marquee that travels far enough to reach a different system's label
  * row would splice that system's notes into the selection too — the marquee
  * rect has no innate awareness of the gap between systems, it just
  * intersects against every label in the whole document. The vertical extent
  * still naturally picks up every part row *within the anchor's own system*
- * that a drag crosses, matching `selectedNoteCellsInMarquee`. */
+ * that the marquee crosses, matching `selectedNoteCellsInMarquee`. */
 export function partLabelsInMarquee(
   container: HTMLElement,
-  anchor: DragPoint,
-  current: DragPoint,
+  anchor: AnchorPoint,
+  current: AnchorPoint,
   anchorSystem: { measureIndexStart: number; measureIndexEnd: number },
 ): PartLabelHit[] {
   const minX = Math.min(anchor.x, current.x)
@@ -87,8 +87,8 @@ export function partLabelsInMarquee(
  * bare Cmd/Ctrl-click on one label to every part in that one system. */
 export function partLabelsInMarqueeAcrossSystems(
   container: HTMLElement,
-  anchor: DragPoint,
-  current: DragPoint,
+  anchor: AnchorPoint,
+  current: AnchorPoint,
 ): PartLabelHit[] {
   const minX = Math.min(anchor.x, current.x)
   const maxX = Math.max(anchor.x, current.x)
@@ -133,14 +133,14 @@ export function partLabelsInMarqueeAcrossSystems(
 }
 
 /** Marks every part-label click-target rect belonging to `hits` with
- * `data-part-label-drag-active`, clearing it from every other one. Driven
+ * `data-part-label-range-active`, clearing it from every other one. Driven
  * from JS state rather than left to pure CSS `:hover` — the label a
- * part-label drag started on must keep showing the hovered fill for the
+ * part-label selection started on must keep showing the hovered fill for the
  * whole gesture, even once the pointer has moved off its rect onto another
  * label's (or off every label entirely), matching how `partLabelsInMarquee`
  * keeps that label part of the selection regardless of where the pointer
  * currently sits. */
-export function applyPartLabelDragHighlight(
+export function applyPartLabelRangeHighlight(
   container: HTMLElement,
   hits: PartLabelHit[],
 ): void {
@@ -160,9 +160,9 @@ export function applyPartLabelDragHighlight(
     const { partIndex, measureIndexStart, measureIndexEnd } = group.dataset
     const key = `${partIndex}:${measureIndexStart}:${measureIndexEnd}`
     if (activeKeys.has(key)) {
-      rect.setAttribute('data-part-label-drag-active', '')
+      rect.setAttribute('data-part-label-range-active', '')
     } else {
-      rect.removeAttribute('data-part-label-drag-active')
+      rect.removeAttribute('data-part-label-range-active')
     }
   }
 }
@@ -176,8 +176,8 @@ export function applyPartLabelDragHighlight(
  * that pair is a reliable key for "which system", same as `partLabelsInMarquee`. */
 export function lyricLabelsInMarquee(
   container: HTMLElement,
-  anchor: DragPoint,
-  current: DragPoint,
+  anchor: AnchorPoint,
+  current: AnchorPoint,
   anchorSystem: { measureIndexStart: number; measureIndexEnd: number },
 ): LyricLabelHit[] {
   const minX = Math.min(anchor.x, current.x)
@@ -227,9 +227,9 @@ export function lyricLabelsInMarquee(
 }
 
 /** Marks every lyric-label click-target rect belonging to `hits` with
- * `data-lyric-label-drag-active`, clearing it from every other one — the
- * lyric-side mirror of `applyPartLabelDragHighlight`. */
-export function applyLyricLabelDragHighlight(
+ * `data-lyric-label-range-active`, clearing it from every other one — the
+ * lyric-side mirror of `applyPartLabelRangeHighlight`. */
+export function applyLyricLabelRangeHighlight(
   container: HTMLElement,
   hits: LyricLabelHit[],
 ): void {
@@ -250,15 +250,15 @@ export function applyLyricLabelDragHighlight(
       group.dataset
     const key = `${partIndex}:${verse}:${measureIndexStart}:${measureIndexEnd}`
     if (activeKeys.has(key)) {
-      rect.setAttribute('data-lyric-label-drag-active', '')
+      rect.setAttribute('data-lyric-label-range-active', '')
     } else {
-      rect.removeAttribute('data-lyric-label-drag-active')
+      rect.removeAttribute('data-lyric-label-range-active')
     }
   }
 }
 
 /** Re-applies the lyric-label hover fill from the given selected lyric
- * cells rather than from a live drag — the lyric-side mirror of
+ * cells rather than from a live selection — the lyric-side mirror of
  * `applyPersistedPartLabelHighlights`. A lyric label counts as selected
  * once *every* syllable it covers (its verse across its whole system, see
  * `lyricCellsForLyricLabels`) is present in `selectedLyricCells`. */
@@ -303,20 +303,20 @@ export function applyPersistedLyricLabelHighlights(
         ),
       )
     if (fullySelected) {
-      rect.setAttribute('data-lyric-label-drag-active', '')
+      rect.setAttribute('data-lyric-label-range-active', '')
     } else {
-      rect.removeAttribute('data-lyric-label-drag-active')
+      rect.removeAttribute('data-lyric-label-range-active')
     }
   }
 }
 
 /** Re-applies the part-label hover fill from the given selected note cells
- * rather than from a live drag — a part label counts as selected once
+ * rather than from a live selection — a part label counts as selected once
  * *every* note/rest it covers (its part across its whole system, see
  * `noteCellsForPartLabels`) is present in `selectedNoteCells`, so the fill
- * persists after mouseup (and survives an SVG DOM swap, same as
+ * persists after the second click (and survives an SVG DOM swap, same as
  * `applyPersistedNoteHighlights`) instead of being cleared the instant the
- * drag ends. Mirrors that a part-label drag is just a shortcut for
+ * selection ends. Mirrors that a part-label selection is just a shortcut for
  * selecting its notes — once selected, the label reflects the selection the
  * same way it would if made some other way (e.g. typing in the editor). */
 export function applyPersistedPartLabelHighlights(
@@ -353,9 +353,9 @@ export function applyPersistedPartLabelHighlights(
         selectedKeys.has(`${cell.sourcePartIndex}:${cell.noteId}`),
       )
     if (fullySelected) {
-      rect.setAttribute('data-part-label-drag-active', '')
+      rect.setAttribute('data-part-label-range-active', '')
     } else {
-      rect.removeAttribute('data-part-label-drag-active')
+      rect.removeAttribute('data-part-label-range-active')
     }
   }
 }

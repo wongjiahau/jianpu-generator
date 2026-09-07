@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 const PLAYBACK_CURSOR_FILL = 'rgba(220,38,38,0.25)'

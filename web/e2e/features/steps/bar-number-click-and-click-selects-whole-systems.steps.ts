@@ -1,12 +1,12 @@
 import { expect } from '@playwright/test'
-import { clickThenStableClick } from '../../dragSelectHelpers'
+import { clickThenStableClick } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
  * `max_measures_per_system = 2` packs two measures per system, so the
  * "escalate to the whole system" behavior (see 'bar-number-system' mode in
- * `previewDragState.ts`) is distinguishable from a plain measure-index
+ * `previewAnchorState.ts`) is distinguishable from a plain measure-index
  * range — a second click landing on measure 2 (system 1's *first* measure)
  * must still pull in measure 3 (the rest of system 1), which a bare
  * measure-range union of [0, 2] would not:
@@ -170,21 +170,21 @@ When(
 )
 
 Then(
-  '{int} drag-selected notes belong to part index {int}, as seen in bar number click-and-click selects whole systems',
+  '{int} range-selected notes belong to part index {int}, as seen in bar number click-and-click selects whole systems',
   async ({ page }, count: number, partIndex: number) => {
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-part-index="${partIndex}"]`,
+        `[data-tag="note"][data-note-range-selected][data-part-index="${partIndex}"]`,
       ),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in bar number click-and-click selects whole systems',
+  '{int} notes are range-selected in total, as seen in bar number click-and-click selects whole systems',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )

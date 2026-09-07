@@ -5,7 +5,7 @@ use crate::error::IrrecoverableError;
 /// Source byte range of one lyric syllable — see `ast::parsed::Syllable::span`.
 /// Keyed the same way the compiled SVG's `data-part-index`/`data-note-id`/
 /// `data-verse` attributes are (see `renderer::new_renderer::render_lyric_click_target`),
-/// so a click/drag hit-test on the SVG can be mapped straight back to source text.
+/// so a click hit-test on the SVG can be mapped straight back to source text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LyricSourceSpan {
     /// Index into `MultiPartMeasure::parts` for this syllable's part, matching
@@ -146,7 +146,7 @@ pub struct LyricCell {
     pub verse: usize,
 }
 
-/// One contiguous drag-selected byte range within a single verse line of a
+/// One contiguous selected byte range within a single verse line of a
 /// single part's single measure, ready to become a Monaco multicursor
 /// selection.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -157,7 +157,7 @@ pub struct LyricSelectionRun {
     pub end_byte: usize,
 }
 
-/// Groups a drag-selected set of `(source_part_index, note_id, verse)` cells
+/// Groups a range-selected set of `(source_part_index, note_id, verse)` cells
 /// into contiguous per-`(part, verse, measure)` source byte runs. Grouped by
 /// verse as well as part/measure — even though the output `LyricSelectionRun`
 /// doesn't carry `verse`, each verse's syllables live on their own source

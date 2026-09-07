@@ -3,15 +3,15 @@ import { anyClickableElementIdAtPoint } from './previewClickableElementIdBuilder
 import {
   applyPersistedLyricHighlights,
   applyPersistedNoteHighlights,
-} from './previewDragHighlights'
-import type { PreviewDragState } from './previewDragState'
+} from './previewRangeHighlights'
+import type { PreviewAnchorState } from './previewAnchorState'
 import {
   applyPersistedLyricLabelHighlights,
   applyPersistedPartLabelHighlights,
   lyricLabelsInMarquee,
   partLabelsInMarquee,
   partLabelsInMarqueeAcrossSystems,
-} from './previewLabelDragHighlights'
+} from './previewLabelRangeHighlights'
 import {
   lyricCellsForLyricLabels,
   lyricCellsForPartLabels,
@@ -22,24 +22,24 @@ import type { LyricCell, NoteCell } from './previewSelection'
 import type { ResolveModeArgs } from './previewSelectionResolveModes'
 import type { ResolvedSelection } from './previewSelectionResolver'
 
-type PartLabelDragState = Extract<
-  NonNullable<PreviewDragState>,
+type PartLabelAnchorState = Extract<
+  NonNullable<PreviewAnchorState>,
   { mode: 'part-label' }
 >
-type PartLabelSystemDragState = Extract<
-  NonNullable<PreviewDragState>,
+type PartLabelSystemAnchorState = Extract<
+  NonNullable<PreviewAnchorState>,
   { mode: 'part-label-system' }
 >
-type LyricLabelDragState = Extract<
-  NonNullable<PreviewDragState>,
+type LyricLabelAnchorState = Extract<
+  NonNullable<PreviewAnchorState>,
   { mode: 'lyric-label' }
 >
 
 export function resolvePartLabelSelection(
-  dragState: PartLabelDragState,
+  anchorState: PartLabelAnchorState,
   { container, point, currentIdHint, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
-  const current = point ?? dragState.anchor
+  const current = point ?? anchorState.anchor
   // Try wasm's ID-based range resolution first — resolves `PartLabel ↔
   // PartLabel` for any system pairing and, when `current` lands on a note,
   // lyric, or lyric label instead, every one of `PartLabel ↔ Note`,
@@ -56,7 +56,7 @@ export function resolvePartLabelSelection(
     ? resolve_selection_range(
         noteSpans,
         lyricSpans,
-        dragState.anchorId,
+        anchorState.anchorId,
         currentId,
       )
     : undefined
@@ -77,9 +77,9 @@ export function resolvePartLabelSelection(
     const hits: PartLabelHit[] = container
       ? partLabelsInMarquee(
           container,
-          dragState.anchor,
+          anchorState.anchor,
           current,
-          dragState.anchorId,
+          anchorState.anchorId,
         )
       : []
     noteCells = noteCellsForPartLabels(noteSpans, hits)
@@ -106,21 +106,22 @@ export function resolvePartLabelSelection(
 }
 
 export function resolvePartLabelSystemSelection(
-  dragState: PartLabelSystemDragState,
+  anchorState: PartLabelSystemAnchorState,
   { container, point, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
-  const current = point ?? dragState.anchor
+  const current = point ?? anchorState.anchor
   // A separate, coarser Cmd/Ctrl-gated tool, kept distinct from the plain
-  // drag above even though that drag is now itself system-agnostic: this
-  // mode unions *every part* across every system the gesture touches,
-  // where the plain drag only ranges over the two endpoints' own
-  // `sourcePartIndex`es (see `resolve_selection_range_response`'s
-  // `PartLabel ↔ PartLabel` arm) — e.g. a plain drag from one part's
-  // label to that same part's label two systems later selects only that
+  // range-select above even though that range-select is now itself
+  // system-agnostic: this mode unions *every part* across every system the
+  // gesture touches, where the plain range-select only ranges over the two
+  // endpoints' own `sourcePartIndex`es (see
+  // `resolve_selection_range_response`'s `PartLabel ↔ PartLabel` arm) — e.g.
+  // a plain range-select from one part's label to that same part's label
+  // two systems later selects only that
   // part, not every part in between, which this mode still does. See
   // `PLAN-clickable-element-id-selection.md`'s Status section.
   const hits = container
-    ? partLabelsInMarqueeAcrossSystems(container, dragState.anchor, current)
+    ? partLabelsInMarqueeAcrossSystems(container, anchorState.anchor, current)
     : []
   const noteCells = noteCellsForPartLabels(noteSpans, hits)
   const lyricCells = lyricCellsForPartLabels(lyricSpans, hits)
@@ -134,10 +135,10 @@ export function resolvePartLabelSystemSelection(
 }
 
 export function resolveLyricLabelSelection(
-  dragState: LyricLabelDragState,
+  anchorState: LyricLabelAnchorState,
   { container, point, currentIdHint, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
-  const current = point ?? dragState.anchor
+  const current = point ?? anchorState.anchor
   // Try wasm's ID-based range resolution first — resolves the same-verse
   // `LyricLabel ↔ LyricLabel` combination (any system pairing) and, when
   // `current` lands on a note, lyric, or part label instead, every one of
@@ -154,7 +155,7 @@ export function resolveLyricLabelSelection(
     ? resolve_selection_range(
         noteSpans,
         lyricSpans,
-        dragState.anchorId,
+        anchorState.anchorId,
         currentId,
       )
     : undefined
@@ -181,9 +182,9 @@ export function resolveLyricLabelSelection(
     const hits = container
       ? lyricLabelsInMarquee(
           container,
-          dragState.anchor,
+          anchorState.anchor,
           current,
-          dragState.anchorId,
+          anchorState.anchorId,
         )
       : []
     noteCells = []

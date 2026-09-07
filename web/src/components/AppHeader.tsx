@@ -44,7 +44,7 @@ interface AppHeaderProps {
   playSelectedMeasures: () => void
   playFromCurrentMeasure: () => void
   playAll: () => void
-  /** True while a note drag-select (see `useNoteSelection`) is active; when
+  /** True while a note range-select (see `useNoteSelection`) is active; when
    * set, `PlayMeasureButton` plays only the selected parts, muted elsewhere,
    * over the selection's measure range instead of the measure(s) under the
    * cursor. */

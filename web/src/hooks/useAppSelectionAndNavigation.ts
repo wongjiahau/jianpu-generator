@@ -122,7 +122,7 @@ export function useAppSelectionAndNavigation(
     )
 
   // Merged purely for `Preview.tsx`'s highlight painting: an editor-mounted
-  // drag/click populates `noteSelectionCells`/`lyricSelectionCells` and
+  // click-and-click selection populates `noteSelectionCells`/`lyricSelectionCells` and
   // leaves `measureRangeNoteCells`/`measureRangeLyricCells` at `[]`; a
   // no-mounted-editor (Synced/shared) measure/bar-line gesture does the
   // opposite (see `useMeasureRangeSelection`'s doc comment) — the two never

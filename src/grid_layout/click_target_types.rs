@@ -35,7 +35,7 @@ pub struct BarNumberClickTarget {
 /// Invisible hit target laid over a part's `RowLabel` text, spanning that
 /// part's own sub-rows (see `playback_cursor::part_row_ranges`) within the
 /// fixed-width label region (columns `0..LABEL_COLS`). Clicking or
-/// drag-selecting it is a shortcut for selecting every note/rest that part
+/// range-selecting it is a shortcut for selecting every note/rest that part
 /// sounds across the whole system the label sits in — `measure_index_start`/
 /// `measure_index_end` give that system's full measure range, mirroring how
 /// `MeasureClickTarget::measure_index`/`measure_index_end` scope a measure

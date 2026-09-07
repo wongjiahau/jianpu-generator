@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -17,11 +17,11 @@ import { Given, Then, When } from './fixtures'
  * Self-contained source (not a demo file) with a generous "max measures per
  * system" and four single-beat notes with one syllable each, so all four
  * note/lyric pairs render side by side in one row and stay within the
- * viewport during the drag.
+ * viewport during the range-select.
  */
-const dragTestSource = [
+const rangeTestSource = [
   '# metadata',
-  'title = "lyric drag test"',
+  'title = "lyric range-select test"',
   'max_measures_per_system = 48',
   '',
   '# parts',
@@ -40,19 +40,19 @@ function lyricTexts(page: import('@playwright/test').Page) {
 }
 
 Given(
-  'the lyric drag test fixture is loaded and the first measure has rendered',
+  'the lyric range-select test fixture is loaded and the first measure has rendered',
   async ({ page }) => {
     await page.addInitScript((source) => {
       localStorage.setItem(
         'jianpu:files:v1',
         JSON.stringify({
-          active: 'lyric-drag-test.jianpu',
-          userFiles: { 'lyric-drag-test.jianpu': source },
+          active: 'lyric-range-test.jianpu',
+          userFiles: { 'lyric-range-test.jianpu': source },
           bin: {},
-          fileIds: { 'lyric-drag-test.jianpu': 'lyric-drag-test-id-001' },
+          fileIds: { 'lyric-range-test.jianpu': 'lyric-range-test-id-001' },
         }),
       )
-    }, dragTestSource)
+    }, rangeTestSource)
     await page.goto('/')
 
     await page.waitForSelector('[data-testid="play-measure-button"]', {
@@ -67,7 +67,7 @@ Given(
 )
 
 When(
-  'I drag a marquee from lyric syllable {int} to lyric syllable {int}',
+  'I click-and-click select from lyric syllable {int} to lyric syllable {int}',
   async ({ page }, from: number, to: number) => {
     const boxFrom = await stableBoundingBox(lyricTexts(page).nth(from))
     const boxTo = await stableBoundingBox(lyricTexts(page).nth(to))
@@ -82,16 +82,16 @@ When(
     const endX = boxTo.x + boxTo.width / 2
     const endY = boxTo.y + boxTo.height / 2
 
-    // Click-and-click a marquee across the syllables.
+    // Click-and-click a range across the syllables.
     await clickAndClickSelect(page, startX, startY, endX, endY)
   },
 )
 
 When(
-  'I click lyric syllable {int} without dragging',
+  'I click lyric syllable {int} once',
   async ({ page }, index: number) => {
-    // A plain click (mousedown + mouseup at the same point, no drag) selects
-    // just this syllable.
+    // A plain click (mousedown + mouseup at the same point, not a
+    // click-and-click range) selects just this syllable.
     const box = await stableBoundingBox(lyricTexts(page).nth(index))
     if (!box) throw new Error('no box')
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
@@ -102,19 +102,19 @@ When(
 )
 
 Then(
-  'lyric syllables {int}, {int} and {int} are drag-selected',
+  'lyric syllables {int}, {int} and {int} are range-selected',
   async ({ page }, a: number, b: number, c: number) => {
-    // The drag resolves through the syllables' own lyric click targets —
-    // lyric selection is independent of note selection, so no note cell gets
-    // highlighted by this drag at all.
+    // The range-select resolves through the syllables' own lyric click
+    // targets — lyric selection is independent of note selection, so no
+    // note cell gets highlighted by this range-select at all.
     const highlightedLyrics = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected]',
+      '[data-tag="lyric"][data-lyric-range-selected]',
     )
     await expect(highlightedLyrics).toHaveCount(3)
     for (const noteId of [a, b, c]) {
       await expect(
         page.locator(
-          `[data-tag="lyric"][data-lyric-drag-selected][data-note-id="${noteId}"]`,
+          `[data-tag="lyric"][data-lyric-range-selected][data-note-id="${noteId}"]`,
         ),
       ).toHaveCount(1)
     }
@@ -122,21 +122,21 @@ Then(
 )
 
 Then(
-  'only lyric syllable {int} is drag-selected',
+  'only lyric syllable {int} is range-selected',
   async ({ page }, noteId: number) => {
     await expect(
-      page.locator('[data-tag="lyric"][data-lyric-drag-selected]'),
+      page.locator('[data-tag="lyric"][data-lyric-range-selected]'),
     ).toHaveCount(1)
     await expect(
       page.locator(
-        `[data-tag="lyric"][data-lyric-drag-selected][data-note-id="${noteId}"]`,
+        `[data-tag="lyric"][data-lyric-range-selected][data-note-id="${noteId}"]`,
       ),
     ).toHaveCount(1)
   },
 )
 
-Then('no note is drag-selected', async ({ page }) => {
+Then('no note is range-selected', async ({ page }) => {
   await expect(
-    page.locator('[data-tag="note"][data-note-drag-selected]'),
+    page.locator('[data-tag="note"][data-note-range-selected]'),
   ).toHaveCount(0)
 })

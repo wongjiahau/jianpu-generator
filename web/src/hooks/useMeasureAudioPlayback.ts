@@ -96,10 +96,10 @@ export function useMeasureAudioPlayback({
       sequenceEntryEndIndex?: number,
       /** When given, overrides the normally-enabled tracks (mute/solo state)
        * for just this playback — e.g. "play selection" muting every part
-       * outside the drag-selected notes. */
+       * outside the range-selected notes. */
       enabledTracksOverride?: string[],
       /** When given, narrows the generated clip down to exactly these
-       * drag-selected notes' elapsed-seconds span — sample-accurately
+       * range-selected notes' elapsed-seconds span — sample-accurately
        * trimmed and fade-cut in Rust (see `crate::wav::TrimWindow`) rather
        * than playing the whole `[startMeasureIndex, endMeasureIndex]`
        * range. Only "play selection" (`playNoteSelection`) passes this. */
@@ -180,7 +180,7 @@ export function useMeasureAudioPlayback({
     playMeasureRange(0, totalMeasures - 1, true, true)
   }, [playMeasureRange, totalMeasures])
 
-  // Plays only the drag-selected parts (see `useNoteSelection`), muting
+  // Plays only the range-selected parts (see `useNoteSelection`), muting
   // every other part, then trims the generated clip down to exactly the
   // selected notes' elapsed-seconds span (sample-accurate trim/fade done in
   // Rust — see `crate::wav::TrimWindow`) instead of playing the selection's

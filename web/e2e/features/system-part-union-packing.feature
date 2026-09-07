@@ -4,7 +4,7 @@ Feature: Union-of-parts system packing
   system's rows are the union of every part (and, per part, every verse)
   across its measures, in [parts] declaration order. A measure missing a row
   its system has gets it padded as a full-measure rest / blank verse, with no
-  note identity (no click/drag/playback target).
+  note identity (no click/playback target).
 
   Background:
     Given parts Melody [M], Harmony [H], Bass [B] are declared in that order

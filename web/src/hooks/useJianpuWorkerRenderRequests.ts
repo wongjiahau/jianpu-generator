@@ -209,7 +209,7 @@ export function useJianpuWorkerRenderRequests({
     // highlight ranges (`highlightRanges`, from `computeSequenceSelectionMeasureRanges`)
     // — bypassing the caret-only gate below entirely, since it's the only
     // caller that ever needs a real (non-caret) range highlighted. Every
-    // other range selection (section jumps, note/lyric drag-select, plain
+    // other range selection (section jumps, note/lyric range-select, plain
     // Monaco text selection) keeps today's behavior: only a bare caret gets
     // the amber measure-background highlight; a real selection still
     // populates `selectedMeasureRange` for playback/badge purposes, but

@@ -11,7 +11,7 @@ export interface ByteRange {
 export interface ByteRangeSelectionCore<Cell, Run> {
   /** The raw cells behind `runs`, kept around so the SVG preview can
    * re-apply the same highlight after any DOM change (e.g. a re-render
-   * triggered by the Monaco selection a drag just pushed). */
+   * triggered by the Monaco selection a range-select just pushed). */
   selectedCells: Cell[]
   runs: Run[]
   handleRangeSelect: (selectedCells: Cell[]) => Promise<void>
@@ -60,13 +60,13 @@ export interface ByteRangeSelectionCore<Cell, Run> {
 
 /**
  * The shared low-level core behind `useNoteSelection`/`useLyricSelection`:
- * turns a drag-select of `Cell`s hit-tested off the SVG preview into a
+ * turns a range-select of `Cell`s hit-tested off the SVG preview into a
  * Monaco multicursor selection (`handleRangeSelect`), and the reverse — sync
  * back from whatever's actually selected in Monaco, including a selection
  * made by typing/selecting in the editor directly (`handleEditorSelectionChange`).
  *
  * Deliberately *not* a merge of the two hooks — lyric selection must stay
- * independent of note highlighting (a lyric drag never selects/highlights
+ * independent of note highlighting (a lyric range-select never selects/highlights
  * notes and vice versa), so each hook still keeps its own call to this core
  * and its own state; only the state shape and the two handlers' logic are
  * shared.
@@ -105,8 +105,8 @@ export function useByteRangeSelectionCore<
   // instead of re-deriving `selectedCells` from them. That re-derivation
   // drops any cell with no byte span (e.g. a rest, which never became part
   // of the pushed Monaco selection in the first place), which would
-  // otherwise silently shrink the preview highlight right after every drag
-  // that touched one. A counter, not a boolean: some callers' Monaco call
+  // otherwise silently shrink the preview highlight right after every
+  // range-select that touched one. A counter, not a boolean: some callers' Monaco call
   // fires more than one cursor-change notification synchronously (see
   // `applySelectionSilently`'s `pendingEditorEchoes` doc comment), and a
   // boolean would only swallow the first of those, leaving the rest to

@@ -5,7 +5,7 @@ interface PlayMeasureButtonProps {
   loading: boolean
   playing: boolean
   measureRange: { start: number; end: number } | null
-  /** True while a note drag-select (see `useNoteSelection`) is active. When
+  /** True while a note range-select (see `useNoteSelection`) is active. When
    * set, the button plays only the selected notes instead of the measure(s)
    * under the cursor, and its label/tooltip reflect that. */
   noteSelectionActive: boolean

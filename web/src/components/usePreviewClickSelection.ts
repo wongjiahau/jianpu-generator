@@ -4,7 +4,7 @@ import type { LyricSpan, NoteSpan } from '../types'
 import type { ClickableElementId } from './clickableElementId'
 import { clickableElementIdFromElement } from './clickableElementId'
 import { cancelAnchor } from './previewClickHandler'
-import type { PreviewDragState } from './previewDragState'
+import type { PreviewAnchorState } from './previewAnchorState'
 import {
   getMeasureAtPoint,
   type LyricCell,
@@ -15,7 +15,7 @@ import {
   resolveSelection,
 } from './previewSelectionResolver'
 
-export type { PreviewDragState } from './previewDragState'
+export type { PreviewAnchorState } from './previewAnchorState'
 
 /** The `ClickableElementId` for a `mouseover`'s own target, if any — the
  * delegated-event counterpart of `previewSelection.ts`'s point-based
@@ -35,7 +35,7 @@ function hoveredElementId(
 /** Owns the note/measure/part-label click-and-click selection gesture for
  * `Preview`: a first click (handled by `Preview` itself via
  * `handlePreviewClick`, which writes the anchored mode into the returned
- * `dragStateRef`) anchors one of `PreviewDragState`'s modes, and the
+ * `anchorStateRef`) anchors one of `PreviewAnchorState`'s modes, and the
  * `mouseover`/`mouseout` listeners registered here live-update the hover
  * preview between the anchor and the pointer for mouse users (a no-op for
  * touch, which has no hover) until a second click — also routed through
@@ -94,19 +94,19 @@ export function usePreviewClickSelection(
   const onMeasureRangeSelectRef = useRef(onMeasureRangeSelect)
   onMeasureRangeSelectRef.current = onMeasureRangeSelect
 
-  const dragStateRef = useRef<PreviewDragState>(null)
+  const anchorStateRef = useRef<PreviewAnchorState>(null)
   // See `HandlePreviewClickArgs`'s doc comment — owned here (alongside
-  // `dragStateRef`) so `Preview.tsx`'s scroll-to-selection effect can
+  // `anchorStateRef`) so `Preview.tsx`'s scroll-to-selection effect can
   // consume it, and passed through to every `HandlePreviewClickArgs` built
   // below.
   const suppressNextRevealRef = useRef(false)
 
   // Whether a click-and-click gesture is anchored and waiting on its second
-  // click — real React state (unlike `dragStateRef` itself) since
+  // click — real React state (unlike `anchorStateRef` itself) since
   // `Preview.tsx` needs a render to show/hide the "click again to select a
   // range" banner. `previewClickHandler.ts`'s anchor/commit/cancel paths
   // flip this via `onPendingSecondClickChange` (see `HandlePreviewClickArgs`)
-  // rather than `Preview.tsx` deriving it from `dragStateRef` itself, since a
+  // rather than `Preview.tsx` deriving it from `anchorStateRef` itself, since a
   // ref mutation alone triggers no re-render.
   const [pendingSecondClick, setPendingSecondClick] = useState(false)
 
@@ -133,7 +133,7 @@ export function usePreviewClickSelection(
     if (!container) return
 
     const argsForHover = (): HandlePreviewClickArgs => ({
-      dragStateRef,
+      anchorStateRef,
       suppressNextRevealRef,
       previewPagesRef,
       onPendingSecondClickChange: setPendingSecondClick,
@@ -146,31 +146,31 @@ export function usePreviewClickSelection(
     })
 
     const handleMouseOver = (e: MouseEvent) => {
-      const dragState = dragStateRef.current
-      if (!dragState) return
+      const anchorState = anchorStateRef.current
+      if (!anchorState) return
       const point = { x: e.clientX, y: e.clientY }
 
       if (
-        dragState.mode === 'measure' ||
-        dragState.mode === 'bar-number-system'
+        anchorState.mode === 'measure' ||
+        anchorState.mode === 'bar-number-system'
       ) {
         // The one exception to pure element delegation (see this hook's own
         // doc comment) — keeps the point-based `getMeasureAtPoint` lookup
         // `resolveSelection` itself would otherwise fall back to anyway, so
-        // `dragState.current` (its own miss-fallback) stays fresh across
+        // `anchorState.current` (its own miss-fallback) stays fresh across
         // hover ticks the same way the old `mousemove` listener kept it.
         // 'bar-number-system' shares this: it resolves off the same
         // point→measure lookup before expanding to a system range, so it
         // needs the identical hover-side priming.
         const range = getMeasureAtPoint(e.clientX, e.clientY)
-        if (range !== undefined) dragState.current = range
-        resolveSelection(dragState, point, undefined, argsForHover())
+        if (range !== undefined) anchorState.current = range
+        resolveSelection(anchorState, point, undefined, argsForHover())
         return
       }
 
-      dragState.current = point
+      anchorState.current = point
       resolveSelection(
-        dragState,
+        anchorState,
         point,
         hoveredElementId(e.target),
         argsForHover(),
@@ -178,8 +178,8 @@ export function usePreviewClickSelection(
     }
 
     const handleMouseOut = (e: MouseEvent) => {
-      const dragState = dragStateRef.current
-      if (!dragState) return
+      const anchorState = anchorStateRef.current
+      if (!anchorState) return
       // Every element-to-element transition inside the container is already
       // handled by `handleMouseOver` above — only a genuine boundary-leave
       // (the pointer leaving the container entirely) needs to resolve here.
@@ -189,13 +189,13 @@ export function usePreviewClickSelection(
       )
         return
       const point = { x: e.clientX, y: e.clientY }
-      resolveSelection(dragState, point, undefined, argsForHover())
+      resolveSelection(anchorState, point, undefined, argsForHover())
     }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
-      const dragState = dragStateRef.current
-      if (!dragState) return
+      const anchorState = anchorStateRef.current
+      if (!anchorState) return
       // Stops the event here, ahead of Monaco's own keybinding service: with
       // focus still sitting in the editor (see the capture-phase comment
       // above), an unstopped Escape falls through to Monaco's default
@@ -208,7 +208,7 @@ export function usePreviewClickSelection(
       // selection over it.
       e.preventDefault()
       e.stopPropagation()
-      cancelAnchor(dragStateRef, dragState, argsForHover())
+      cancelAnchor(anchorStateRef, anchorState, argsForHover())
     }
 
     container.addEventListener('mouseover', handleMouseOver)
@@ -231,7 +231,7 @@ export function usePreviewClickSelection(
   }, [previewPagesRef])
 
   return {
-    dragStateRef,
+    anchorStateRef,
     suppressNextRevealRef,
     pendingSecondClick,
     setPendingSecondClick,

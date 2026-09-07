@@ -8,8 +8,8 @@ import {
 import {
   applyPersistedLyricHighlights,
   applyPersistedNoteHighlights,
-} from './previewDragHighlights'
-import type { PreviewDragState } from './previewDragState'
+} from './previewRangeHighlights'
+import type { PreviewAnchorState } from './previewAnchorState'
 import {
   applyLyricRangeSelection,
   applyNoteRangeSelection,
@@ -24,7 +24,7 @@ import {
 } from './previewSelection'
 import type { ResolvedSelection } from './previewSelectionResolver'
 
-/** Everything a mode's own resolver needs beyond `dragState`/`point`/
+/** Everything a mode's own resolver needs beyond `anchorState`/`point`/
  * `currentIdHint` themselves — shared by `resolveMeasureSelection`,
  * `resolveNoteSelection`, and `resolveLyricSelection` below (and their
  * label-mode siblings in `previewSelectionResolveLabelModes.ts`), split out
@@ -38,28 +38,28 @@ export interface ResolveModeArgs {
   lyricSpans: LyricSpan[]
 }
 
-type MeasureDragState = Extract<
-  NonNullable<PreviewDragState>,
+type MeasureAnchorState = Extract<
+  NonNullable<PreviewAnchorState>,
   { mode: 'measure' }
 >
-type BarNumberSystemDragState = Extract<
-  NonNullable<PreviewDragState>,
+type BarNumberSystemAnchorState = Extract<
+  NonNullable<PreviewAnchorState>,
   { mode: 'bar-number-system' }
 >
-type NoteDragState = Extract<NonNullable<PreviewDragState>, { mode: 'note' }>
-type LyricDragState = Extract<NonNullable<PreviewDragState>, { mode: 'lyric' }>
+type NoteAnchorState = Extract<NonNullable<PreviewAnchorState>, { mode: 'note' }>
+type LyricAnchorState = Extract<NonNullable<PreviewAnchorState>, { mode: 'lyric' }>
 
 export function resolveMeasureSelection(
-  dragState: MeasureDragState,
+  anchorState: MeasureAnchorState,
   { container, point, currentIdHint, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
   const finalRange = point
-    ? (getMeasureAtPoint(point.x, point.y) ?? dragState.current)
-    : dragState.anchor
+    ? (getMeasureAtPoint(point.x, point.y) ?? anchorState.current)
+    : anchorState.anchor
   const response = resolve_selection_range(
     noteSpans,
     lyricSpans,
-    dragState.anchorId,
+    anchorState.anchorId,
     currentIdHint ?? measureClickableElementId(finalRange),
   )
   // `Measure ↔ Measure` is fully ID-based now (see
@@ -80,8 +80,8 @@ export function resolveMeasureSelection(
       verse: cell.verse,
     }))
   } else {
-    const min = Math.min(dragState.anchor.start, finalRange.start)
-    const max = Math.max(dragState.anchor.end, finalRange.end)
+    const min = Math.min(anchorState.anchor.start, finalRange.start)
+    const max = Math.max(anchorState.anchor.end, finalRange.end)
     const measureRange = { start: min, end: max }
     noteCells = noteCellsInMeasureRange(noteSpans, measureRange)
     lyricCells = lyricCellsInMeasureRange(lyricSpans, measureRange)
@@ -112,17 +112,17 @@ export function resolveMeasureSelection(
  * same reason.
  */
 export function resolveBarNumberSystemSelection(
-  dragState: BarNumberSystemDragState,
+  anchorState: BarNumberSystemAnchorState,
   { container, point, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
   const finalRange = point
-    ? (getMeasureAtPoint(point.x, point.y) ?? dragState.current)
-    : dragState.anchor
+    ? (getMeasureAtPoint(point.x, point.y) ?? anchorState.current)
+    : anchorState.anchor
 
   const anchorSystem =
     (container &&
-      systemRangeContainingMeasure(container, dragState.anchor.start)) ||
-    dragState.anchor
+      systemRangeContainingMeasure(container, anchorState.anchor.start)) ||
+    anchorState.anchor
   const finalSystem =
     (container && systemRangeContainingMeasure(container, finalRange.start)) ||
     finalRange
@@ -141,13 +141,13 @@ export function resolveBarNumberSystemSelection(
 }
 
 export function resolveNoteSelection(
-  dragState: NoteDragState,
+  anchorState: NoteAnchorState,
   { container, point, currentIdHint, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
-  const current = point ?? dragState.anchor
+  const current = point ?? anchorState.anchor
   const anchorCell: NoteCell = {
-    sourcePartIndex: dragState.anchorId.sourcePartIndex,
-    noteId: dragState.anchorId.noteId,
+    sourcePartIndex: anchorState.anchorId.sourcePartIndex,
+    noteId: anchorState.anchorId.noteId,
   }
   // Resolves every `Note ↔ Note` combination (same-part and cross-part)
   // and, when `current` lands on a lyric syllable, part label, or lyric
@@ -163,7 +163,7 @@ export function resolveNoteSelection(
   // exactly as before this mode's wasm migration; collapsing straight to
   // the anchor here (as an earlier revision of this branch did) silently
   // regressed the cross-row case instead of falling back to it (see
-  // `note-lyric-cross-drag-select.feature`).
+  // `note-lyric-cross-range-select.feature`).
   const currentId =
     currentIdHint ?? anyClickableElementIdAtPoint(current.x, current.y)
   if (currentId === undefined) {
@@ -172,7 +172,7 @@ export function resolveNoteSelection(
           container,
           noteSpans,
           anchorCell,
-          dragState.anchor,
+          anchorState.anchor,
           current,
         )
       : { noteCells: [], lyricCells: [] }
@@ -190,7 +190,7 @@ export function resolveNoteSelection(
   const response = resolve_selection_range(
     noteSpans,
     lyricSpans,
-    dragState.anchorId,
+    anchorState.anchorId,
     currentId,
   )
   if (response.status !== 'ok') {
@@ -201,7 +201,7 @@ export function resolveNoteSelection(
     // to the anchor.
     console.error(
       'resolve_selection_range returned Err for a Note-anchored pair',
-      dragState.anchorId,
+      anchorState.anchorId,
       currentId,
     )
   }
@@ -241,14 +241,14 @@ export function resolveNoteSelection(
 }
 
 export function resolveLyricSelection(
-  dragState: LyricDragState,
+  anchorState: LyricAnchorState,
   { container, point, currentIdHint, noteSpans, lyricSpans }: ResolveModeArgs,
 ): ResolvedSelection {
-  const current = point ?? dragState.anchor
+  const current = point ?? anchorState.anchor
   const anchorCell: LyricCell = {
-    sourcePartIndex: dragState.anchorId.sourcePartIndex,
-    noteId: dragState.anchorId.noteId,
-    verse: dragState.anchorId.verse,
+    sourcePartIndex: anchorState.anchorId.sourcePartIndex,
+    noteId: anchorState.anchorId.noteId,
+    verse: anchorState.anchorId.verse,
   }
   // Try wasm's ID-based range resolution first — resolves every
   // `Lyric ↔ Lyric` scope (same part-and-verse, same-part cross-verse, and
@@ -268,7 +268,7 @@ export function resolveLyricSelection(
     ? resolve_selection_range(
         noteSpans,
         lyricSpans,
-        dragState.anchorId,
+        anchorState.anchorId,
         currentId,
       )
     : undefined
@@ -295,7 +295,7 @@ export function resolveLyricSelection(
         container,
         lyricSpans,
         anchorCell,
-        dragState.anchor,
+        anchorState.anchor,
         current,
       )
     : { noteCells: [], lyricCells: [] }

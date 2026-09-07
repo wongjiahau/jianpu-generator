@@ -28,9 +28,9 @@ Feature: Playing a Cmd/Ctrl-click part-label selection with a hidden part
     Given the three-part hidden-part fixture is loaded with enabled-tracks capture
     When I hide the Harmony part, as seen in part label cmd click play selection with hidden part
     And I Ctrl-click the Melody part label
-    Then 2 drag-selected notes belong to part index 0, as seen in part label cmd click play selection with hidden part
-    And 2 drag-selected notes belong to part index 1, as seen in part label cmd click play selection with hidden part
-    And 4 notes are drag-selected in total, as seen in part label cmd click play selection with hidden part
+    Then 2 range-selected notes belong to part index 0, as seen in part label cmd click play selection with hidden part
+    And 2 range-selected notes belong to part index 1, as seen in part label cmd click play selection with hidden part
+    And 4 notes are range-selected in total, as seen in part label cmd click play selection with hidden part
     And the play button shows "Selection" and becomes enabled
     When I click the play button
     Then the captured enabled tracks are exactly Bass and Melody

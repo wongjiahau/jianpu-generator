@@ -6,11 +6,11 @@ import { handlePreviewClick } from './previewClickHandler'
 import {
   applyPersistedLyricHighlights,
   applyPersistedNoteHighlights,
-} from './previewDragHighlights'
+} from './previewRangeHighlights'
 import {
   applyPersistedLyricLabelHighlights,
   applyPersistedPartLabelHighlights,
-} from './previewLabelDragHighlights'
+} from './previewLabelRangeHighlights'
 import type { LyricCell, NoteCell } from './previewSelection'
 import { usePlaybackCursor } from './usePlaybackCursor'
 import { usePreviewClickSelection } from './usePreviewClickSelection'
@@ -50,14 +50,15 @@ interface PreviewProps {
    * cover lyric syllables underneath it, which then routes through
    * `onMeasureRangeSelect` instead). */
   onNoteRangeSelect?: (selectedCells: NoteCell[]) => void
-  /** The note/rest cells from the most recent note drag-select (see
+  /** The note/rest cells from the most recent note range-select (see
    * `onNoteRangeSelect`), echoed back so the highlight can be re-applied
    * declaratively — including after a re-render swaps in fresh SVG DOM
-   * (e.g. the Monaco selection this drag pushed triggering a highlighted
-   * re-render), which would otherwise silently drop the highlight. */
+   * (e.g. the Monaco selection this range-select pushed triggering a
+   * highlighted re-render), which would otherwise silently drop the
+   * highlight. */
   selectedNoteCells?: NoteCell[]
   /** Per-note/rest `(source_part_index, note_id) → measure_index` mapping,
-   * used by `noteCellsInMeasureRange` to resolve a measure click/drag into
+   * used by `noteCellsInMeasureRange` to resolve a measure click into
    * every note cell it contains by index rather than pixel geometry. */
   noteSpans?: NoteSpan[]
   /** Fired on the commit click of a lyric-syllable click-and-click select
@@ -72,12 +73,12 @@ interface PreviewProps {
    * (see `usePreviewClickSelection`'s commit handling and
    * `onMeasureRangeSelect` below). */
   onLyricRangeSelect?: (selectedCells: LyricCell[]) => void
-  /** The lyric syllable cells from the most recent lyric drag-select (see
+  /** The lyric syllable cells from the most recent lyric range-select (see
    * `onLyricRangeSelect`), echoed back so the highlight can be re-applied
    * declaratively, mirroring `selectedNoteCells`. */
   selectedLyricCells?: LyricCell[]
   /** Per-lyric-syllable `(source_part_index, note_id, verse) → measure_index`
-   * mapping, used by `lyricCellsInMeasureRange` so a measure click/drag also
+   * mapping, used by `lyricCellsInMeasureRange` so a measure click also
    * selects the verse lyrics under it, alongside `noteSpans` for notes. */
   lyricSpans?: LyricSpan[]
   /** Fired instead of `onNoteRangeSelect`/`onLyricRangeSelect` for a
@@ -172,7 +173,7 @@ export function Preview({
     measureAudioNoteTimings,
   )
   const {
-    dragStateRef,
+    anchorStateRef,
     suppressNextRevealRef,
     pendingSecondClick,
     setPendingSecondClick,
@@ -215,7 +216,7 @@ export function Preview({
   // onto another page), silently relocating whatever's under their pointer
   // before that second click lands — see
   // `note-range-select-crosses-page.feature`'s regression coverage. A
-  // one-shot flag rather than a persistent `dragStateRef.current !== null`
+  // one-shot flag rather than a persistent `anchorStateRef.current !== null`
   // check: the anchor stays live until a second click or Escape, so gating
   // on that directly would keep suppressing every *later*, unrelated reveal
   // too, for as long as an old anchor from a single, never-followed-up
@@ -270,12 +271,12 @@ export function Preview({
     return () => cancelAnimationFrame(frameId)
   }, [selectedMeasureRange, documents, highlightedDocuments])
 
-  // Re-applies the note drag-select highlight declaratively from
+  // Re-applies the note range-select highlight declaratively from
   // `selectedNoteCells` on every relevant render, rather than leaving it as
-  // a one-shot imperative toggle on mouseup — a re-render can swap in fresh
-  // SVG DOM (e.g. `documents`/`highlightedDocuments` changing after the
-  // Monaco selection this drag pushed), which would silently wipe any
-  // dataset attribute set only during the drag itself.
+  // a one-shot imperative toggle on the commit click — a re-render can swap
+  // in fresh SVG DOM (e.g. `documents`/`highlightedDocuments` changing after
+  // the Monaco selection this range-select pushed), which would silently
+  // wipe any dataset attribute set only during the selection itself.
   // biome-ignore lint/correctness/useExhaustiveDependencies: documents/highlightedDocuments aren't read in the body, but must stay listed so this re-runs after they swap in fresh SVG DOM (see comment above).
   useEffect(() => {
     const container = previewPagesRef.current
@@ -351,7 +352,7 @@ export function Preview({
           ref={previewPagesRef}
           onMouseDown={(e) =>
             handlePreviewClick(e, {
-              dragStateRef,
+              anchorStateRef,
               suppressNextRevealRef,
               previewPagesRef,
               onPendingSecondClickChange: setPendingSecondClick,

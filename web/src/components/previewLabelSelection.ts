@@ -60,8 +60,9 @@ export function noteCellsForPartLabels(
 }
 
 /** Every lyric syllable cell belonging to the given part-label hits —
- * the lyric-side mirror of `noteCellsForPartLabels`, so a part-label drag
- * selects the verse lyrics under its swept part rows alongside their notes. */
+ * the lyric-side mirror of `noteCellsForPartLabels`, so a part-label
+ * range-select selects the verse lyrics under its swept part rows alongside
+ * their notes. */
 export function lyricCellsForPartLabels(
   lyricSpans: LyricSpan[],
   hits: PartLabelHit[],

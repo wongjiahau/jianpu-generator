@@ -128,10 +128,10 @@ fn same_part_same_verse(
 /// `Note ↔ Lyric` arm already leans on), so this ranges `note_id` exactly
 /// like `same_part_same_verse`, plus a second, independent range over
 /// `verse` — verse acts as a row index here, the same role
-/// `sourcePartIndex` plays in `PartLabel ↔ PartLabel`. A plain drag's
-/// pixel marquee already behaves this way for a straight vertical sweep
+/// `sourcePartIndex` plays in `PartLabel ↔ PartLabel`. A click-and-click
+/// selection already behaves this way for a straight vertical sweep
 /// (verse rows render as stacked bands in increasing verse order under a
-/// part, so the marquee's rectangle naturally covers a contiguous verse
+/// part, so the anchor-to-current span naturally covers a contiguous verse
 /// range) — this rule matches that rather than diverging from it. See
 /// `PLAN-clickable-element-id-selection.md`'s "cross-verse (same part)"
 /// writeup and `lyric-range-select-crosses-verse.feature`.

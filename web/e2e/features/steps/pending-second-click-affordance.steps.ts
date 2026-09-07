@@ -2,7 +2,7 @@ import { expect } from '@playwright/test'
 import {
   clickThenStableClick,
   stableBoundingBox,
-} from '../../dragSelectHelpers'
+} from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -62,12 +62,12 @@ async function primeMeasureSpans(page: import('@playwright/test').Page) {
 // Every note renders two sibling `[data-tag="note"]` groups sharing the same
 // `data-part-index`/`data-note-id` — one wrapping the (pointer-events: none)
 // playback-cursor rect, the other wrapping the click-target rect (see
-// `applyPersistedNoteHighlights`'s doc comment in `previewDragHighlights.ts`)
+// `applyPersistedNoteHighlights`'s doc comment in `previewRangeHighlights.ts`)
 // — so this can't just select the group by id and grab its rect: `:has()`
 // picks out the click-target one specifically. `.first()` on top of that:
 // the preview can transiently render a plain and a highlighted SVG document
 // during the priming dance's async swap, so even the right group can briefly
-// resolve to two elements — same rationale as other drag-select specs' own
+// resolve to two elements — same rationale as other range-select specs' own
 // `.first()`.
 function noteClickTargetRect(
   page: import('@playwright/test').Page,
@@ -99,7 +99,7 @@ Given('the pending-second-click fixture is loaded', async ({ page }) => {
 // paints a third color on top of both the pending and committed ones this
 // spec cares about — so every step that leaves the mouse sitting over a note
 // moves it away afterward, to a point past the last measure that hits
-// nothing, keeping the assertions below reading the drag-selected fill
+// nothing, keeping the assertions below reading the range-selected fill
 // rather than the transient hover one.
 async function moveMouseOffPreview(page: import('@playwright/test').Page) {
   await page.mouse.move(0, 0)
@@ -180,9 +180,9 @@ Then(
 )
 
 Then(
-  'the drag-selected notes are highlighted in the committed-selection color',
+  'the range-selected notes are highlighted in the committed-selection color',
   async ({ page }) => {
-    const selected = page.locator('[data-tag="note"][data-note-drag-selected]')
+    const selected = page.locator('[data-tag="note"][data-note-range-selected]')
     await expect(selected.first()).toBeVisible()
     const fills = await selected
       .locator('rect[data-variant="note-click-target-rect"]')

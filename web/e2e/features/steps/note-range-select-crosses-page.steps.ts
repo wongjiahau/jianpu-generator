@@ -1,11 +1,11 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
  * Regression fixture for the click-and-click note-range gesture not
  * spanning a page boundary (see `usePreviewClickSelection.ts`'s
- * `dragStateRef`): the anchor from the first click is frozen as a raw
+ * `anchorStateRef`): the anchor from the first click is frozen as a raw
  * viewport-relative `(clientX, clientY)` point. Reaching a note on the next
  * page requires scrolling `.preview-pages` (it's the only element that
  * scrolls — see `preview.css`'s `.preview-pages { overflow: auto }`), and
@@ -40,7 +40,7 @@ function pages(page: import('@playwright/test').Page) {
 // group and the pointer-events-none playback-cursor group — see
 // `applyPersistedNoteHighlights`'s doc comment) sharing the same
 // `data-note-id`/`data-part-index`, so this narrows to the one that actually
-// carries the click-target rect and gets the `noteDragSelected` flag.
+// carries the click-target rect and gets the `noteRangeSelected` flag.
 function notesOnPage(page: import('@playwright/test').Page, pageIndex: number) {
   return pages(page)
     .nth(pageIndex)
@@ -119,16 +119,16 @@ When(
   },
 )
 
-Then('the first note on page 1 is still drag-selected', async ({ page }) => {
+Then('the first note on page 1 is still range-selected', async ({ page }) => {
   await expect(notesOnPage(page, 0).first()).toHaveAttribute(
-    'data-note-drag-selected',
+    'data-note-range-selected',
     '',
   )
 })
 
-Then('the third note on page 2 is drag-selected', async ({ page }) => {
+Then('the third note on page 2 is range-selected', async ({ page }) => {
   await expect(notesOnPage(page, 1).nth(2)).toHaveAttribute(
-    'data-note-drag-selected',
+    'data-note-range-selected',
     '',
   )
 })

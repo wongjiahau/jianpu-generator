@@ -5,7 +5,7 @@ use crate::error::IrrecoverableError;
 /// Source byte range of one sounded event (note/chord/percussion hit) or rest,
 /// keyed the same way the compiled SVG's `data-part-index`/`data-note-id`
 /// attributes are (see `renderer::new_renderer::render_playback_cursor_target`),
-/// so a click/drag hit-test on the SVG can be mapped straight back to source text.
+/// so a click hit-test on the SVG can be mapped straight back to source text.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteSourceSpan {
     /// Index into `MultiPartMeasure::parts` for this event's part, matching
@@ -123,7 +123,7 @@ pub struct NoteCell {
     pub note_id: usize,
 }
 
-/// One contiguous drag-selected byte range within a single part's single
+/// One contiguous selected byte range within a single part's single
 /// measure, ready to become a Monaco multicursor selection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NoteSelectionRun {
@@ -133,7 +133,7 @@ pub struct NoteSelectionRun {
     pub end_byte: usize,
 }
 
-/// Groups a drag-selected set of `(source_part_index, note_id)` cells into
+/// Groups a range-selected set of `(source_part_index, note_id)` cells into
 /// contiguous per-`(part, measure)` source byte runs, folding each selected
 /// cell's byte span into the running min/max for its `(part, measure)` key.
 /// A cell with no mappable `NoteSourceSpan` (`start`/`end` both `None`,

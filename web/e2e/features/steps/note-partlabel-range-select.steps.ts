@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickThenStableClick } from '../../dragSelectHelpers'
+import { clickThenStableClick } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -112,23 +112,23 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in note partlabel range select',
+  '{int} notes are range-selected in total, as seen in note partlabel range select',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  'no note in measure 2 is drag-selected, as seen in note partlabel range select',
+  'no note in measure 2 is range-selected, as seen in note partlabel range select',
   async ({ page }) => {
     // Neither part carries a `data-measure-index` on its note group — measure
     // 2's note is the third (index 2) in each part's render order (one note
     // per measure per part).
     for (const partIndex of [0, 1]) {
       await expect(noteInPart(page, partIndex).nth(2)).not.toHaveAttribute(
-        'data-note-drag-selected',
+        'data-note-range-selected',
         '',
       )
     }

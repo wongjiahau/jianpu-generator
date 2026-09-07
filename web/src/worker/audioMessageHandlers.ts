@@ -209,7 +209,7 @@ export function handleGenerateMeasureRangeAudio(
     msg.enabledTracks,
   )
   // "Play selection": narrow the clip Rust synthesizes down to exactly the
-  // drag-selected notes' elapsed-seconds span (sample-accurate trim/fade —
+  // range-selected notes' elapsed-seconds span (sample-accurate trim/fade —
   // see `crate::wav::TrimWindow`), derived from the full range's note
   // timings fetched above. `undefined` for a plain measure-range play
   // (every other caller), which always plays the range in full.

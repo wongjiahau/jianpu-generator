@@ -10,7 +10,7 @@ import { getLyricAtPoint, getNoteAtPoint } from './previewSelection'
 /**
  * Builds the `ClickableElementId` (`'measure'` variant) `resolve_selection_range`
  * expects from a `MeasureRange`. Exported alongside its four siblings below
- * so `previewClickHandler.ts` can build a `PreviewDragState`'s `anchorId` at
+ * so `previewClickHandler.ts` can build a `PreviewAnchorState`'s `anchorId` at
  * anchor time, not just here at resolve time.
  */
 export function measureClickableElementId(

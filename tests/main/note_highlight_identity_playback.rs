@@ -9,7 +9,7 @@ use jianpu_generator::{
 use std::collections::HashSet;
 
 /// Regression test: filtering playback down to a subset of parts (e.g. the
-/// web app's note drag-select playback, which mutes every part outside the
+/// web app's note range-select playback, which mutes every part outside the
 /// selection) must not renumber `source_part_index`. `apply_track_filter`
 /// physically drops the unselected parts from `score.measures[].parts`
 /// before `note_timings_seconds` walks it, so without correction the

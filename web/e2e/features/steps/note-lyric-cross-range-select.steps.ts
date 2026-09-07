@@ -1,25 +1,25 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Regression test for a marquee selection that starts on one cell type (note
+ * Regression test for a range-select that starts on one cell type (note
  * or lyric) and whose second click lands across the other type never
  * selecting that other type at all.
  *
- * `PreviewDragState` (see `previewDragState.ts`) is a discriminated union
+ * `PreviewAnchorState` (see `previewAnchorState.ts`) is a discriminated union
  * that commits to exactly one mode on the anchoring click — a click that
  * lands on a note anchors `'note'` mode, and a click that lands on a lyric
  * syllable anchors `'lyric'` mode. For the rest of the gesture,
  * `previewClickHandler.ts`'s resolution calls only that one mode's
- * highlighter — `applyNoteDragHighlights` for `'note'` mode,
- * `applyLyricDragHighlights` for `'lyric'` mode — never both.
+ * highlighter — `applyNoteRangeHighlights` for `'note'` mode,
+ * `applyLyricRangeHighlights` for `'lyric'` mode — never both.
  *
- * That's a real behavioral gap: a marquee that starts on a NOTE and whose
- * second click lands below it, so it visually covers the lyric syllables
- * underneath, does NOT select those syllables. The symmetric case — starting
- * on a LYRIC syllable with the second click above it over the notes — does
- * not select those notes either.
+ * That's a real behavioral gap: a range-select that starts on a NOTE and
+ * whose second click lands below it, so it visually covers the lyric
+ * syllables underneath, does NOT select those syllables. The symmetric
+ * case — starting on a LYRIC syllable with the second click above it over
+ * the notes — does not select those notes either.
  *
  * Contrast with `'measure'` mode (a gesture starting on empty space or a
  * bare bar line), which unions both: its resolution calls
@@ -29,12 +29,12 @@ import { Given, Then, When } from './fixtures'
  * Self-contained source (not a demo file) with a generous "max measures per
  * system" and four single-beat notes with one syllable each, so all four
  * note/lyric pairs render side by side in one row and stay within the
- * viewport during the drag — same fixture shape as
- * `lyric-drag-select-highlight.feature`.
+ * viewport during the range-select — same fixture shape as
+ * `lyric-range-select-highlight.feature`.
  */
-const dragTestSource = [
+const rangeTestSource = [
   '# metadata',
-  'title = "note lyric cross drag test"',
+  'title = "note lyric cross range-select test"',
   'max_measures_per_system = 48',
   '',
   '# parts',
@@ -57,22 +57,22 @@ function lyricTexts(page: import('@playwright/test').Page) {
 }
 
 Given(
-  'the note-lyric cross drag test fixture is loaded and both rows have rendered',
+  'the note-lyric cross range-select test fixture is loaded and both rows have rendered',
   async ({ page }) => {
     await page.addInitScript((source) => {
       localStorage.setItem(
         'jianpu:files:v1',
         JSON.stringify({
-          active: 'note-lyric-cross-drag-test.jianpu',
-          userFiles: { 'note-lyric-cross-drag-test.jianpu': source },
+          active: 'note-lyric-cross-range-test.jianpu',
+          userFiles: { 'note-lyric-cross-range-test.jianpu': source },
           bin: {},
           fileIds: {
-            'note-lyric-cross-drag-test.jianpu':
-              'note-lyric-cross-drag-test-id-001',
+            'note-lyric-cross-range-test.jianpu':
+              'note-lyric-cross-range-test-id-001',
           },
         }),
       )
-    }, dragTestSource)
+    }, rangeTestSource)
     await page.goto('/')
 
     await page.waitForSelector('[data-testid="play-measure-button"]', {
@@ -85,13 +85,13 @@ Given(
     await expect(noteRects(page)).toHaveCount(4, { timeout: 10_000 })
     await expect(lyricTexts(page)).toHaveCount(4, { timeout: 10_000 })
     // Let layout fully settle before reading any bounding boxes below — this
-    // drag crosses the note/lyric row boundary, so it's sensitive to exactly
-    // where that boundary lands, unlike a same-row drag. A fixed timeout
-    // alone (this file's original 200ms) is not reliable here: web-font
-    // metrics finishing load can reflow the note/lyric rows' vertical
-    // position well after the note/lyric *counts* above are already
-    // satisfied, shifting a row by tens of pixels and making the drag miss
-    // its intended note/lyric entirely — waiting on `document.fonts.ready`
+    // range-select crosses the note/lyric row boundary, so it's sensitive to
+    // exactly where that boundary lands, unlike a same-row range-select. A
+    // fixed timeout alone (this file's original 200ms) is not reliable here:
+    // web-font metrics finishing load can reflow the note/lyric rows'
+    // vertical position well after the note/lyric *counts* above are already
+    // satisfied, shifting a row by tens of pixels and making the range-select
+    // miss its intended note/lyric entirely — waiting on `document.fonts.ready`
     // first closes that window; the short timeout after it is now just a
     // final safety margin for any post-font reflow (e.g. layout-affecting
     // React state settling), same fixture-settle pattern as
@@ -102,11 +102,11 @@ Given(
 )
 
 When(
-  "I drag a marquee from note {int}'s click target down and across to lyric syllable {int}",
+  "I click-and-click select from note {int}'s click target down and across to lyric syllable {int}",
   async ({ page }, noteIndex: number, lyricIndex: number) => {
-    // Anchor the drag on note 0's own click-target rect, and drag down/across
-    // to lyric syllable 2 ("mi") — a marquee that visually spans notes 0-2 and
-    // their lyric row underneath.
+    // Anchor the range-select on note 0's own click-target rect, and click
+    // down/across to lyric syllable 2 ("mi") — a range that visually spans
+    // notes 0-2 and their lyric row underneath.
     const noteBox0 = await stableBoundingBox(noteRects(page).nth(noteIndex))
     const lyricBox2 = await stableBoundingBox(lyricTexts(page).nth(lyricIndex))
     if (!noteBox0 || !lyricBox2) {
@@ -125,11 +125,11 @@ When(
 )
 
 When(
-  "I drag a marquee from lyric syllable {int} up and across to note {int}'s click target",
+  "I click-and-click select from lyric syllable {int} up and across to note {int}'s click target",
   async ({ page }, lyricIndex: number, noteIndex: number) => {
-    // Anchor the drag on lyric syllable 0 ("do"), and drag up/across to note
-    // 2's click-target rect — the symmetric case, a marquee that visually
-    // spans the lyric row and notes 0-2 above it.
+    // Anchor the range-select on lyric syllable 0 ("do"), and click up/across
+    // to note 2's click-target rect — the symmetric case, a range that
+    // visually spans the lyric row and notes 0-2 above it.
     const lyricBox0 = await stableBoundingBox(lyricTexts(page).nth(lyricIndex))
     const noteBox2 = await stableBoundingBox(noteRects(page).nth(noteIndex))
     if (!lyricBox0 || !noteBox2) {
@@ -148,25 +148,25 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected by the cross-row marquee',
+  '{int} notes are range-selected by the cross-row range',
   async ({ page }, count: number) => {
-    // The drag started on a note, so note mode is armed and notes 0-2 get
-    // selected as expected. (Symmetric case: notes selected via the lyric-mode
-    // cross-drag bug being asserted against.)
+    // The range-select started on a note, so note mode is armed and notes
+    // 0-2 get selected as expected. (Symmetric case: notes selected via the
+    // lyric-mode cross-row bug being asserted against.)
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} lyric syllables are drag-selected by the cross-row marquee',
+  '{int} lyric syllables are range-selected by the cross-row range',
   async ({ page }, count: number) => {
-    // Bug: the marquee also visually covers the other row's cells, but since
-    // the drag is locked into a single mode, the other cell type never gets
-    // marked as drag-selected.
+    // Bug: the range also visually covers the other row's cells, but since
+    // the range-select is locked into a single mode, the other cell type
+    // never gets marked as range-selected.
     await expect(
-      page.locator('[data-tag="lyric"][data-lyric-drag-selected]'),
+      page.locator('[data-tag="lyric"][data-lyric-range-selected]'),
     ).toHaveCount(count)
   },
 )

@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { fileSwitcherTrigger, openFileActions } from '../../fileSwitcherHelpers'
 import { encodeShareHashOnPage, gotoShareUrl } from '../../shareUrlHelper'
 import { Given, Then, When } from './fixtures'
@@ -228,7 +228,7 @@ When('I tap the first note, as seen in share', async ({ page }) => {
 
 Then('the tapped note is highlighted, as seen in share', async ({ page }) => {
   await expect(
-    page.locator('[data-tag="note"][data-note-drag-selected]'),
+    page.locator('[data-tag="note"][data-note-range-selected]'),
   ).toHaveCount(1, { timeout: 5_000 })
 })
 

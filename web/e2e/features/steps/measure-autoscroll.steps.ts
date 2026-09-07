@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 

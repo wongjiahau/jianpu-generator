@@ -5,7 +5,7 @@ import type { EditorHandle, LyricSpan } from '../types'
 import { ensureWasmInit } from '../wasmInit'
 import { useByteRangeSelectionCore } from './useByteRangeSelectionCore'
 
-/** One contiguous drag-selected byte range within a single verse line of a
+/** One contiguous range-selected byte range within a single verse line of a
  * single part's single measure, as grouped by the wasm export
  * `group_lyric_selection` (`lyric_spans::group_selected_lyrics_into_contiguous_runs`
  * in Rust). */
@@ -55,10 +55,10 @@ export function lyricRunByteRange(run: LyricSelectionRun) {
 }
 
 /**
- * Turns a click/drag-select over lyric syllables (a set of `(source_part_index,
- * note_id, verse)` cells hit-tested off the SVG, see `Preview.tsx`) into a
- * Monaco multicursor selection over the source text — one disjoint range per
- * `(part, verse, measure)` the drag touched.
+ * Turns a click-and-click range-select over lyric syllables (a set of
+ * `(source_part_index, note_id, verse)` cells hit-tested off the SVG, see
+ * `Preview.tsx`) into a Monaco multicursor selection over the source text —
+ * one disjoint range per `(part, verse, measure)` the selection touched.
  *
  * Deliberately independent of `useNoteSelection`: a lyric selection never
  * drives note highlighting and vice versa, so this hook keeps its own call to

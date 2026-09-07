@@ -1,13 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
  * Companion to `play-measure-audio.spec.ts` and
- * `note-drag-select-highlight.spec.ts`: the play-measure button (see
- * `PlayMeasureButton.tsx`) is repurposed while a note drag-select is active —
+ * `note-range-select-highlight.spec.ts`: the play-measure button (see
+ * `PlayMeasureButton.tsx`) is repurposed while a note range-select is active —
  * it switches to a "Selection" label and, when clicked, plays only the
- * drag-selected notes (`useMeasureAudioPlayback.playNoteSelection`) instead
+ * range-selected notes (`useMeasureAudioPlayback.playNoteSelection`) instead
  * of the measure(s) under the cursor. This exercises the real playback path
  * end to end, not just the label swap.
  *
@@ -15,9 +15,9 @@ import { Given, Then, When } from './fixtures'
  * system" and four single-beat notes in one measure, so all four note
  * click-targets render side by side in one row within the viewport.
  */
-const dragTestSource = [
+const rangeTestSource = [
   '# metadata',
-  'title = "note drag test"',
+  'title = "note range-select test"',
   'max_measures_per_system = 48',
   '',
   '# parts',
@@ -28,7 +28,7 @@ const dragTestSource = [
 ].join('\n')
 
 Given(
-  'a single-measure four-note drag-test score is loaded with the disk cache workaround',
+  'a single-measure four-note range-select test score is loaded with the disk cache workaround',
   async ({ page, focusEditor }) => {
     test.setTimeout(75_000)
 
@@ -36,13 +36,13 @@ Given(
       localStorage.setItem(
         'jianpu:files:v1',
         JSON.stringify({
-          active: 'note-drag-test.jianpu',
-          userFiles: { 'note-drag-test.jianpu': source },
+          active: 'note-range-test.jianpu',
+          userFiles: { 'note-range-test.jianpu': source },
           bin: {},
-          fileIds: { 'note-drag-test.jianpu': 'note-drag-test-id-001' },
+          fileIds: { 'note-range-test.jianpu': 'note-range-test-id-001' },
         }),
       )
-    }, dragTestSource)
+    }, rangeTestSource)
 
     await page.goto('/')
 
@@ -73,16 +73,16 @@ Then(
 Then(
   'the play-measure button label reflects the measure under the cursor',
   async ({ page }) => {
-    // Before any note drag-select, the button reflects the measure under the
-    // cursor, not a selection.
+    // Before any note range-select, the button reflects the measure under
+    // the cursor, not a selection.
     const playBtn = page.locator('button.play-measure-btn')
     await expect(playBtn).toHaveText(/Measure/, { timeout: 5_000 })
   },
 )
 
-When('I drag-select the first three notes in the measure', async ({ page }) => {
+When('I click-and-click select the first three notes in the measure', async ({ page }) => {
   const noteRects = noteClickTargets(page)
-  // Drag a marquee across the first three notes.
+  // Click-and-click sweep a marquee across the first three notes.
   const box0 = await stableBoundingBox(noteRects.nth(0))
   const box2 = await stableBoundingBox(noteRects.nth(2))
   if (!box0 || !box2) {

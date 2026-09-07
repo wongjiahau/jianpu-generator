@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -83,9 +83,9 @@ Given('the two-part click-test fixture is loaded', async ({ page }) => {
 Given(
   'the notes-with-lyrics click-test fixture is loaded',
   async ({ page }) => {
-    // Regression test: 'part-label' drag-selection unions in the lyric row
-    // underneath the swept part(s) — a real feature for drags (see
-    // `part-label-drag-selects-lyrics.spec.ts`) — but a plain click (zero
+    // Regression test: 'part-label' range-selection unions in the lyric row
+    // underneath the swept part(s) — a real feature for click-and-click (see
+    // `part-label-range-select-lyrics.spec.ts`) — but a plain click (zero
     // pointer movement) used to go through that exact same code path and
     // incorrectly pick up the lyric row too.
     const lyricSource = [
@@ -187,7 +187,7 @@ When('I plain-click the Melody part label', async ({ page }) => {
 })
 
 When(
-  'I drag from the Melody part label to the Harmony part label',
+  'I click the Melody part label then click the Harmony part label',
   async ({ page }) => {
     const melody = melodyLabel(page)
     const harmony = harmonyLabel(page)
@@ -213,8 +213,8 @@ When(
 When(
   'I wait 700ms for the multicursor debounce and worker round-trip',
   async ({ page }) => {
-    // Dragging a note-range selection pushes a Monaco multicursor selection,
-    // whose cursor-change listener debounces (300 ms) into a worker
+    // Click-and-click range-selecting notes pushes a Monaco multicursor
+    // selection, whose cursor-change listener debounces (300 ms) into a worker
     // round-trip that swaps the plain SVG documents for highlighted ones —
     // the highlight (both the notes' and the part labels') must survive that
     // swap.
@@ -222,23 +222,26 @@ When(
   },
 )
 
-When('I hover the Melody part label without dragging', async ({ page }) => {
-  const melody = melodyLabel(page)
-  const melodyBox = await stableBoundingBox(melody)
-  if (!melodyBox) {
-    throw new Error('Could not get bounding box for the Melody label.')
-  }
-  // Hover the Melody label (no drag yet) and record the fill its `:hover`
-  // rule paints — this is the "hovered" look the dragged-from label must
-  // keep showing for the rest of the gesture.
-  await page.mouse.move(
-    melodyBox.x + melodyBox.width / 2,
-    melodyBox.y + melodyBox.height / 2,
-  )
-})
+When(
+  'I hover the Melody part label without clicking it',
+  async ({ page }) => {
+    const melody = melodyLabel(page)
+    const melodyBox = await stableBoundingBox(melody)
+    if (!melodyBox) {
+      throw new Error('Could not get bounding box for the Melody label.')
+    }
+    // Hover the Melody label (no click yet) and record the fill its
+    // `:hover` rule paints — this is the "hovered" look the anchor label
+    // must keep showing for the rest of the gesture.
+    await page.mouse.move(
+      melodyBox.x + melodyBox.width / 2,
+      melodyBox.y + melodyBox.height / 2,
+    )
+  },
+)
 
 When(
-  'I start dragging from the Melody label and move the pointer onto the Harmony label without releasing',
+  'I click the Melody label and move the pointer onto the Harmony label without clicking it',
   async ({ page }) => {
     const melody = melodyLabel(page)
     const harmony = harmonyLabel(page)
@@ -264,30 +267,30 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected in total',
+  '{int} notes are range-selected in total',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} drag-selected notes belong to part index {int}',
+  '{int} range-selected notes belong to part index {int}',
   async ({ page }, count: number, partIndex: number) => {
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-part-index="${partIndex}"]`,
+        `[data-tag="note"][data-note-range-selected][data-part-index="${partIndex}"]`,
       ),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} lyrics are drag-selected in total',
+  '{int} lyrics are range-selected in total',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="lyric"][data-lyric-drag-selected]'),
+      page.locator('[data-tag="lyric"][data-lyric-range-selected]'),
     ).toHaveCount(count)
   },
 )
@@ -300,46 +303,46 @@ Then('the play button shows {string}', async ({ page }, text: string) => {
 })
 
 Then(
-  "the Melody label's click-target rect is marked drag-active",
+  "the Melody label's click-target rect is marked range-active",
   async ({ page }) => {
     await expect(
       melodyLabel(page).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "the Melody label's click-target rect is not marked drag-active",
+  "the Melody label's click-target rect is not marked range-active",
   async ({ page }) => {
     await expect(
       melodyLabel(page).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).not.toHaveAttribute('data-part-label-drag-active', '')
+    ).not.toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "the Harmony label's click-target rect is marked drag-active",
+  "the Harmony label's click-target rect is marked range-active",
   async ({ page }) => {
     await expect(
       harmonyLabel(page).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "the Harmony label's click-target rect is not marked drag-active",
+  "the Harmony label's click-target rect is not marked range-active",
   async ({ page }) => {
     await expect(
       harmonyLabel(page).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).not.toHaveAttribute('data-part-label-drag-active', '')
+    ).not.toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
@@ -382,14 +385,14 @@ Then(
 )
 
 Then(
-  "the Melody label's click-target rect keeps the same hover fill while the drag is in progress",
+  "the Melody label's click-target rect keeps the same hover fill while the second click is pending",
   async ({ page }) => {
     const melodyRect = melodyLabel(page).locator(
       'rect[data-variant="part-label-click-target-rect"]',
     )
-    const fillWhileDraggingAway = await melodyRect.evaluate(
+    const fillWhilePending = await melodyRect.evaluate(
       (el) => getComputedStyle(el).fill,
     )
-    expect(fillWhileDraggingAway).toBe(hoveredFill)
+    expect(fillWhilePending).toBe(hoveredFill)
   },
 )

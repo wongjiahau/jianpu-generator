@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -110,7 +110,7 @@ When(
 )
 
 Then(
-  "verses {int} and {int}'s syllables with note id {int} through {int} are drag-selected",
+  "verses {int} and {int}'s syllables with note id {int} through {int} are range-selected",
   async (
     { page },
     verseA: number,
@@ -119,7 +119,7 @@ Then(
     noteIdEnd: number,
   ) => {
     const selectedLyrics = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected]',
+      '[data-tag="lyric"][data-lyric-range-selected]',
     )
     const expectedCount = (verseB - verseA + 1) * (noteIdEnd - noteIdStart + 1)
     await expect(selectedLyrics).toHaveCount(expectedCount)
@@ -127,7 +127,7 @@ Then(
       for (let noteId = noteIdStart; noteId <= noteIdEnd; noteId++) {
         await expect(
           page.locator(
-            `[data-tag="lyric"][data-lyric-drag-selected][data-verse="${verse}"][data-note-id="${noteId}"]`,
+            `[data-tag="lyric"][data-lyric-range-selected][data-verse="${verse}"][data-note-id="${noteId}"]`,
           ),
         ).toHaveCount(1)
       }
@@ -136,22 +136,22 @@ Then(
 )
 
 Then(
-  "verse {int}'s syllables are not drag-selected",
+  "verse {int}'s syllables are not range-selected",
   async ({ page }, verse: number) => {
     await expect(
       page.locator(
-        `[data-tag="lyric"][data-lyric-drag-selected][data-verse="${verse}"]`,
+        `[data-tag="lyric"][data-lyric-range-selected][data-verse="${verse}"]`,
       ),
     ).toHaveCount(0)
   },
 )
 
 Then(
-  'no syllable with note id {int} is drag-selected',
+  'no syllable with note id {int} is range-selected',
   async ({ page }, noteId: number) => {
     await expect(
       page.locator(
-        `[data-tag="lyric"][data-lyric-drag-selected][data-note-id="${noteId}"]`,
+        `[data-tag="lyric"][data-lyric-range-selected][data-note-id="${noteId}"]`,
       ),
     ).toHaveCount(0)
   },

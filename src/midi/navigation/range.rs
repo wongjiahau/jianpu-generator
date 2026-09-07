@@ -32,7 +32,7 @@ pub fn earliest_playback_position(
 /// written index alone always finds the *first* occurrence — the second
 /// `B` (or a `B(-x)`-then-`B` swap) is unreachable that way. Since the
 /// caller already knows which entry it means (e.g. the sequence-jump
-/// toolbar's clicked/dragged button index), passing that index directly
+/// toolbar's clicked button index), passing that index directly
 /// picks the exact occurrence, omissions included.
 ///
 /// Callers must first check `score.sequence` is `Some` and that

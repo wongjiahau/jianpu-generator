@@ -1,7 +1,7 @@
 import type { RefObject } from 'react'
 import type { LyricSpan, NoteSpan } from '../types'
 import type { ClickableElementId } from './clickableElementId'
-import type { PreviewDragState } from './previewDragState'
+import type { PreviewAnchorState } from './previewAnchorState'
 import type { LyricCell, NoteCell } from './previewSelection'
 
 export {
@@ -28,7 +28,7 @@ import {
  * `usePreviewClickSelection`'s Escape handler — everything a click-and-click
  * gesture needs to resolve, highlight, and commit a selection. */
 export interface HandlePreviewClickArgs {
-  dragStateRef: RefObject<PreviewDragState>
+  anchorStateRef: RefObject<PreviewAnchorState>
   /** Armed by a gesture's anchoring (first) click — see
    * `previewClickHandler.ts`'s `anchorAndCommit` — and consumed once by
    * `Preview.tsx`'s scroll-to-selection effect, so that self-commit's own
@@ -44,7 +44,7 @@ export interface HandlePreviewClickArgs {
   suppressNextRevealRef: RefObject<boolean>
   previewPagesRef: RefObject<HTMLDivElement | null>
   /** Notified `true` the instant a click-and-click gesture anchors (a first
-   * click sets `dragStateRef`) and `false` the instant it resolves — a
+   * click sets `anchorStateRef`) and `false` the instant it resolves — a
    * second click's commit or a cancellation (empty-space click, Escape, a
    * section-label jump interrupting it; see `cancelAnchor`). Drives both the
    * "click again to select a range" banner and the pending-selection
@@ -91,7 +91,7 @@ export interface ResolvedSelection {
  *
  * Applies the resulting highlight to the DOM as a side effect and returns
  * the cells it resolved, but never fires a callback or touches
- * `dragStateRef` — callers own that.
+ * `anchorStateRef` — callers own that.
  *
  * Dispatches to one per-mode resolver — `resolveMeasureSelection`/
  * `resolveBarNumberSystemSelection`/`resolveNoteSelection`/
@@ -101,7 +101,7 @@ export interface ResolvedSelection {
  * split out once each mode's own branch grew too long to keep inline here.
  */
 export function resolveSelection(
-  dragState: NonNullable<PreviewDragState>,
+  anchorState: NonNullable<PreviewAnchorState>,
   point: { x: number; y: number } | undefined,
   currentIdHint: ClickableElementId | undefined,
   { previewPagesRef, noteSpans, lyricSpans }: HandlePreviewClickArgs,
@@ -114,21 +114,21 @@ export function resolveSelection(
     lyricSpans,
   }
 
-  switch (dragState.mode) {
+  switch (anchorState.mode) {
     case 'measure':
-      return resolveMeasureSelection(dragState, args)
+      return resolveMeasureSelection(anchorState, args)
     case 'bar-number-system':
-      return resolveBarNumberSystemSelection(dragState, args)
+      return resolveBarNumberSystemSelection(anchorState, args)
     case 'note':
-      return resolveNoteSelection(dragState, args)
+      return resolveNoteSelection(anchorState, args)
     case 'lyric':
-      return resolveLyricSelection(dragState, args)
+      return resolveLyricSelection(anchorState, args)
     case 'part-label':
-      return resolvePartLabelSelection(dragState, args)
+      return resolvePartLabelSelection(anchorState, args)
     case 'part-label-system':
-      return resolvePartLabelSystemSelection(dragState, args)
+      return resolvePartLabelSystemSelection(anchorState, args)
     case 'lyric-label':
-      return resolveLyricLabelSelection(dragState, args)
+      return resolveLyricLabelSelection(anchorState, args)
   }
 }
 

@@ -11,7 +11,7 @@ import type { TransparentRectRoleOut } from './jianpuWasm'
  * Single source of truth for every place that used to re-type these strings
  * independently: `PreviewSvgRenderer.tsx`'s `transparentRectRoleToDataVariant`
  * switch and `playbackCursorRect` case, `usePlaybackCursor.ts`,
- * `previewDragHighlights.ts`, and `previewLabelDragHighlights.ts`'s
+ * `previewRangeHighlights.ts`, and `previewLabelRangeHighlights.ts`'s
  * `querySelector`/`closest` selectors — mirroring how `data-tag` is already
  * dispatched off a typed value in `PreviewSvgRenderer.tsx`'s
  * `groupAttrsForTag` rather than re-typed per consumer. `preview.css` and

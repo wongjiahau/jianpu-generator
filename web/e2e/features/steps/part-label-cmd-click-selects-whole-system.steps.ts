@@ -1,10 +1,10 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Same fixture as `part-label-drag-system-boundary.spec.ts`:
+ * Same fixture as `part-label-range-select-system-boundary.spec.ts`:
  * `max_measures_per_system = 1` forces each measure onto its own system, so
  * Melody's and Harmony's labels repeat twice, stacked vertically:
  *
@@ -99,7 +99,7 @@ When("I Ctrl-click system 0's Melody part label", async ({ page }) => {
 })
 
 When(
-  "I Ctrl-drag from system 0's Melody label to system 1's Melody label",
+  "I Ctrl-click system 0's Melody label then system 1's Melody label",
   async ({ page }) => {
     const system0Melody = partLabel(page, 0, 0)
     const system1Melody = partLabel(page, 0, 1)
@@ -127,65 +127,65 @@ When(
 )
 
 Then(
-  '{int} drag-selected notes belong to part index {int}, as seen in part label cmd click selects whole system',
+  '{int} range-selected notes belong to part index {int}, as seen in part label cmd click selects whole system',
   async ({ page }, count: number, partIndex: number) => {
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-part-index="${partIndex}"]`,
+        `[data-tag="note"][data-note-range-selected][data-part-index="${partIndex}"]`,
       ),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in part label cmd click selects whole system',
+  '{int} notes are range-selected in total, as seen in part label cmd click selects whole system',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  "system 0's Melody label's click-target rect is marked drag-active",
+  "system 0's Melody label's click-target rect is marked range-active",
   async ({ page }) => {
     await expect(
       partLabel(page, 0, 0).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "system 0's Harmony label's click-target rect is marked drag-active",
+  "system 0's Harmony label's click-target rect is marked range-active",
   async ({ page }) => {
     await expect(
       partLabel(page, 1, 0).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "system 1's Melody label's click-target rect is marked drag-active",
+  "system 1's Melody label's click-target rect is marked range-active",
   async ({ page }) => {
     await expect(
       partLabel(page, 0, 1).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "system 1's Harmony label's click-target rect is marked drag-active",
+  "system 1's Harmony label's click-target rect is marked range-active",
   async ({ page }) => {
     await expect(
       partLabel(page, 1, 1).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )

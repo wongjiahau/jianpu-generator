@@ -1,9 +1,9 @@
 import { expect, test } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Regression test: playing a drag-selected part's notes never moved the
+ * Regression test: playing a range-selected part's notes never moved the
  * playback cursor onto those notes whenever an *earlier-declared* part was
  * hidden.
  *
@@ -29,7 +29,7 @@ import { Given, Then, When } from './fixtures'
  *
  * Fixture: three parts, Melody / Harmony / Bass. Harmony (the middle part)
  * is hidden, which compacts Bass from written part-index 2 down to rendered
- * part-index 1. Only Bass's two notes are drag-selected and played, so the
+ * part-index 1. Only Bass's two notes are range-selected and played, so the
  * cursor highlight can only appear via the rendered (compacted) index —
  * never the stale, nonexistent written index 2.
  */
@@ -100,15 +100,15 @@ Then('{int} notes render with Harmony hidden', async ({ page }, count) => {
   // Melody (2) + Bass (2), Harmony hidden = 4 rendered notes.
   await expect(noteRects).toHaveCount(count, { timeout: 10_000 })
   // Give the debounced listNoteSpans worker round-trip time to catch up
-  // with the new enabledTracks before dragging.
+  // with the new enabledTracks before selecting.
   await page.waitForTimeout(2000)
 })
 
 When(
-  "I Cmd\\/Ctrl-drag to select Bass's two notes at the compacted part-index",
+  "I Cmd\\/Ctrl-click-and-click to select Bass's two notes at the compacted part-index",
   async ({ page }) => {
-    // Drag-select only Bass's two notes (rendered/compacted part-index 1),
-    // never touching Melody's row above.
+    // Click-and-click select only Bass's two notes (rendered/compacted
+    // part-index 1), never touching Melody's row above.
     const bassNotes = page.locator(
       '[data-tag="note"][data-part-index="1"] rect[data-variant="note-click-target-rect"]',
     )
@@ -135,21 +135,21 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected at part-index 1',
+  '{int} notes are range-selected at part-index 1',
   async ({ page }, count: number) => {
     await expect(
       page.locator(
-        '[data-tag="note"][data-note-drag-selected][data-part-index="1"]',
+        '[data-tag="note"][data-note-range-selected][data-part-index="1"]',
       ),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in playback cursor selection with hidden part',
+  '{int} notes are range-selected in total, as seen in playback cursor selection with hidden part',
   async ({ page }, count) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )

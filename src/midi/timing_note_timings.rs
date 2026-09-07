@@ -26,7 +26,7 @@ use crate::compiler::compile;
 ///
 /// Distinct from `enabled_tracks`/[`filter_expanded_tracks`]: that mutes a
 /// possibly-narrower subset of these *visible* parts for one clip's audio
-/// only (e.g. drag-select playback) without removing anything from the
+/// only (e.g. range-select playback) without removing anything from the
 /// render, so it must never influence block/note_id structure — it's applied
 /// afterward, to the expanded timeline, on top of whatever this function
 /// already resolved.
@@ -122,7 +122,7 @@ fn new_part_timing_cursors(score: &Score) -> Vec<PartTimingCursor> {
 ///
 /// `enabled_tracks` separately mutes playback down to a further, possibly
 /// narrower subset of the *visible* parts for this one clip only (e.g. the
-/// web app's note drag-select playback), without disturbing
+/// web app's note range-select playback), without disturbing
 /// `source_part_index` or block structure: it's applied to the *expanded*
 /// timeline via [`filter_expanded_tracks`], strictly after the
 /// visibility-filtered `note_id_lookup`/`written_blocks` are built — so a

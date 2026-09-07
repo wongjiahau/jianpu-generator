@@ -2,8 +2,9 @@ import { expect } from '@playwright/test'
 import { Then, When } from './fixtures'
 
 // `measure-click-selects-notes.steps.ts` owns the fixture ("the measure-click
-// test fixture is loaded") and the drag gesture ("I drag corner-to-corner
-// from measure 0 to measure 2") this feature's Background reuses — step
+// test fixture is loaded") and the click-and-click gesture ("I click
+// corner-to-corner from measure 0 to measure 2") this feature's Background
+// reuses — step
 // definitions are matched globally across files by playwright-bdd, so they
 // don't need to be redeclared here.
 
@@ -55,8 +56,9 @@ When(
   async ({ page }, text: string) => {
     // Deliberately does NOT call `focusEditor()` here: that helper clicks
     // into the Monaco view-lines, which would collapse the multicursor to a
-    // single caret at the click point before this step even runs. The drag
-    // that built the multicursor already focused the editor itself (see
+    // single caret at the click point before this step even runs. The
+    // click-and-click gesture that built the multicursor already focused
+    // the editor itself (see
     // `editorImperativeHandle.ts`'s `setSelections`, which ends with
     // `ed.focus()`), so typing can go straight to the keyboard.
     await page.keyboard.type(text)

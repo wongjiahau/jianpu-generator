@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -15,8 +15,8 @@ import { Given, Then, When } from './fixtures'
  * ID-resolved for a same-system pair (guarded on matching
  * `measure_index_start`/`measure_index_end`); a cross-system pair falls
  * through to the pixel-marquee fallback (`lyricLabelsInMarquee`), which
- * restricts to the *anchor's own system* — so today's plain drag only
- * selects the first system's syllables, dropping the second system's
+ * restricts to the *anchor's own system* — so today's plain click-and-click
+ * only selects the first system's syllables, dropping the second system's
  * entirely.
  *
  * `break` forces measure 1 onto its own system regardless of
@@ -112,13 +112,13 @@ When(
 )
 
 Then(
-  "verse 0's 4 syllables across both systems are all drag-selected",
+  "verse 0's 4 syllables across both systems are all range-selected",
   async ({ page }) => {
     // Verse 0 sounds 4 syllables total across both systems ("do re" + "la
     // ti") — the range should cover every one of them, not just the
     // anchor's own system.
     const highlightedLyrics = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected][data-verse="0"]',
+      '[data-tag="lyric"][data-lyric-range-selected][data-verse="0"]',
     )
     await expect(highlightedLyrics).toHaveCount(4)
   },

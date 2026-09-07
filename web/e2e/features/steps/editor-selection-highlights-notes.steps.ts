@@ -3,9 +3,9 @@ import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Selecting text directly in the Monaco editor (not dragging in the SVG
- * preview) highlights the corresponding notes in the preview — the reverse
- * direction of the note drag-select pathway. See
+ * Selecting text directly in the Monaco editor (not click-and-click
+ * selecting in the SVG preview) highlights the corresponding notes in the
+ * preview — the reverse direction of the note range-select pathway. See
  * `useNoteSelection.ts`'s `handleEditorSelectionChange`, wired off
  * `Editor.tsx`'s `onSelectionOffsetChange` in `AppWorkspace.tsx`.
  *
@@ -86,10 +86,10 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected, as seen in editor selection highlights notes',
+  '{int} notes are range-selected, as seen in editor selection highlights notes',
   async ({ page }, count: number) => {
     const highlightedNotes = page.locator(
-      '[data-tag="note"][data-note-drag-selected]',
+      '[data-tag="note"][data-note-range-selected]',
     )
     await expect(highlightedNotes).toHaveCount(count)
   },
@@ -100,7 +100,7 @@ Then(
   async ({ page }) => {
     // The repurposed play-measure button switching to "▶ Selection" confirms
     // the editor selection was recognized as a real note range, same as a
-    // preview-side drag.
+    // preview-side click-and-click selection.
     await expect(page.locator('button.play-measure-btn')).toHaveText(
       /Selection/,
       { timeout: 3_000 },

@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -140,22 +140,22 @@ When(
   },
 )
 
-Then('{int} notes are drag-selected', async ({ page }, count: number) => {
+Then('{int} notes are range-selected', async ({ page }, count: number) => {
   // Measure 1 ("5 6") has exactly 2 notes; measure 0 ("1 2 3 4") has 4 — a
   // fall-back to measure 0 would show 4 notes selected instead.
   const highlightedNotes = page.locator(
-    '[data-tag="note"][data-note-drag-selected]',
+    '[data-tag="note"][data-note-range-selected]',
   )
   await expect(highlightedNotes).toHaveCount(count)
 })
 
-Then('note ids {int} and {int} are drag-selected', async ({ page }, a, b) => {
+Then('note ids {int} and {int} are range-selected', async ({ page }, a, b) => {
   // Measure 1 ("5 6") has exactly 2 notes; measure 2 ("7 1'") also has 2, but
   // with different note ids — assert on those ids to distinguish the two.
   for (const noteId of [a, b]) {
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-note-id="${noteId}"]`,
+        `[data-tag="note"][data-note-range-selected][data-note-id="${noteId}"]`,
       ),
     ).toHaveCount(1)
   }

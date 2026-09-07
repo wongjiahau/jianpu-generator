@@ -1,16 +1,17 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * A plain click (or drag) in the SVG preview resolves to note/chord/syllable
- * granularity — clicking a note selects just that note. Selecting every
- * note/rest cell in a whole measure at once now requires holding Cmd/Ctrl
- * (see `Preview.tsx`'s `onMouseDown`, which gates `'measure'` mode behind
- * `e.metaKey || e.ctrlKey`). Both paths reuse the same note drag-select
- * highlight (`[data-note-drag-selected]`) and Monaco multicursor pathway
- * (`onNoteRangeSelect`) that dragging a marquee over individual notes uses.
+ * A plain click (or click-and-click) in the SVG preview resolves to
+ * note/chord/syllable granularity — clicking a note selects just that note.
+ * Selecting every note/rest cell in a whole measure at once now requires
+ * holding Cmd/Ctrl (see `Preview.tsx`'s `onMouseDown`, which gates
+ * `'measure'` mode behind `e.metaKey || e.ctrlKey`). Both paths reuse the
+ * same note range-select highlight (`[data-note-range-selected]`) and Monaco
+ * multicursor pathway (`onNoteRangeSelect`) that click-and-click sweeping a
+ * marquee over individual notes uses.
  *
  * Self-contained source (not a demo file) with a generous "max measures per
  * system" so all measures render in one row and stay within the viewport.
@@ -89,10 +90,10 @@ When('I plain-click the center of measure 1', async ({ page }) => {
   const box = await stableBoundingBox(measure1)
   if (!box) throw new Error('Could not get bounding box for measure 1.')
 
-  // A plain click (mousedown + mouseup at the same point, no drag). Notes
-  // fully tile their measure's width (no gaps between click-target rects —
-  // see the drag test below), so this always lands on exactly one of
-  // measure 1's two notes.
+  // A plain click (mousedown + mouseup at the same point, no second click).
+  // Notes fully tile their measure's width (no gaps between click-target
+  // rects — see the click-and-click test below), so this always lands on
+  // exactly one of measure 1's two notes.
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
   await page.mouse.down()
   await page.mouse.up()
@@ -141,7 +142,7 @@ When("I Cmd\\/Ctrl-click measure 1's own left edge pixel", async ({ page }) => {
 })
 
 When(
-  'I drag corner-to-corner from measure 0 to measure 2',
+  'I click corner-to-corner from measure 0 to measure 2',
   async ({ page }) => {
     await page.waitForSelector('[data-tag="measure"][data-measure-index="2"]', {
       timeout: 10_000,
@@ -180,32 +181,32 @@ When(
 )
 
 Then(
-  '{int} note is drag-selected, as seen in measure click selects notes',
+  '{int} note is range-selected, as seen in measure click selects notes',
   async ({ page }, count: number) => {
     const highlightedNotes = page.locator(
-      '[data-tag="note"][data-note-drag-selected]',
+      '[data-tag="note"][data-note-range-selected]',
     )
     await expect(highlightedNotes).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} notes are drag-selected, as seen in measure click selects notes',
+  '{int} notes are range-selected, as seen in measure click selects notes',
   async ({ page }, count: number) => {
     const highlightedNotes = page.locator(
-      '[data-tag="note"][data-note-drag-selected]',
+      '[data-tag="note"][data-note-range-selected]',
     )
     await expect(highlightedNotes).toHaveCount(count)
   },
 )
 
 Then(
-  'note ids {int} and {int} are drag-selected, as seen in measure click selects notes',
+  'note ids {int} and {int} are range-selected, as seen in measure click selects notes',
   async ({ page }, a, b) => {
     for (const noteId of [a, b]) {
       await expect(
         page.locator(
-          `[data-tag="note"][data-note-drag-selected][data-note-id="${noteId}"]`,
+          `[data-tag="note"][data-note-range-selected][data-note-id="${noteId}"]`,
         ),
       ).toHaveCount(1)
     }
@@ -225,13 +226,13 @@ Then(
 Then(
   'the selection survives the debounced highlight swap with {int} notes still selected',
   async ({ page }, count: number) => {
-    // Dragging a note-range selection pushes a Monaco multicursor selection,
+    // Click-and-click range-selecting notes pushes a Monaco multicursor selection,
     // whose cursor-change listener debounces (300 ms) into a worker
     // round-trip that swaps the plain SVG documents for highlighted ones —
     // the highlight must survive that swap.
     await page.waitForTimeout(700)
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )

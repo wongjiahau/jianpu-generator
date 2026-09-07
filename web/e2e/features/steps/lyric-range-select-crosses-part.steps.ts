@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -112,17 +112,17 @@ When(
 )
 
 Then(
-  "Melody's and Harmony's verse 0 syllables in measures {int} through {int} are drag-selected",
+  "Melody's and Harmony's verse 0 syllables in measures {int} through {int} are range-selected",
   async ({ page }, measureStart: number, measureEnd: number) => {
     const selectedLyrics = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected]',
+      '[data-tag="lyric"][data-lyric-range-selected]',
     )
     const expectedCount = (measureEnd - measureStart + 1) * 2
     await expect(selectedLyrics).toHaveCount(expectedCount)
     for (const partIndex of [0, 1]) {
       await expect(
         page.locator(
-          `[data-tag="lyric"][data-lyric-drag-selected][data-part-index="${partIndex}"][data-verse="0"]`,
+          `[data-tag="lyric"][data-lyric-range-selected][data-part-index="${partIndex}"][data-verse="0"]`,
         ),
       ).toHaveCount(measureEnd - measureStart + 1)
     }
@@ -130,7 +130,7 @@ Then(
 )
 
 Then(
-  'no syllable in measure {int} is drag-selected',
+  'no syllable in measure {int} is range-selected',
   async ({ page }, measureIndex: number) => {
     // Lyric groups carry no `data-measure-index` of their own (only
     // `data-part-index`/`data-note-id`/`data-verse` — see `Tag::Lyric` in
@@ -141,7 +141,7 @@ Then(
     for (const partIndex of [0, 1]) {
       await expect(
         lyricInPart(page, partIndex, 0).nth(measureIndex),
-      ).not.toHaveAttribute('data-lyric-drag-selected', '')
+      ).not.toHaveAttribute('data-lyric-range-selected', '')
     }
   },
 )

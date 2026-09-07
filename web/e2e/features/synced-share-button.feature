@@ -89,21 +89,21 @@ Feature: Synced share button
     And the viewer's page URL has no hash
     And the viewer's file switcher shows the synced filename
 
-  Scenario: Dragging across measures in a synced viewer updates the play range, even without a mounted editor to round-trip the selection through
+  Scenario: Click-and-click selecting across measures in a synced viewer updates the play range, even without a mounted editor to round-trip the selection through
     Given clipboard permissions are granted
-    And the file store is seeded with a multi-measure synced drag score
+    And the file store is seeded with a multi-measure synced range-select score
     When the owner loads the app and clicks "Sync"
     Then a sync-link-copied toast is shown
     When a viewer opens the copied sync link in a new page and waits for measures to render
     Then the viewer's parts toolbar is visible and no Monaco editor is mounted
-    When the viewer drags from measure 0 to measure 2
+    When the viewer clicks-and-clicks from measure 0 to measure 2
     Then the viewer's play-measure button reads "Measures 1-3"
     And the viewer's measure highlight is not shown
     And the viewer's note highlight still shows after settling
 
   Scenario: Tapping a single note in a synced viewer only highlights that note, not its whole measure
     Given clipboard permissions are granted
-    And the file store is seeded with a multi-measure synced drag score
+    And the file store is seeded with a multi-measure synced range-select score
     When the owner loads the app and clicks "Sync"
     Then a sync-link-copied toast is shown
     When a viewer opens the copied sync link in a new page and waits for measures to render
@@ -114,7 +114,7 @@ Feature: Synced share button
 
   Scenario: Tapping a bar line in a synced viewer never paints the amber measure highlight
     Given clipboard permissions are granted
-    And the file store is seeded with a multi-measure synced drag score
+    And the file store is seeded with a multi-measure synced range-select score
     When the owner loads the app and clicks "Sync"
     Then a sync-link-copied toast is shown
     When a viewer opens the copied sync link in a new page and waits for measures to render

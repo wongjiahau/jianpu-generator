@@ -115,7 +115,7 @@ export type WorkerRequest =
       enabledTracks?: string[]
       /**
        * The part-visibility toggle's current state — unlike `enabledTracks`
-       * (which "play selection" overrides down to just the drag-selected
+       * (which "play selection" overrides down to just the range-selected
        * parts, muting this clip's audio), this is always the same set the
        * currently-rendered SVG was compacted against, never a playback-only
        * override. Passed straight through to WASM's own `visible_tracks`
@@ -129,7 +129,7 @@ export type WorkerRequest =
       visibleTracks?: string[]
       /**
        * When present, narrows the generated clip down to exactly these
-       * drag-selected `(sourcePartIndex, noteId)` cells' elapsed-seconds
+       * range-selected `(sourcePartIndex, noteId)` cells' elapsed-seconds
        * span (sample-accurately trimmed/faded in Rust — see
        * `jianpu_generator::wav::TrimWindow`) instead of playing the whole
        * `[startMeasureIndex, endMeasureIndex]` range — what the web app's

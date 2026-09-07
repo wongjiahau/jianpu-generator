@@ -73,7 +73,7 @@ export interface AppWorkspaceProps {
   measureAudioGenerating: boolean
   soundfontReady: boolean
   playSelectedMeasures: () => void
-  /** True while a note drag-select (see `useNoteSelection`) is active; when
+  /** True while a note range-select (see `useNoteSelection`) is active; when
    * set, the editor's Cmd/Ctrl+Enter shortcut plays the selected notes
    * instead of the measure(s) under the cursor. */
   notePlaybackSelectionActive: boolean
@@ -112,13 +112,13 @@ export interface AppWorkspaceProps {
   handleEditorSelectionChange: (ranges: EditorSelection[]) => void
   selectedNoteCells: NoteCell[]
   /** Per-note/rest `(source_part_index, note_id) → measure_index` mapping,
-   * used to resolve a measure click/drag into every note cell it contains
+   * used to resolve a measure click into every note cell it contains
    * (see `Preview.tsx`'s `noteCellsInMeasureRange`) without relying on
    * pixel geometry. */
   noteSpans: NoteSpan[]
-  /** Fired on mouseup after a lyric-syllable drag-select (see
+  /** Fired on the second click after a lyric-syllable range-select (see
    * `useLyricSelection`). Independent of `handleNoteRangeSelect` — a lyric
-   * drag never selects/highlights notes and vice versa. */
+   * range-select never selects/highlights notes and vice versa. */
   handleLyricRangeSelect: (selectedCells: LyricCell[]) => void
   /** Keeps the preview's lyric highlight in sync with the editor's own
    * current selection, the reverse direction of `handleLyricRangeSelect`
@@ -126,11 +126,11 @@ export interface AppWorkspaceProps {
   handleLyricEditorSelectionChange: (ranges: EditorSelection[]) => void
   selectedLyricCells: LyricCell[]
   /** Per-lyric-syllable `(source_part_index, note_id, verse) → measure_index`
-   * mapping, used to resolve a measure click/drag into every lyric cell it
+   * mapping, used to resolve a measure click into every lyric cell it
    * contains alongside `noteSpans` (see `Preview.tsx`'s
    * `lyricCellsInMeasureRange`). */
   lyricSpans: LyricSpan[]
-  /** Fired for a measure/bar-line click or drag with both the note cells and
+  /** Fired for a measure/bar-line click or range-select with both the note cells and
    * lyric cells it resolved — see `Preview.tsx`'s `onMeasureRangeSelect`. */
   handleMeasureRangeSelect: (
     noteCells: NoteCell[],

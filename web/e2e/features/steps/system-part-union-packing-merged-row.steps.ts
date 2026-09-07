@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { Then, When } from './fixtures'
 import { partLabelsFor } from './system-part-union-packing.fixture'
 
@@ -18,13 +18,13 @@ Then('all notes in the first system are highlighted', async ({ page }) => {
   // "The first system" is every part row whose label starts at measure 0,
   // spanning measures 0..=that label's own `data-measure-index-end` (every
   // label in one system shares the same start/end — see the system-scoping
-  // comment on `PartLabelHit` in `previewLabelDragHighlights.ts`). Deliberately
+  // comment on `PartLabelHit` in `previewLabelRangeHighlights.ts`). Deliberately
   // generic rather than naming a specific part/measure: the bug this guards
   // against is that a part whose row got absorbed into another part's row
   // (see `consolidate_rows`) renders its measure as bare, non-interactive
   // duplicate glyphs (`make_padding_row`) with no click-target `rect` at
   // all, so nothing at that glyph's position can ever carry
-  // `data-note-drag-selected` — asserting over *every* glyph in the system
+  // `data-note-range-selected` — asserting over *every* glyph in the system
   // catches that regardless of which part/measure it lands on.
   const firstSystemLabels = page.locator(
     '[data-tag="part-label"][data-measure-index-start="0"]',
@@ -59,7 +59,7 @@ Then('all notes in the first system are highlighted', async ({ page }) => {
   const highlightedRectBoxes = await page.evaluate(() =>
     Array.from(
       document.querySelectorAll<SVGRectElement>(
-        '[data-tag="note"][data-note-drag-selected] rect[data-variant="note-click-target-rect"]',
+        '[data-tag="note"][data-note-range-selected] rect[data-variant="note-click-target-rect"]',
       ),
     ).map((el) => el.getBoundingClientRect().toJSON()),
   )

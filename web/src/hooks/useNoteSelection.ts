@@ -47,10 +47,10 @@ export interface SelectedNoteRangePlaybackInfo {
 }
 
 /**
- * Turns a MuseScore-style note drag-select (a set of `(source_part_index,
+ * Turns a MuseScore-style note range-select (a set of `(source_part_index,
  * note_id)` cells hit-tested off the SVG, see `Preview.tsx`) into a Monaco
  * multicursor selection over the source text — one disjoint range per
- * `(part, measure)` the drag touched — and derives the info a "play
+ * `(part, measure)` the selection touched — and derives the info a "play
  * selection" action needs (see `useMeasureAudioPlayback.playNoteSelection`).
  */
 export function useNoteSelection(

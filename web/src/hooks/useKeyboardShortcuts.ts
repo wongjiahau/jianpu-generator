@@ -8,7 +8,7 @@ interface UseKeyboardShortcutsOptions {
   selectedSequenceRange: { start: number; end: number } | null
   playSelectedMeasures: () => void
   playFromCurrentMeasure: () => void
-  /** True while a note drag-select (see `useNoteSelection`) is active; when
+  /** True while a note range-select (see `useNoteSelection`) is active; when
    * set, Cmd/Ctrl+Enter plays the selected notes instead of the measure(s)
    * under the cursor. */
   notePlaybackSelectionActive: boolean

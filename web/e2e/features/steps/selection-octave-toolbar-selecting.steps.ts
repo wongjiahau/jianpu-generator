@@ -155,7 +155,7 @@ async function selectRangeBetween(
   // worker round-trip `handleEditorSelectionChange` reads to resolve a text
   // selection into highlighted notes) has arrived yet. There's no DOM signal
   // for that, so give it a beat, matching the wait
-  // `note-drag-select-highlight.steps.ts` uses for the same round-trip.
+  // `note-range-select-highlight.steps.ts` uses for the same round-trip.
   await page.waitForTimeout(700)
   const { start, end } = await findDragCoords(page, startNeedle, endNeedle)
   await page.mouse.move(start.x, start.y)

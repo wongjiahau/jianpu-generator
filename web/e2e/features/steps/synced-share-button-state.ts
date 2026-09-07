@@ -47,7 +47,7 @@ export async function seedFileStore(
 }
 
 // Cross-step state shared between synced-share-button.steps.ts and
-// synced-share-button-viewer-drag.steps.ts (split out of one file to stay under
+// synced-share-button-viewer-range-select.steps.ts (split out of one file to stay under
 // the repo's max-file-lines limit). Each scenario's first Given resets this
 // so state never leaks across scenarios. `syncedShareLink` always holds the most
 // recently copied link; `originalSyncedLink` is pinned to the very first link

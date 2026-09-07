@@ -103,7 +103,7 @@ pub enum AbsoluteContent {
         measure_index: usize,
         measure_index_end: usize,
     },
-    /// Invisible click/drag hit target laid over one measure's own bar
+    /// Invisible click hit target laid over one measure's own bar
     /// number (see `grid_layout::types::BarNumberClickTarget`), tightly
     /// sized to the digits themselves rather than the whole measure body —
     /// unlike `MeasureClickTarget`, which never sits above the musical rows
@@ -120,7 +120,7 @@ pub enum AbsoluteContent {
         measure_index: usize,
         measure_index_end: usize,
     },
-    /// Invisible click/drag hit target for one bar line (see
+    /// Invisible click hit target for one bar line (see
     /// `grid_layout::types::BarLineClickTarget`), spanning the whole system
     /// vertically but a fixed, narrow width horizontally (baked in at
     /// resolve time — the old TS-side `BAR_LINE_HIT_WIDTH` constant this
@@ -142,7 +142,7 @@ pub enum AbsoluteContent {
         source_part_index: usize,
         note_id: usize,
     },
-    /// Invisible click/drag hit target layered above `PlaybackCursorTarget`
+    /// Invisible click hit target layered above `PlaybackCursorTarget`
     /// for the same note/rest, since that rect is `pointer-events: none`
     /// (its `fill` is owned exclusively by playback highlighting — see
     /// `renderer::new_types::TransparentRectRole::NoteClickTarget`).
@@ -152,10 +152,10 @@ pub enum AbsoluteContent {
         source_part_index: usize,
         note_id: usize,
     },
-    /// Invisible click/drag hit target laid over a part's `RowLabel` text
+    /// Invisible click hit target laid over a part's `RowLabel` text
     /// (see `grid_layout::types::PartLabelClickTarget`), spanning that
     /// part's own sub-rows within the fixed-width label region. Clicking or
-    /// drag-selecting it selects every note/rest that part sounds across
+    /// range-selecting it selects every note/rest that part sounds across
     /// `measure_index_start..=measure_index_end` (the whole system the
     /// label sits in).
     PartLabelClickTarget {
@@ -165,7 +165,7 @@ pub enum AbsoluteContent {
         measure_index_start: usize,
         measure_index_end: usize,
     },
-    /// Invisible click/drag hit target for one lyric syllable, independent of
+    /// Invisible click hit target for one lyric syllable, independent of
     /// its note's own `NoteClickTarget` — see
     /// `renderer::new_types::Tag::Lyric`.
     LyricClickTarget {
@@ -175,9 +175,9 @@ pub enum AbsoluteContent {
         note_id: usize,
         verse: usize,
     },
-    /// Invisible click/drag hit target laid over one verse's `RowLabel` text
+    /// Invisible click hit target laid over one verse's `RowLabel` text
     /// (see `grid_layout::types::LyricLabelClickTarget`) — the lyric-side
-    /// mirror of `PartLabelClickTarget`. Clicking or drag-selecting it
+    /// mirror of `PartLabelClickTarget`. Clicking or range-selecting it
     /// selects every syllable that verse sings across
     /// `measure_index_start..=measure_index_end` (the whole system the
     /// label sits in).

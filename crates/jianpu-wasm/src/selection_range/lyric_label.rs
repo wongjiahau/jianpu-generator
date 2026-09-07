@@ -25,7 +25,7 @@ pub(crate) fn resolve(
         // current_start` and `anchor_end == current_end`, so the min/max
         // are that shared span — so there's no separate same-system arm to
         // keep in sync. A different-verse pair is still left unresolved
-        // (falls through to `Err`, same as before) — cross-verse dragging
+        // (falls through to `Err`, same as before) — a cross-verse selection
         // isn't this rule's concern.
         (
             ClickableElementId::LyricLabel {

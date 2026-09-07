@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -14,7 +14,7 @@ import { Given, Then, When } from './fixtures'
  */
 const source = [
   '# metadata',
-  'title = "part label drag lyric test"',
+  'title = "part label range-select lyric test"',
   'max_measures_per_system = 48',
   '',
   '# parts',
@@ -36,12 +36,12 @@ async function loadFixture(page: import('@playwright/test').Page) {
     localStorage.setItem(
       'jianpu:files:v1',
       JSON.stringify({
-        active: 'part-label-drag-lyric-test.jianpu',
-        userFiles: { 'part-label-drag-lyric-test.jianpu': source },
+        active: 'part-label-range-lyric-test.jianpu',
+        userFiles: { 'part-label-range-lyric-test.jianpu': source },
         bin: {},
         fileIds: {
-          'part-label-drag-lyric-test.jianpu':
-            'part-label-drag-lyric-test-id-001',
+          'part-label-range-lyric-test.jianpu':
+            'part-label-range-lyric-test-id-001',
         },
       }),
     )
@@ -61,7 +61,7 @@ async function primeMeasureSpans(page: import('@playwright/test').Page) {
   ).toBeVisible({ timeout: 5_000 })
 }
 
-Given('the part-label lyric-drag fixture is loaded', async ({ page }) => {
+Given('the part-label lyric-range-select fixture is loaded', async ({ page }) => {
   await loadFixture(page)
   await page.goto('/')
 
@@ -75,7 +75,7 @@ Given('the part-label lyric-drag fixture is loaded', async ({ page }) => {
 })
 
 When(
-  'I drag from the Melody part label to the Harmony part label, as seen in part label drag selects lyrics',
+  'I click-and-click select from the Melody part label to the Harmony part label, as seen in part label click selects lyrics',
   async ({ page }) => {
     const melodyLabel = page
       .locator('[data-tag="part-label"][data-part-index="0"]')
@@ -103,22 +103,22 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in part label drag selects lyrics',
+  '{int} notes are range-selected in total, as seen in part label click selects lyrics',
   async ({ page }, count: number) => {
     // Melody's 4 notes + Harmony's 4 notes = 8.
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} lyrics are drag-selected in total, as seen in part label drag selects lyrics',
+  '{int} lyrics are range-selected in total, as seen in part label click selects lyrics',
   async ({ page }, count: number) => {
     // Only Melody carries lyrics (4 syllables); Harmony has none, so the total
     // stays 4 rather than erroring or double-counting.
     await expect(
-      page.locator('[data-tag="lyric"][data-lyric-drag-selected]'),
+      page.locator('[data-tag="lyric"][data-lyric-range-selected]'),
     ).toHaveCount(count)
   },
 )

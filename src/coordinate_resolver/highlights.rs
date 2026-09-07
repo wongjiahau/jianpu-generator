@@ -6,7 +6,7 @@ use crate::grid_layout::PAGE_MARGIN;
 /// into one value so `resolve_row_range_geometry` stays under the repo's
 /// max-argument-count lint (it would otherwise need 8 parameters). Shared
 /// with the click-target resolvers in `highlight_click_targets` — the same
-/// row-range math backs both highlight rects and click/drag hit targets.
+/// row-range math backs both highlight rects and click hit targets.
 #[derive(Clone, Copy)]
 pub(super) struct RowLayoutContext<'a> {
     pub(super) rows: &'a [GridRow],

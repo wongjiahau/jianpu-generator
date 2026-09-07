@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -143,25 +143,25 @@ When('I Ctrl-click the Melody part label', async ({ page }) => {
 })
 
 Then(
-  '{int} drag-selected notes belong to part index {int}, as seen in part label cmd click play selection with hidden part',
+  '{int} range-selected notes belong to part index {int}, as seen in part label cmd click play selection with hidden part',
   async ({ page }, count: number, partIndex: number) => {
     // Sanity check: the selection itself (already-fixed bug, see
-    // `measure-drag-selects-notes-with-hidden-part.spec.ts`) correctly covers
+    // `measure-range-select-notes-with-hidden-part.spec.ts`) correctly covers
     // both visible parts — Melody (compacted index 0) and Bass (compacted
     // index 1) — and nothing else.
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-part-index="${partIndex}"]`,
+        `[data-tag="note"][data-note-range-selected][data-part-index="${partIndex}"]`,
       ),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in part label cmd click play selection with hidden part',
+  '{int} notes are range-selected in total, as seen in part label cmd click play selection with hidden part',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )

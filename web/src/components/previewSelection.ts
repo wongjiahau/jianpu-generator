@@ -50,7 +50,7 @@ function measureRangeFromId(
 }
 
 /**
- * Resolves a click/drag point that's over a bar line's own click target
+ * Resolves a click point that's over a bar line's own click target
  * (`[data-tag="bar-line"]`, see `Tag::BarLine`/
  * `AbsoluteContent::BarLineClickTarget`) to a measure range, purely from the
  * server-computed `data-measure-index-next`/`data-measure-index-prev`
@@ -75,7 +75,7 @@ export function getBarLineMeasureAtPoint(
 }
 
 /**
- * Resolves a click/drag point that's over a measure's own bar number (drawn
+ * Resolves a click point that's over a measure's own bar number (drawn
  * in the directive row above the musical rows — `[data-tag="bar-number"]`,
  * see `BarNumberClickTarget`/`Tag::BarNumber`) to that measure's range.
  *
@@ -113,7 +113,7 @@ const MEASURE_RANGE_SELECTOR = '[data-tag="measure"], [data-tag="bar-number"]'
  * `measureIndexEnd` dataset pair rather than any dedicated "which system is
  * this measure in" lookup — every part label in a given system shares that
  * pair (one `PartLabelClickTarget` per part *per system*, see
- * `previewLabelDragHighlights.ts`'s own doc comments), so scanning for the
+ * `previewLabelRangeHighlights.ts`'s own doc comments), so scanning for the
  * one whose range contains `measureIndex` reliably identifies its system.
  * Returns `undefined` if no part label's range covers it (e.g. no parts are
  * rendered at all) — callers fall back to the bare measure range instead.
@@ -230,7 +230,7 @@ export function getLyricAtPoint(x: number, y: number): LyricCell | undefined {
 /** Every lyric syllable cell belonging to the given measure range, resolved
  * from `lyricSpans`' `(source_part_index, note_id, verse) → measure_index`
  * mapping — the lyric-side mirror of `noteCellsInMeasureRange`, so a measure
- * click/drag can select the verse lyrics under it alongside its notes. */
+ * click can select the verse lyrics under it alongside its notes. */
 export function lyricCellsInMeasureRange(
   lyricSpans: LyricSpan[],
   range: MeasureRange,

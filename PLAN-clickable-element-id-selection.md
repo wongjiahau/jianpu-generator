@@ -56,7 +56,7 @@ every label the drag rectangle happened to visually pass over (e.g.
 Harmony's label sitting between two Melody labels stacked across systems);
 the ID-based rule ranges only over the two endpoints' own
 `sourcePartIndex`es, so that in-between Harmony label is no longer swept —
-see `part-label-drag-system-boundary.feature`'s updated scenario, which
+see `part-label-range-select-system-boundary.feature`'s updated scenario, which
 documents this as the accepted tradeoff (same shape as the cross-part
 `Note ↔ Note` arm's own staggered-rhythm tradeoff, noted above). The
 Cmd/Ctrl-gated `'part-label-system'` mode (`partLabelsInMarqueeAcrossSystems`)
@@ -76,7 +76,7 @@ that conflated "`Note ↔ Note` can't `Err`" with "`current` always resolves
 to *some* note," which isn't true for a cross-row drag onto the lyric row
 (`getNoteAtPoint` returns `undefined`, never reaching
 `resolve_selection_range` at all) — a real regression, caught by
-`note-lyric-cross-drag-select.feature` going from passing to a 3-notes/
+`note-lyric-cross-range-select.feature` going from passing to a 3-notes/
 1-note failure. Fixed by restoring the marquee fallback for exactly the
 `currentCell === undefined` case (not for a defined `currentCell` with a
 non-`ok` response, which stays the genuinely-unreachable, logged-not-thrown
@@ -283,8 +283,8 @@ trigger left for `partLabelsInMarquee`/`lyricLabelsInMarquee`'s pixel path in
 `resolveSelection`'s `'part-label'`/`'lyric-label'` branches is that same
 off-target case, mirroring `'note'`/`'lyric'` mode exactly. So: **no function
 gets deleted** — `cellsInMarquee`/`applyNoteDragHighlights`/
-`applyLyricDragHighlights` (`previewDragHighlights.ts`), `partLabelsInMarquee`/
-`lyricLabelsInMarquee` (`previewLabelDragHighlights.ts`), and
+`applyLyricRangeHighlights` (`previewRangeHighlights.ts`), `partLabelsInMarquee`/
+`lyricLabelsInMarquee` (`previewLabelRangeHighlights.ts`), and
 `applyNoteRangeSelection`/`applyLyricRangeSelection` (`previewRangeSelection.ts`)
 all stay, doing real work for the off-target case in both the commit path and
 `usePreviewClickSelection.ts`'s live hover-preview loop (a different,
@@ -319,7 +319,7 @@ all, except 'measure' mode, which keeps calling the point-based
 note/lyric's click-target rect is a DOM *sibling* of the measure/bar-line
 group underneath it, not its ancestor, so `closest()` can't reach it —
 fixing that needs the separate, smaller `getMeasureAtPoint` rect-scan fix
-below). `PreviewDragState`'s `noteCellAtAnchor`/`lyricCellAtAnchor`/
+below). `PreviewAnchorState`'s `noteCellAtAnchor`/`lyricCellAtAnchor`/
 `anchorSystem` fields collapsed into one `anchorId: ClickableElementId` per
 mode (mirroring `resolveSelection`'s own anchor-read), stashed once at
 anchor time in `previewClickHandler.ts` rather than re-derived from
@@ -329,7 +329,7 @@ anchor time in `previewClickHandler.ts` rather than re-derived from
 
 Replace pixel-geometry range resolution in the preview's click-and-click
 gesture (`web/src/components/previewSelection.ts`,
-`previewRangeSelection.ts`, `previewLabelDragHighlights.ts`,
+`previewRangeSelection.ts`, `previewLabelRangeHighlights.ts`,
 `previewLabelSelection.ts`) with a single Rust/wasm function that computes a
 selection from two **clickable-element IDs**, not two `{x, y}` points. TS
 keeps exactly one job it can't give up — turning a mouse pixel into an
@@ -349,7 +349,7 @@ being valid *at commit time*, when in a click-and-click (not held-drag)
 gesture arbitrary scrolling can happen between the two clicks.
 
 The remaining pixel-dependent paths — `applyNoteDragHighlights`/
-`applyLyricDragHighlights`'s cross-part marquee fallback,
+`applyLyricRangeHighlights`'s cross-part marquee fallback,
 `partLabelsInMarquee`/`partLabelsInMarqueeAcrossSystems`,
 `lyricLabelsInMarquee`, and `getMeasureAtPoint`'s manual rect scan — all
 have the same latent bug class, just not yet hit by a regression test.
@@ -531,11 +531,11 @@ migration.
    plus updating `getNoteAtPoint`/`getLyricAtPoint`/`getPartLabelAtPoint`/
    `getLyricLabelAtPoint` (in `previewSelection.ts`/
    `previewLabelSelection.ts`) to return `ClickableElementId` instead of
-   their current bespoke cell/hit types. `PreviewDragState`
-   (`previewDragState.ts`) stores a `ClickableElementId` for `anchor`
-   instead of a `DragPoint`/`NoteCell`/etc. pairing — collapses several of
+   their current bespoke cell/hit types. `PreviewAnchorState`
+   (`previewAnchorState.ts`) stores a `ClickableElementId` for `anchor`
+   instead of a `AnchorPoint`/`NoteCell`/etc. pairing — collapses several of
    its variants' redundant fields (e.g. 'note' mode no longer needs both
-   `anchor: DragPoint` and `noteCellAtAnchor` — the ID *is* the cell).
+   `anchor: AnchorPoint` and `noteCellAtAnchor` — the ID *is* the cell).
 6. `previewClickHandler.ts`/`previewSelectionResolver.ts`: `resolveSelection`
    calls `resolve_selection_range(noteSpans, lyricSpans, anchorId,
    currentId)` first; on `Err` (Phase 2 combination), fall back to the
@@ -566,7 +566,7 @@ migration.
   touching 'note'/'lyric'/label modes.
 - Existing e2e specs (`note-range-select-crosses-page.feature`,
   `note-range-select-crosses-system.feature`,
-  `note-lyric-cross-drag-select.feature`,
+  `note-lyric-cross-range-select.feature`,
   `part-label-click-selects-notes.feature`, etc.) stay as regression
   coverage throughout — they should keep passing unchanged since the
   *contract* (which cells end up selected) isn't changing, only how it's

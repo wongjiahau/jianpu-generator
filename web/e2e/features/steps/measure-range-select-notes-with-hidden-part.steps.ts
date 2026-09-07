@@ -1,11 +1,11 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Regression test: a measure/bar-line drag that spans multiple systems used
- * to mis-select notes belonging to a part declared *after* a
- * currently-hidden part.
+ * Regression test: a measure/bar-line click-and-click range that spans
+ * multiple systems used to mis-select notes belonging to a part declared
+ * *after* a currently-hidden part.
  *
  * Root cause: `noteSpans` (fetched via the `listNoteSpans` worker message,
  * see `jianpu.worker.ts`) comes from `list_note_spans_from_source`, which
@@ -19,8 +19,8 @@ import { Given, Then, When } from './fixtures'
  * so every part declared after a hidden one is compacted down by one index
  * in the SVG's `data-part-index` attributes.
  *
- * `usePreviewDragSelection.ts`'s 'measure' mode (`noteCellsInMeasureRange`)
- * resolves a drag's selected cells straight from `noteSpans` and then marks
+ * `usePreviewClickSelection.ts`'s 'measure' mode (`noteCellsInMeasureRange`)
+ * resolves a range-select's selected cells straight from `noteSpans` and then marks
  * the matching `data-part-index`/`data-note-id` DOM groups
  * (`applyPersistedNoteHighlights`) — so once those two "part index"
  * numberings disagreed, cells resolved from `noteSpans` no longer lined up
@@ -43,13 +43,13 @@ import { Given, Then, When } from './fixtures'
  * with *some* of Bass's rendered keys: enough to make system 0 (measure 0)
  * look right by coincidence, while system 1 (measure 1) had no such
  * collision and simply failed to select Bass's notes at all. That's the
- * "cross-system" symptom this guards against: the same drag behaving
+ * "cross-system" symptom this guards against: the same range-select behaving
  * correctly in the system it started in and silently dropping notes in the
  * next one.
  */
 const source = [
   '# metadata',
-  'title = "measure drag hidden part index mismatch"',
+  'title = "measure range-select hidden part index mismatch"',
   'max_measures_per_system = 1',
   '',
   '# parts',
@@ -72,12 +72,12 @@ async function loadFixture(page: import('@playwright/test').Page) {
     localStorage.setItem(
       'jianpu:files:v1',
       JSON.stringify({
-        active: 'measure-drag-hidden-part-test.jianpu',
-        userFiles: { 'measure-drag-hidden-part-test.jianpu': src },
+        active: 'measure-range-hidden-part-test.jianpu',
+        userFiles: { 'measure-range-hidden-part-test.jianpu': src },
         bin: {},
         fileIds: {
-          'measure-drag-hidden-part-test.jianpu':
-            'measure-drag-hidden-part-test-id-001',
+          'measure-range-hidden-part-test.jianpu':
+            'measure-range-hidden-part-test-id-001',
         },
       }),
     )
@@ -85,7 +85,7 @@ async function loadFixture(page: import('@playwright/test').Page) {
 }
 
 Given(
-  'the measure-drag hidden-part test fixture is loaded',
+  'the measure-range-select hidden-part test fixture is loaded',
   async ({ page }) => {
     await loadFixture(page)
     await page.goto('/')
@@ -113,12 +113,12 @@ Then('{int} notes render across both measures', async ({ page }, count) => {
   // Melody (2/measure) + Bass (2/measure), 2 measures = 8 rendered notes.
   await expect(noteRects).toHaveCount(count, { timeout: 10_000 })
   // Give the debounced listNoteSpans worker round-trip time to catch up
-  // with the new enabledTracks before dragging.
+  // with the new enabledTracks before range-selecting.
   await page.waitForTimeout(2000)
 })
 
 When(
-  "I Cmd\\/Ctrl-drag from measure 0's left bar line into measure 1's interior",
+  "I Cmd\\/Ctrl-click-and-click from measure 0's left bar line into measure 1's interior",
   async ({ page }) => {
     const measures = page.locator('[data-tag="measure"]')
     const firstBox = await stableBoundingBox(measures.nth(0))
@@ -145,19 +145,19 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected, as seen in measure drag selects notes with hidden part',
+  '{int} notes are range-selected, as seen in measure click selects notes with hidden part',
   async ({ page }, count: number) => {
     // Every rendered note (Melody's 4 + Bass's 4) should be selected — Bass
-    // is a fully visible part and both its measures sit inside the dragged
-    // range.
+    // is a fully visible part and both its measures sit inside the
+    // range-selected range.
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  "Bass's measure-1 notes with ids {int} and {int} at part-index 1 are drag-selected",
+  "Bass's measure-1 notes with ids {int} and {int} at part-index 1 are range-selected",
   async ({ page }, a: number, b: number) => {
     // In particular, Bass's system-1 (measure 1) notes — note ids 2 and 3,
     // since each part's note-id counter runs across the whole score rather
@@ -167,7 +167,7 @@ Then(
     for (const noteId of [a, b]) {
       await expect(
         page.locator(
-          `[data-tag="note"][data-note-drag-selected][data-part-index="1"][data-note-id="${noteId}"]`,
+          `[data-tag="note"][data-note-range-selected][data-part-index="1"][data-note-id="${noteId}"]`,
         ),
       ).toHaveCount(1)
     }

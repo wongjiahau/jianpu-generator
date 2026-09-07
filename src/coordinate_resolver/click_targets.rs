@@ -8,7 +8,7 @@ use super::highlight_click_targets::{
 };
 use super::highlights::{resolve_playback_cursor_target, RowLayoutContext};
 
-/// Resolves every click/drag hit target on a page — measure, playback
+/// Resolves every click hit target on a page — measure, playback
 /// cursor, note, part-label, lyric, and lyric-label — appended in that order
 /// so later ones stay topmost for `elementFromPoint` hit-testing (e.g. a
 /// note click target over its enclosing measure's, and a lyric syllable's

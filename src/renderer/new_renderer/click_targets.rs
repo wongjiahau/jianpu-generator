@@ -116,7 +116,7 @@ pub(super) fn render_playback_cursor_target(
 }
 
 /// Sibling group to [`render_playback_cursor_target`] for the same note/rest,
-/// giving it a clickable/draggable hit target — `PlaybackCursorRect` is
+/// giving it a clickable hit target — `PlaybackCursorRect` is
 /// `pointer-events: none` since its `fill` is owned exclusively by
 /// `usePlaybackCursor.ts`, so a separate transparent rect handles clicks.
 /// Carries the same `Tag::Note` `source_part_index`/`note_id` so a click on
@@ -200,7 +200,7 @@ fn render_lyric_label_click_target(
 }
 
 /// Sibling overlay to a lyric syllable's own text element, giving it a
-/// clickable/draggable hit target independent of its note's — see
+/// clickable hit target independent of its note's — see
 /// `Tag::Lyric`. Painted after `PartLabelClickTarget` (see
 /// `resolve_click_target_elements`'s append order), so its narrow rect wins
 /// hit-testing over the wider `NoteClickTarget` that geometrically covers

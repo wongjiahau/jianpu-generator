@@ -2,7 +2,7 @@ use super::SAMPLE_RATE;
 
 /// An elapsed-seconds window, relative to the start of a rendered clip, to
 /// trim [`super::write_wav`]'s output down to — e.g. the web app's "play selection"
-/// narrowing a measure-range clip down to just the drag-selected notes'
+/// narrowing a measure-range clip down to just the range-selected notes'
 /// real time span, rather than the full boundary measures they touch.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TrimWindow {

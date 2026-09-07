@@ -299,9 +299,9 @@ pub struct MeasureHighlight {
 }
 
 /// One inclusive `global_measure_index` range to highlight in the SVG
-/// preview. A `# sequence` chain selection (e.g. dragging "C" -> "A" across
-/// "A, B, C, A") can highlight several disjoint measures at once, so callers
-/// pass a `Vec<MeasureRange>` rather than a single range — see
+/// preview. A `# sequence` chain selection (e.g. range-selecting "C" -> "A"
+/// across "A, B, C, A") can highlight several disjoint measures at once, so
+/// callers pass a `Vec<MeasureRange>` rather than a single range — see
 /// `compute_measure_highlights_for_range`.
 #[derive(Debug, Clone, Copy)]
 pub struct MeasureRange {
@@ -333,7 +333,7 @@ pub struct PlaybackCursorTarget {
     pub note_id: usize,
 }
 
-/// Invisible click/drag hit target for one lyric syllable, in its own row,
+/// Invisible click hit target for one lyric syllable, in its own row,
 /// starting at the syllable's own grid column but widened to match its
 /// note's full written column span (attack plus any dash-continuation
 /// columns — see `grid_layout::click_targets::compute_all_lyric_click_targets`)
@@ -354,7 +354,7 @@ pub struct LyricClickTarget {
 /// Invisible hit target laid over one verse's `RowLabel` text (e.g.
 /// "M:v1"), spanning that one verse row within the fixed-width label region
 /// (columns `0..LABEL_COLS`) — the lyric-side mirror of
-/// [`PartLabelClickTarget`]. Clicking or drag-selecting it is a shortcut for
+/// [`PartLabelClickTarget`]. Clicking or range-selecting it is a shortcut for
 /// selecting every syllable that verse sings across the whole system the
 /// label sits in — `measure_index_start`/`measure_index_end` give that
 /// system's full measure range, same as `PartLabelClickTarget`'s.

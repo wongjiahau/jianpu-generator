@@ -64,23 +64,23 @@ pub enum TransparentRectRole {
     /// there.
     SectionLabelClickTarget,
     /// Invisible rect layered on top of `PlaybackCursorRect` inside the same
-    /// `Tag::Note` group, giving each note/rest a clickable/draggable hit
+    /// `Tag::Note` group, giving each note/rest a clickable hit
     /// target — `PlaybackCursorRect` itself is `pointer-events: none` since
     /// its `fill` is owned by playback highlighting, not click handling.
     NoteClickTarget,
     /// Invisible rect layered over a part's `RowLabel` text, giving it a
-    /// clickable/draggable hit target — see `Tag::PartLabel`.
+    /// clickable hit target — see `Tag::PartLabel`.
     PartLabelClickTarget,
     /// Invisible rect layered over one lyric syllable, giving it its own
-    /// clickable/draggable hit target independent of its note's
+    /// clickable hit target independent of its note's
     /// `NoteClickTarget` — see `Tag::Lyric`. Painted last (after
     /// `PartLabelClickTarget`) so it always wins hit-testing over the wider
     /// `NoteClickTarget` rect that geometrically covers the same lyric row.
     LyricClickTarget,
     /// Invisible rect layered over one verse's `RowLabel` text, giving it a
-    /// clickable/draggable hit target — see `Tag::LyricLabel`.
+    /// clickable hit target — see `Tag::LyricLabel`.
     LyricLabelClickTarget,
-    /// Invisible rect for one bar line's own click/drag hit target — see
+    /// Invisible rect for one bar line's own click hit target — see
     /// `Tag::BarLine`. Given its own role (rather than reusing
     /// `MeasureClickTarget`'s) purely for distinct hover styling, the same
     /// reason `BarNumberClickTarget` has its own.
@@ -149,7 +149,7 @@ pub enum Tag {
     },
     /// Identifies a part's `RowLabel` click target — see
     /// `AbsoluteContent::PartLabelClickTarget`. `measure_index_start`/
-    /// `measure_index_end` scope a click/drag on this label to the whole
+    /// `measure_index_end` scope a click on this label to the whole
     /// system it sits in.
     PartLabel {
         source_part_index: usize,
@@ -168,7 +168,7 @@ pub enum Tag {
     },
     /// Identifies one verse's `RowLabel` click target — see
     /// `AbsoluteContent::LyricLabelClickTarget`. `measure_index_start`/
-    /// `measure_index_end` scope a click/drag on this label to the whole
+    /// `measure_index_end` scope a click on this label to the whole
     /// system it sits in, mirroring `Tag::PartLabel`.
     LyricLabel {
         source_part_index: usize,

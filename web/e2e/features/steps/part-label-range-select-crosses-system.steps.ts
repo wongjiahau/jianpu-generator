@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -15,8 +15,8 @@ import { Given, Then, When } from './fixtures'
  * only ID-resolved for a same-system pair (guarded on matching
  * `measure_index_start`/`measure_index_end`); a cross-system pair fell
  * through to the pixel-marquee fallback (`partLabelsInMarquee`), which
- * restricts to the *anchor's own system* — so a plain drag only selected the
- * first system's notes, dropping the second system's entirely.
+ * restricts to the *anchor's own system* — so a plain click-and-click only
+ * selected the first system's notes, dropping the second system's entirely.
  *
  * `break` forces measure 1 onto its own system regardless of
  * `max_measures_per_system`, so this fixture needs no filler content to
@@ -108,23 +108,23 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in part label range select crosses system',
+  '{int} notes are range-selected in total, as seen in part label range select crosses system',
   async ({ page }, count: number) => {
     // Melody sounds 4 notes total across both systems ("1 2" + "3 4") — the
     // range should cover every one of them, not just the anchor's own
     // system.
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} drag-selected notes belong to part index {int}, as seen in part label range select crosses system',
+  '{int} range-selected notes belong to part index {int}, as seen in part label range select crosses system',
   async ({ page }, count: number, partIndex: number) => {
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-part-index="${partIndex}"]`,
+        `[data-tag="note"][data-note-range-selected][data-part-index="${partIndex}"]`,
       ),
     ).toHaveCount(count)
   },

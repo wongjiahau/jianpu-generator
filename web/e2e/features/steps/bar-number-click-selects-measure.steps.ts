@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -133,11 +133,11 @@ When('I plain-click the bar number for measure 0', async ({ page }) => {
 })
 
 Then(
-  '{int} notes are drag-selected, as seen in bar number click selects measure',
+  '{int} notes are range-selected, as seen in bar number click selects measure',
   async ({ page }, count: number) => {
     // Measure 0 ("1 2 3 4") has exactly 4 notes.
     const highlightedNotes = page.locator(
-      '[data-tag="note"][data-note-drag-selected]',
+      '[data-tag="note"][data-note-range-selected]',
     )
     await expect(highlightedNotes).toHaveCount(count)
   },

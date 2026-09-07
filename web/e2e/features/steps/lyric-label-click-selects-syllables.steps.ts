@@ -1,9 +1,9 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Clicking (or drag-selecting vertically across) a lyric-verse label — the
+ * Clicking (or click-and-click range-selecting vertically across) a lyric-verse label — the
  * abbreviation drawn at the label region's left edge on each verse's own
  * row, e.g. "M:v1" for Melody's first verse — is a shortcut for selecting
  * every syllable that verse sings across the whole system the label sits
@@ -94,7 +94,7 @@ Given(
 )
 
 When(
-  'I click the verse {int} lyric label without dragging',
+  'I click the verse {int} lyric label without clicking a second time',
   async ({ page }, verse: number) => {
     const label = verseLabel(page, verse)
     await expect(label).toBeVisible({ timeout: 5_000 })
@@ -112,7 +112,7 @@ When(
 )
 
 When(
-  'I drag from the verse {int} lyric label to the verse {int} lyric label',
+  'I click the verse {int} lyric label then click the verse {int} lyric label',
   async ({ page }, fromVerse: number, toVerse: number) => {
     const fromLabel = verseLabel(page, fromVerse)
     const toLabel = verseLabel(page, toVerse)
@@ -136,22 +136,22 @@ When(
 )
 
 Then(
-  "verse 0's 4 syllables are drag-selected and verse 1's are not",
+  "verse 0's 4 syllables are range-selected and verse 1's are not",
   async ({ page }) => {
     // Verse 1 sounds 4 syllables total across both measures ("do re" + "la
     // ti"); none of verse 2's syllables should be selected.
     const highlightedLyrics = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected]',
+      '[data-tag="lyric"][data-lyric-range-selected]',
     )
     await expect(highlightedLyrics).toHaveCount(4)
     await expect(
       page.locator(
-        '[data-tag="lyric"][data-lyric-drag-selected][data-verse="0"]',
+        '[data-tag="lyric"][data-lyric-range-selected][data-verse="0"]',
       ),
     ).toHaveCount(4)
     await expect(
       page.locator(
-        '[data-tag="lyric"][data-lyric-drag-selected][data-verse="1"]',
+        '[data-tag="lyric"][data-lyric-range-selected][data-verse="1"]',
       ),
     ).toHaveCount(0)
   },
@@ -163,22 +163,22 @@ Then(
     // The clicked label stays visually selected after mouseup; the untouched
     // one never was.
     await expect(verseLabelRect(page, 0)).toHaveAttribute(
-      'data-lyric-label-drag-active',
+      'data-lyric-label-range-active',
       '',
     )
     await expect(verseLabelRect(page, 1)).not.toHaveAttribute(
-      'data-lyric-label-drag-active',
+      'data-lyric-label-range-active',
       '',
     )
   },
 )
 
 Then(
-  "verse 0's and verse 1's syllables are all drag-selected",
+  "verse 0's and verse 1's syllables are all range-selected",
   async ({ page }) => {
     // Verse 1's 4 syllables + verse 2's 4 syllables = 8.
     const highlightedLyrics = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected]',
+      '[data-tag="lyric"][data-lyric-range-selected]',
     )
     await expect(highlightedLyrics).toHaveCount(8)
   },
@@ -188,11 +188,11 @@ Then(
   'both the verse 0 and verse 1 labels stay visually active',
   async ({ page }) => {
     await expect(verseLabelRect(page, 0)).toHaveAttribute(
-      'data-lyric-label-drag-active',
+      'data-lyric-label-range-active',
       '',
     )
     await expect(verseLabelRect(page, 1)).toHaveAttribute(
-      'data-lyric-label-drag-active',
+      'data-lyric-label-range-active',
       '',
     )
   },

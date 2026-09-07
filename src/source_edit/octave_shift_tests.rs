@@ -234,7 +234,7 @@ fn returned_ranges_preserve_a_disjoint_multicursor_selections_shape() {
     );
 }
 
-/// A single contiguous drag selection spanning multiple notes (as opposed to
+/// A single contiguous range selection spanning multiple notes (as opposed to
 /// the disjoint per-measure multicursor above) must come back as a single
 /// contiguous range covering the whole shifted span — not split into one
 /// range per shifted note, which would visibly narrow the user's selection

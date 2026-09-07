@@ -2,14 +2,14 @@ import type { Monaco } from '@monaco-editor/react'
 import type * as monacoEditor from 'monaco-editor'
 import { byteOffsetToStringIndex } from './byteSpan'
 
-/** One rendered note/rest hit-tested off the SVG during a drag-select, keyed
+/** One rendered note/rest hit-tested off the SVG during a range-select, keyed
  * the same way as `Tag::Note`'s `data-part-index`/`data-note-id` attributes. */
 export interface NoteCell {
   sourcePartIndex: number
   noteId: number
 }
 
-/** One contiguous drag-selected byte range within a single part's single
+/** One contiguous range-selected byte range within a single part's single
  * measure, as grouped by the wasm export `group_note_selection`
  * (`note_spans::group_selected_notes_into_contiguous_runs` in Rust). */
 export interface NoteSelectionRun {

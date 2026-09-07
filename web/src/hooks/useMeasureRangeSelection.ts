@@ -40,7 +40,7 @@ export interface UseMeasureRangeSelectionResult {
 }
 
 /**
- * Turns a measure/bar-line click or drag (see `Preview.tsx`'s
+ * Turns a measure/bar-line click or range-select (see `Preview.tsx`'s
  * `onMeasureRangeSelect`) into a single combined Monaco multicursor
  * selection covering both the note cells and the lyric cells under it.
  *

@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickThenStableClick } from '../../dragSelectHelpers'
+import { clickThenStableClick } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -127,37 +127,37 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in note lyriclabel range select',
+  '{int} notes are range-selected in total, as seen in note lyriclabel range select',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} syllables are drag-selected in total, as seen in note lyriclabel range select',
+  '{int} syllables are range-selected in total, as seen in note lyriclabel range select',
   async ({ page }, count: number) => {
     // Only Harmony's verse 0 (the label's own verse) should be selected —
     // verse 1 sits in range but on the wrong verse.
     const selected = page.locator(
-      '[data-tag="lyric"][data-lyric-drag-selected]',
+      '[data-tag="lyric"][data-lyric-range-selected]',
     )
     await expect(selected).toHaveCount(count)
     await expect(
       page.locator(
-        '[data-tag="lyric"][data-lyric-drag-selected][data-part-index="1"][data-verse="1"]',
+        '[data-tag="lyric"][data-lyric-range-selected][data-part-index="1"][data-verse="1"]',
       ),
     ).toHaveCount(0)
   },
 )
 
 Then(
-  'no note in measure 2 is drag-selected, as seen in note lyriclabel range select',
+  'no note in measure 2 is range-selected, as seen in note lyriclabel range select',
   async ({ page }) => {
     for (const partIndex of [0, 1]) {
       await expect(noteInPart(page, partIndex).nth(2)).not.toHaveAttribute(
-        'data-note-drag-selected',
+        'data-note-range-selected',
         '',
       )
     }

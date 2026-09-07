@@ -63,7 +63,7 @@ pub struct ShiftRangeOctaveResult {
     pub source: String,
     /// The caller's input `ranges`, in the same order and count, each
     /// remapped to its new position in the post-edit text. A range's length
-    /// can change (e.g. a two-note contiguous drag selection whose notes'
+    /// can change (e.g. a two-note contiguous range selection whose notes'
     /// `'`/`,` marker runs each grow or shrink by a different amount) but its
     /// *shape* — how many ranges there are, contiguous vs. disjoint — is
     /// always preserved, so re-selecting these restores exactly what the

@@ -1,10 +1,10 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
  * Regression fixture for the click-and-click note-range gesture not
- * spanning a system boundary (see `previewDragHighlights.ts`'s
+ * spanning a system boundary (see `previewRangeHighlights.ts`'s
  * `cellsInMarquee`): the gesture resolves to a plain axis-aligned rectangle
  * between the anchor and the second click's screen point, rather than "every
  * note in reading order between the two clicks" — so an anchor/target pair
@@ -41,7 +41,7 @@ function noteRects(page: import('@playwright/test').Page) {
 // group and the pointer-events-none playback-cursor group — see
 // `applyPersistedNoteHighlights`'s doc comment) sharing the same
 // `data-note-id`/`data-part-index`, so this narrows to the one that actually
-// carries the click-target rect and gets the `noteDragSelected` flag.
+// carries the click-target rect and gets the `noteRangeSelected` flag.
 function noteGroup(page: import('@playwright/test').Page, noteId: number) {
   return page.locator(
     `[data-tag="note"][data-note-id="${noteId}"]:has(rect[data-variant="note-click-target-rect"])`,
@@ -90,7 +90,7 @@ When(
     // The anchoring click self-commits into a Monaco selection, whose
     // cursor-change listener debounces (300ms) into a worker round-trip that
     // swaps in fresh "highlighted documents" SVG DOM (see
-    // `note-drag-select-highlight.steps.ts`'s doc comment) — wait for that to
+    // `note-range-select-highlight.steps.ts`'s doc comment) — wait for that to
     // settle before re-querying the target note's rect, so its bounding box
     // isn't captured mid-swap.
     await page.waitForTimeout(400)
@@ -108,11 +108,11 @@ When(
 )
 
 Then(
-  'the notes at index {int}, {int}, {int}, {int} and {int} are all drag-selected',
+  'the notes at index {int}, {int}, {int}, {int} and {int} are all range-selected',
   async ({ page }, a: number, b: number, c: number, d: number, e: number) => {
     for (const noteId of [a, b, c, d, e]) {
       await expect(noteGroup(page, noteId)).toHaveAttribute(
-        'data-note-drag-selected',
+        'data-note-range-selected',
         '',
       )
     }

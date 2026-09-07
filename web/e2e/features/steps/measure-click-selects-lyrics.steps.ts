@@ -1,16 +1,16 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Cmd/Ctrl-clicking (or -dragging across) a measure in the SVG preview
- * selects every note/rest cell in that measure (see
+ * Cmd/Ctrl-clicking (or click-and-clicking across) a measure in the SVG
+ * preview selects every note/rest cell in that measure (see
  * `measure-click-selects-notes.spec.ts`) — and, alongside them, every lyric
  * syllable in that same measure, via `previewSelection.ts`'s
- * `lyricCellsInMeasureRange`. A plain click/drag resolves to note/chord/
- * syllable granularity instead and never pulls in lyric cells from a note
- * hit (see `Preview.tsx`'s `onMouseDown`).
+ * `lyricCellsInMeasureRange`. A plain click / click-and-click resolves to
+ * note/chord/syllable granularity instead and never pulls in lyric cells
+ * from a note hit (see `Preview.tsx`'s `onMouseDown`).
  *
  * Self-contained source (not a demo file) with a generous "max measures per
  * system" so all measures render in one row and stay within the viewport.
@@ -122,7 +122,7 @@ When(
 )
 
 When(
-  "I Cmd\\/Ctrl-drag from measure 0's note row to measure 1's note row",
+  "I Cmd\\/Ctrl-click measure 0's note row then measure 1's note row",
   async ({ page }) => {
     const measure0 = page
       .locator('[data-tag="measure"][data-measure-index="0"]')
@@ -158,34 +158,34 @@ When(
   },
 )
 
-Then('{int} note is drag-selected', async ({ page }, count: number) => {
+Then('{int} note is range-selected', async ({ page }, count: number) => {
   await expect(
-    page.locator('[data-tag="note"][data-note-drag-selected]'),
+    page.locator('[data-tag="note"][data-note-range-selected]'),
   ).toHaveCount(count)
 })
 
 Then(
-  '{int} notes are drag-selected, as seen in measure click selects lyrics',
+  '{int} notes are range-selected, as seen in measure click selects lyrics',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
-Then('{int} lyrics are drag-selected', async ({ page }, count: number) => {
+Then('{int} lyrics are range-selected', async ({ page }, count: number) => {
   await expect(
-    page.locator('[data-tag="lyric"][data-lyric-drag-selected]'),
+    page.locator('[data-tag="lyric"][data-lyric-range-selected]'),
   ).toHaveCount(count)
 })
 
 Then(
-  'lyrics with note ids {int} and {int} are drag-selected',
+  'lyrics with note ids {int} and {int} are range-selected',
   async ({ page }, a: number, b: number) => {
     for (const noteId of [a, b]) {
       await expect(
         page.locator(
-          `[data-tag="lyric"][data-lyric-drag-selected][data-note-id="${noteId}"]`,
+          `[data-tag="lyric"][data-lyric-range-selected][data-note-id="${noteId}"]`,
         ),
       ).toHaveCount(1)
     }

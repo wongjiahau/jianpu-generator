@@ -88,7 +88,7 @@ pub(crate) fn resolve(
 /// Same-part `Note ↔ Lyric` cross-row. Answer to the "does the cross-part
 /// `Note ↔ Note` arm's measure-range pattern generalize to the same-part
 /// case" question: *no* — a measure commonly holds several notes (this
-/// repo's own `note-lyric-cross-drag-select.feature` fixture is one measure
+/// repo's own `note-lyric-cross-range-select.feature` fixture is one measure
 /// of four), so ranging by `measure_index` here would select every note in
 /// the measure as an all-or-nothing unit, far coarser than what the old
 /// pixel marquee (and this row's own `note_id`-range sibling, `Note ↔
@@ -99,7 +99,7 @@ pub(crate) fn resolve(
 /// ranging both `note_spans` and `lyric_spans` by the same `[min, max]` of
 /// the two endpoints' `note_id`s works without a measure lookup at all.
 /// `lyric_cells` is additionally restricted to the `Lyric` endpoint's own
-/// `verse` — the only verse row this drag actually swept, mirroring
+/// `verse` — the only verse row this selection actually covered, mirroring
 /// `LyricLabel ↔ LyricLabel`'s single-verse scoping.
 fn same_part(
     note_spans: &[NoteSpanOut],

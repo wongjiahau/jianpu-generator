@@ -1,5 +1,5 @@
 import type { MouseEvent, RefObject } from 'react'
-import type { PreviewDragState } from './previewDragState'
+import type { PreviewAnchorState } from './previewAnchorState'
 import {
   getLyricLabelAtPoint,
   getPartLabelAtPoint,
@@ -25,18 +25,18 @@ import {
 
 export type { HandlePreviewClickArgs } from './previewSelectionResolver'
 
-/** Anchors `dragStateRef` to `newState` and immediately self-commits its
+/** Anchors `anchorStateRef` to `newState` and immediately self-commits its
  * single-target resolution (matching a plain click's long-standing
  * instant-select behavior — see the single-click e2e specs) — but, unlike
- * the old held-button drag model, leaves `dragStateRef` anchored rather than
+ * the old held-button drag model, leaves `anchorStateRef` anchored rather than
  * resetting to idle: a second click can still land elsewhere and widen this
  * into a real range (see `handleCommitClick`). */
 function anchorAndCommit(
-  dragStateRef: RefObject<PreviewDragState>,
-  newState: NonNullable<PreviewDragState>,
+  anchorStateRef: RefObject<PreviewAnchorState>,
+  newState: NonNullable<PreviewAnchorState>,
   args: HandlePreviewClickArgs,
 ): void {
-  dragStateRef.current = newState
+  anchorStateRef.current = newState
   // Arms the one-shot reveal suppression (see `HandlePreviewClickArgs`'s
   // `suppressNextRevealRef` doc comment) — set here, ahead of `fireCommit`,
   // so it's already armed by the time this self-commit's Monaco selection
@@ -50,24 +50,24 @@ function anchorAndCommit(
   fireCommit(resolveSelection(newState, undefined, undefined, args), args)
 }
 
-/** Resets `dragStateRef` to idle and re-applies the highlight `dragState`'s
+/** Resets `anchorStateRef` to idle and re-applies the highlight `anchorState`'s
  * anchoring click already committed — used both when a second click misses
  * every recognizable target and when the gesture is cancelled via Escape
  * (see `usePreviewClickSelection`). No callback fires: the anchoring click's
  * own commit already did, and nothing about that selection has changed. */
 export function cancelAnchor(
-  dragStateRef: RefObject<PreviewDragState>,
-  dragState: NonNullable<PreviewDragState>,
+  anchorStateRef: RefObject<PreviewAnchorState>,
+  anchorState: NonNullable<PreviewAnchorState>,
   args: HandlePreviewClickArgs,
 ): void {
-  resolveSelection(dragState, undefined, undefined, args)
-  dragStateRef.current = null
+  resolveSelection(anchorState, undefined, undefined, args)
+  anchorStateRef.current = null
   args.onPendingSecondClickChange?.(false)
 }
 
 /** Whether `(x, y)` doesn't land on anything this gesture can resolve a
  * selection from — a second click here cancels the anchored gesture rather
- * than committing a nonsensical range (see `PreviewDragState`'s doc comment
+ * than committing a nonsensical range (see `PreviewAnchorState`'s doc comment
  * and this module's `handleCommitClick`). Mirrors the same hit-test chain
  * `handleAnchorClick` uses for a first click, since anything that would
  * anchor a *new* gesture also counts as a recognizable target for
@@ -89,25 +89,25 @@ function isEmptySpace(x: number, y: number): boolean {
  * clicked (a part/lyric label, a note/chord, a lyric syllable, or plain
  * measure space — a section label is handled ahead of this, in
  * `handlePreviewClick` itself, since it's never part of the click-and-click
- * gesture below), anchors `dragStateRef` with the mode that gesture should
+ * gesture below), anchors `anchorStateRef` with the mode that gesture should
  * carry through, and self-commits that single-target selection immediately
  * (see `anchorAndCommit`). `handlePreviewClick` dispatches here when
- * `dragStateRef` is idle. */
+ * `anchorStateRef` is idle. */
 function handleAnchorClick(
   e: MouseEvent<HTMLDivElement>,
   args: HandlePreviewClickArgs,
 ): void {
-  const { dragStateRef } = args
+  const { anchorStateRef } = args
   const partLabel = getPartLabelAtPoint(e.clientX, e.clientY)
   if (partLabel !== undefined) {
     const point = { x: e.clientX, y: e.clientY }
     // Cmd/Ctrl-click on a part label elevates the selection from "this one
     // part's system" to "every part in every system touched" — see
-    // `PreviewDragState`'s 'part-label-system' doc comment. Checked ahead of
+    // `PreviewAnchorState`'s 'part-label-system' doc comment. Checked ahead of
     // the plain part-label anchor below so it takes priority.
     if (e.metaKey || e.ctrlKey) {
       anchorAndCommit(
-        dragStateRef,
+        anchorStateRef,
         { mode: 'part-label-system', anchor: point, current: point },
         args,
       )
@@ -115,7 +115,7 @@ function handleAnchorClick(
       return
     }
     anchorAndCommit(
-      dragStateRef,
+      anchorStateRef,
       {
         mode: 'part-label',
         anchor: point,
@@ -133,7 +133,7 @@ function handleAnchorClick(
   if (lyricLabel !== undefined) {
     const point = { x: e.clientX, y: e.clientY }
     anchorAndCommit(
-      dragStateRef,
+      anchorStateRef,
       {
         mode: 'lyric-label',
         anchor: point,
@@ -154,7 +154,7 @@ function handleAnchorClick(
   const barLineRange = getBarLineMeasureAtPoint(e.clientX, e.clientY)
   if (barLineRange !== undefined) {
     anchorAndCommit(
-      dragStateRef,
+      anchorStateRef,
       {
         mode: 'measure',
         anchor: barLineRange,
@@ -173,13 +173,13 @@ function handleAnchorClick(
   // note/lyric/gutter pixel. Anchors 'bar-number-system' rather than plain
   // 'measure' mode, though: a bar number is the click-and-click gesture's
   // system-selection entry point (see that mode's doc comment in
-  // `previewDragState.ts`), escalating a second click anywhere into "every
+  // `previewAnchorState.ts`), escalating a second click anywhere into "every
   // part, every system from here through there" instead of stopping at the
   // exact measure the second click landed in.
   const barNumberRange = getBarNumberMeasureAtPoint(e.clientX, e.clientY)
   if (barNumberRange !== undefined) {
     anchorAndCommit(
-      dragStateRef,
+      anchorStateRef,
       {
         mode: 'bar-number-system',
         anchor: barNumberRange,
@@ -196,13 +196,13 @@ function handleAnchorClick(
   // bar-line, or empty gutter) — checked ahead of the lyric/note checks
   // below so it takes priority over them. Off a bar line, this is the only
   // way to reach 'measure' mode; a plain click elsewhere resolves to
-  // note/chord/syllable granularity instead (see `PreviewDragState`'s doc
+  // note/chord/syllable granularity instead (see `PreviewAnchorState`'s doc
   // comment).
   if (e.metaKey || e.ctrlKey) {
     const range = getMeasureAtPoint(e.clientX, e.clientY)
     if (range !== undefined) {
       anchorAndCommit(
-        dragStateRef,
+        anchorStateRef,
         {
           mode: 'measure',
           anchor: range,
@@ -224,7 +224,7 @@ function handleAnchorClick(
   if (lyricCell !== undefined) {
     const point = { x: e.clientX, y: e.clientY }
     anchorAndCommit(
-      dragStateRef,
+      anchorStateRef,
       {
         mode: 'lyric',
         anchor: point,
@@ -240,7 +240,7 @@ function handleAnchorClick(
   if (noteCell !== undefined) {
     const point = { x: e.clientX, y: e.clientY }
     anchorAndCommit(
-      dragStateRef,
+      anchorStateRef,
       {
         mode: 'note',
         anchor: point,
@@ -264,20 +264,20 @@ function handleAnchorClick(
 }
 
 /** The second click of a click-and-click gesture: resolves the range between
- * `dragState`'s anchor and this click and commits it, returning
- * `dragStateRef` to idle — unless this click misses every recognizable
+ * `anchorState`'s anchor and this click and commits it, returning
+ * `anchorStateRef` to idle — unless this click misses every recognizable
  * target, in which case the gesture is cancelled instead, leaving the first
  * click's own self-commit untouched (see `isEmptySpace`/`cancelAnchor`).
- * `handlePreviewClick` dispatches here when `dragStateRef` is already
+ * `handlePreviewClick` dispatches here when `anchorStateRef` is already
  * anchored. */
 function handleCommitClick(
   e: MouseEvent<HTMLDivElement>,
-  dragState: NonNullable<PreviewDragState>,
+  anchorState: NonNullable<PreviewAnchorState>,
   args: HandlePreviewClickArgs,
 ): void {
-  const { dragStateRef } = args
+  const { anchorStateRef } = args
   if (isEmptySpace(e.clientX, e.clientY)) {
-    cancelAnchor(dragStateRef, dragState, args)
+    cancelAnchor(anchorStateRef, anchorState, args)
     e.preventDefault()
     return
   }
@@ -290,8 +290,8 @@ function handleCommitClick(
   // click just made, fighting whatever scroll position the user is already
   // looking at.
   args.suppressNextRevealRef.current = true
-  fireCommit(resolveSelection(dragState, point, undefined, args), args)
-  dragStateRef.current = null
+  fireCommit(resolveSelection(anchorState, point, undefined, args), args)
+  anchorStateRef.current = null
   args.onPendingSecondClickChange?.(false)
   e.preventDefault()
 }
@@ -330,19 +330,19 @@ export function handlePreviewClick(
   e: MouseEvent<HTMLDivElement>,
   args: HandlePreviewClickArgs,
 ): void {
-  const { dragStateRef, onSectionLabelClick } = args
+  const { anchorStateRef, onSectionLabelClick } = args
   const sectionLabel = getSectionLabelAtPoint(e.clientX, e.clientY)
   if (sectionLabel !== undefined) {
-    const dragState = dragStateRef.current
-    if (dragState !== null) cancelAnchor(dragStateRef, dragState, args)
+    const anchorState = anchorStateRef.current
+    if (anchorState !== null) cancelAnchor(anchorStateRef, anchorState, args)
     onSectionLabelClick?.(sectionLabel)
     e.preventDefault()
     return
   }
-  const dragState = dragStateRef.current
-  if (dragState === null) {
+  const anchorState = anchorStateRef.current
+  if (anchorState === null) {
     handleAnchorClick(e, args)
     return
   }
-  handleCommitClick(e, dragState, args)
+  handleCommitClick(e, anchorState, args)
 }

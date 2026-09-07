@@ -1,5 +1,5 @@
 import type { ClickableElementId } from './clickableElementId'
-import type { DragPoint } from './previewDragHighlights'
+import type { AnchorPoint } from './previewRangeHighlights'
 import type { MeasureRange } from './previewSelection'
 
 // One discriminated ref rather than a separate measure-select and note-select
@@ -8,8 +8,8 @@ import type { MeasureRange } from './previewSelection'
 // both firing at once. This only governs which mode a click *anchors* — it
 // doesn't stop a single anchored mode's hover/second-click resolution from
 // resolving cells of more than one type. Both 'note' and 'lyric' mode union
-// in the other cell type's marquee hits (via `applyNoteDragHighlights`/
-// `applyLyricDragHighlights`, which are stateless pure functions over the
+// in the other cell type's marquee hits (via `applyNoteRangeHighlights`/
+// `applyLyricRangeHighlights`, which are stateless pure functions over the
 // note/lyric specs, not stateful refs), the same way 'measure' mode always
 // has.
 //
@@ -34,7 +34,7 @@ import type { MeasureRange } from './previewSelection'
 // holding Cmd/Ctrl at the first click or landing exactly on a bar line's own
 // divider or a bar number (see `previewClickHandler.ts`) — 'note' mode is
 // only ever anchored by a direct hit on a note's own click target.
-export type PreviewDragState =
+export type PreviewAnchorState =
   | {
       mode: 'measure'
       anchor: MeasureRange
@@ -59,8 +59,8 @@ export type PreviewDragState =
     }
   | {
       mode: 'note'
-      anchor: DragPoint
-      current: DragPoint
+      anchor: AnchorPoint
+      current: AnchorPoint
       /** The note/chord `ClickableElementId` the anchoring click landed
        * directly on — used to resolve the second click when it doesn't land
        * on any note's own click target, so the gesture still collapses to a
@@ -70,8 +70,8 @@ export type PreviewDragState =
     }
   | {
       mode: 'part-label'
-      anchor: DragPoint
-      current: DragPoint
+      anchor: AnchorPoint
+      current: AnchorPoint
       anchorId: Extract<ClickableElementId, { kind: 'partLabel' }>
     }
   | {
@@ -86,8 +86,8 @@ export type PreviewDragState =
       // any one system and has no `ClickableElementId` concept of its own
       // (see `PLAN-clickable-element-id-selection.md`).
       mode: 'part-label-system'
-      anchor: DragPoint
-      current: DragPoint
+      anchor: AnchorPoint
+      current: AnchorPoint
     }
   | {
       // The lyric-label mirror of 'part-label' above — a click on a verse
@@ -95,8 +95,8 @@ export type PreviewDragState =
       // own system the same way, but resolving only that one verse's
       // syllables rather than a whole part's notes.
       mode: 'lyric-label'
-      anchor: DragPoint
-      current: DragPoint
+      anchor: AnchorPoint
+      current: AnchorPoint
       anchorId: Extract<ClickableElementId, { kind: 'lyricLabel' }>
     }
   | {
@@ -107,8 +107,8 @@ export type PreviewDragState =
       // below with zero movement — there's no "expand to the whole measure"
       // shortcut to anchor into, unlike a note click.
       mode: 'lyric'
-      anchor: DragPoint
-      current: DragPoint
+      anchor: AnchorPoint
+      current: AnchorPoint
       /** The syllable `ClickableElementId` the anchoring click landed on —
        * drives `applyLyricRangeSelection`'s same-part-and-verse check, so a
        * second click that lands directly on another syllable in the same

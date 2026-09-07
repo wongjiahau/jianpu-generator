@@ -14,7 +14,7 @@ export interface TrimWindow {
 
 /**
  * Narrows a measure-range clip's note timings down to the elapsed-seconds
- * window that exactly covers a drag-selected set of notes, so "play
+ * window that exactly covers a range-selected set of notes, so "play
  * selection" (see `useMeasureAudioPlayback.playNoteSelection`) can seek/stop
  * at the real note boundaries instead of playing the full boundary measures
  * the selection touches.

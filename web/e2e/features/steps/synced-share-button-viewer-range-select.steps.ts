@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { fileSwitcherTrigger } from '../../fileSwitcherHelpers'
 import { Then, When } from './fixtures'
 import {
@@ -74,14 +74,15 @@ Then(
     })
     // `syncedShareViewerActive` (and the `hideEditor` it drives) flips true async,
     // just after the score itself renders — wait for the Editor to actually
-    // unmount before dragging, otherwise the drag can race a still-mounted
-    // Editor and take the Monaco-selection path this test isn't about.
+    // unmount before selecting, otherwise the click-and-click can race a
+    // still-mounted Editor and take the Monaco-selection path this test
+    // isn't about.
     await expect(state.viewerPage.locator('.monaco-editor')).toHaveCount(0)
   },
 )
 
 When(
-  'the viewer drags from measure {int} to measure {int}',
+  'the viewer clicks-and-clicks from measure {int} to measure {int}',
   async ({}, fromIndex: number, toIndex: number) => {
     if (!state.viewerPage) throw new Error('viewerPage was not opened yet')
     const measureFrom = state.viewerPage
@@ -188,14 +189,14 @@ Then("the viewer's note highlight is cleared", async () => {
   // Monaco selection in this view to round-trip back through
   // `handleEditorSelectionChange` and naturally re-derive it empty).
   await expect(
-    state.viewerPage.locator('[data-tag="note"][data-note-drag-selected]'),
+    state.viewerPage.locator('[data-tag="note"][data-note-range-selected]'),
   ).toHaveCount(0, { timeout: 5_000 })
 })
 
 Then("the viewer's tapped note is highlighted", async () => {
   if (!state.viewerPage) throw new Error('viewerPage was not opened yet')
   await expect(
-    state.viewerPage.locator('[data-tag="note"][data-note-drag-selected]'),
+    state.viewerPage.locator('[data-tag="note"][data-note-range-selected]'),
   ).toHaveCount(1, { timeout: 5_000 })
 })
 
@@ -212,7 +213,7 @@ Then("the viewer's note highlight still shows after settling", async () => {
   // asserting the highlight is still there.
   await state.viewerPage.waitForTimeout(800)
   const highlightedNotes = state.viewerPage.locator(
-    '[data-tag="note"][data-note-drag-selected]',
+    '[data-tag="note"][data-note-range-selected]',
   )
   await expect(highlightedNotes.first()).toBeVisible()
 })
@@ -222,8 +223,9 @@ Then("the viewer's measure highlight is not shown", async () => {
   // The amber whole-measure background is reserved for an actual Monaco
   // caret (see `useMeasureRangeSelection`'s no-mounted-editor branch) — this
   // no-editor viewer never mounts one, so no SVG gesture here (a single-note
-  // tap or a multi-measure drag) ever paints it, even though the drag still
-  // updates the play-measure button's range (see the sibling step above).
+  // tap or a multi-measure click-and-click) ever paints it, even though the
+  // click-and-click still updates the play-measure button's range (see the
+  // sibling step above).
   await expect(
     state.viewerPage.locator('.preview-page [data-testid="measure-highlight"]'),
   ).toHaveCount(0)
@@ -237,8 +239,8 @@ Then(
     // editor pane), so its label must also pick up the selected range — this
     // reflects `selectedMeasureRange` becoming non-null, independent of
     // whether the (separately-loaded) soundfont asset is ready yet. Unlike the
-    // editor-mounted case (where the same drag also lands a Monaco selection
-    // and shows "Selection" instead, see `measure-click-selects-notes.spec.ts`),
+    // editor-mounted case (where the same click-and-click also lands a Monaco
+    // selection and shows "Selection" instead, see `measure-click-selects-notes.spec.ts`),
     // there's no editor here to push a note selection into, so the plain
     // measure-range fallback is what's on screen.
     const playBtn = state.viewerPage.locator(

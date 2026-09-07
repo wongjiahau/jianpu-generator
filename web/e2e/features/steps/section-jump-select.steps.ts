@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { stableBoundingBox } from '../../dragSelectHelpers'
+import { stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -214,7 +214,7 @@ When('I release the mouse button', async ({ page }) => {
 
 // Anchors an ordinary click-and-click 'measure' gesture (see
 // `previewClickHandler.ts`'s `handleAnchorClick`) by clicking a bar line, so
-// the next step's section label click lands while `dragStateRef` is still
+// the next step's section label click lands while `anchorStateRef` is still
 // non-null — reproducing the "section label click swallowed as this
 // gesture's second click" regression instead of the always-idle state every
 // other scenario here starts from. (A note click would anchor the same way,

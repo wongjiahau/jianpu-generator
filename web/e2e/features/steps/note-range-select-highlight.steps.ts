@@ -1,23 +1,23 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
- * Regression test for the note drag-select highlight vanishing right after
+ * Regression test for the note range-select highlight vanishing right after
  * mouseup (see `Preview.tsx`'s `applyPersistedNoteHighlights` /
  * `selectedNoteCells` prop): the highlight used to be a one-shot imperative
  * DOM toggle that got explicitly cleared on mouseup, and — even without that
  * bug — would still have been wiped by the highlighted-SVG re-render that
- * the drag's own Monaco selection triggers a moment later.
+ * the range-select's own Monaco selection triggers a moment later.
  *
  * Self-contained source (not a demo file) with a generous "max measures per
  * system" and four single-beat notes in one measure, so all four note
  * click-targets render side by side in one row and stay within the viewport
- * during the drag.
+ * during the range-select.
  */
-const dragTestSource = [
+const rangeTestSource = [
   '# metadata',
-  'title = "note drag test"',
+  'title = "note range-select test"',
   'max_measures_per_system = 48',
   '',
   '# parts',
@@ -32,23 +32,23 @@ function noteRects(page: import('@playwright/test').Page) {
 }
 
 function highlightedNotes(page: import('@playwright/test').Page) {
-  return page.locator('[data-tag="note"][data-note-drag-selected]')
+  return page.locator('[data-tag="note"][data-note-range-selected]')
 }
 
 Given(
-  'the note drag test fixture is loaded and note click targets have rendered',
+  'the note range-select test fixture is loaded and note click targets have rendered',
   async ({ page }) => {
     await page.addInitScript((source) => {
       localStorage.setItem(
         'jianpu:files:v1',
         JSON.stringify({
-          active: 'note-drag-test.jianpu',
-          userFiles: { 'note-drag-test.jianpu': source },
+          active: 'note-range-test.jianpu',
+          userFiles: { 'note-range-test.jianpu': source },
           bin: {},
-          fileIds: { 'note-drag-test.jianpu': 'note-drag-test-id-001' },
+          fileIds: { 'note-range-test.jianpu': 'note-range-test-id-001' },
         }),
       )
-    }, dragTestSource)
+    }, rangeTestSource)
     await page.goto('/')
 
     await page.waitForSelector('[data-testid="play-measure-button"]', {
@@ -66,9 +66,9 @@ Given(
 Given(
   'the editor is focused and jumped to line 9 to prime the measure round-trip',
   async ({ page, focusEditor }) => {
-    // Prime the editor/worker round-trip the same way the measure drag-select
-    // spec does, so the highlighted-documents re-render this test is guarding
-    // against is actually wired up before we drag.
+    // Prime the editor/worker round-trip the same way the measure
+    // range-select spec does, so the highlighted-documents re-render this
+    // test is guarding against is actually wired up before we range-select.
     await focusEditor()
     await page.keyboard.press('Control+g')
     await page.keyboard.type('9')
@@ -81,7 +81,7 @@ Given(
 )
 
 When(
-  'I drag a marquee across notes {int} to {int}',
+  'I click-and-click select across notes {int} to {int}',
   async ({ page }, from: number, to: number) => {
     const box0 = await stableBoundingBox(noteRects(page).nth(from))
     const box2 = await stableBoundingBox(noteRects(page).nth(to))
@@ -97,13 +97,13 @@ When(
     const endX = box2.x + box2.width / 2
     const endY = box2.y + box2.height / 2
 
-    // Click-and-click a marquee across the first three notes.
+    // Click-and-click a range across the first three notes.
     await clickAndClickSelect(page, startX, startY, endX, endY)
   },
 )
 
 Then(
-  '{int} notes are drag-selected immediately after mouseup',
+  '{int} notes are range-selected immediately after mouseup',
   async ({ page }, count: number) => {
     // Immediately after mouseup, the highlight must still be showing (this is
     // the bug: it used to be cleared the instant mouseup ran).
@@ -121,9 +121,9 @@ Then('the play-measure button switches to selection mode', async ({ page }) => {
 })
 
 Then(
-  '{int} notes are still drag-selected after the highlighted-documents re-render',
+  '{int} notes are still range-selected after the highlighted-documents re-render',
   async ({ page }, count: number) => {
-    // Dragging a note-range selection pushes a Monaco multicursor selection,
+    // A click-and-click note-range selection pushes a Monaco multicursor selection,
     // whose cursor-change listener debounces (300 ms) into a worker
     // round-trip that swaps the plain SVG documents for highlighted ones —
     // wiping any highlight applied only as a one-shot DOM mutation. The

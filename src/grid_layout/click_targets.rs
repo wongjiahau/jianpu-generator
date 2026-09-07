@@ -263,10 +263,10 @@ pub(crate) fn compute_all_part_label_click_targets(
                             // rect in the same label gutter column; absorbing
                             // it here would make this rect's hover fill
                             // visually paint over that separate label too. A
-                            // part-label drag still selects the lyrics under
-                            // it (see `lyricCellsForPartLabels`), which is
-                            // resolved from `source_part_index` and the
-                            // measure range, not from this rect's height.
+                            // part-label range selection still selects the
+                            // lyrics under it (see `lyricCellsForPartLabels`),
+                            // which is resolved from `source_part_index` and
+                            // the measure range, not from this rect's height.
                             row_end: span.click_row_end,
                             source_part_index: part_template.source_part_index,
                             measure_index_start,

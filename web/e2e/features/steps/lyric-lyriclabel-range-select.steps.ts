@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickThenStableClick } from '../../dragSelectHelpers'
+import { clickThenStableClick } from '../../rangeSelectHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
@@ -105,23 +105,23 @@ When(
 )
 
 Then(
-  '{int} syllables are drag-selected in total, as seen in lyric lyriclabel range select',
+  '{int} syllables are range-selected in total, as seen in lyric lyriclabel range select',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="lyric"][data-lyric-drag-selected]'),
+      page.locator('[data-tag="lyric"][data-lyric-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  'no syllable in measure 2 is drag-selected, as seen in lyric lyriclabel range select',
+  'no syllable in measure 2 is range-selected, as seen in lyric lyriclabel range select',
   async ({ page }) => {
     // Neither verse row carries a `data-measure-index` of its own — measure
     // 2's syllable is the third (index 2) in each verse's render order (one
     // syllable per measure per verse).
     for (const verse of [0, 1]) {
       await expect(lyricInVerse(page, verse).nth(2)).not.toHaveAttribute(
-        'data-lyric-drag-selected',
+        'data-lyric-range-selected',
         '',
       )
     }
@@ -129,10 +129,10 @@ Then(
 )
 
 Then(
-  'no note is drag-selected, as seen in lyric lyriclabel range select',
+  'no note is range-selected, as seen in lyric lyriclabel range select',
   async ({ page }) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(0)
   },
 )

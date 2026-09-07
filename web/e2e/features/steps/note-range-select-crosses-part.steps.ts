@@ -82,11 +82,11 @@ Given(
 // pattern here would collide with it.
 
 Then(
-  'the notes at index {int}, {int}, {int} and {int} are all drag-selected',
+  'the notes at index {int}, {int}, {int} and {int} are all range-selected',
   async ({ page }, a: number, b: number, c: number, d: number) => {
     for (const noteId of [a, b, c, d]) {
       await expect(noteGroup(page, noteId)).toHaveAttribute(
-        'data-note-drag-selected',
+        'data-note-range-selected',
         '',
       )
     }
@@ -94,11 +94,11 @@ Then(
 )
 
 Then(
-  'the notes at index {int}, {int}, {int} and {int} are not drag-selected',
+  'the notes at index {int}, {int}, {int} and {int} are not range-selected',
   async ({ page }, a: number, b: number, c: number, d: number) => {
     for (const noteId of [a, b, c, d]) {
       await expect(noteGroup(page, noteId)).not.toHaveAttribute(
-        'data-note-drag-selected',
+        'data-note-range-selected',
         '',
       )
     }

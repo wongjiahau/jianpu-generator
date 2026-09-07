@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -12,7 +12,7 @@ import { Given, Then, When } from './fixtures'
  */
 const source = [
   '# metadata',
-  'title = "part label drag system boundary test"',
+  'title = "part label range-select system boundary test"',
   'max_measures_per_system = 1',
   '',
   '# parts',
@@ -32,12 +32,12 @@ async function loadFixture(page: import('@playwright/test').Page) {
     localStorage.setItem(
       'jianpu:files:v1',
       JSON.stringify({
-        active: 'part-label-drag-system-boundary-test.jianpu',
-        userFiles: { 'part-label-drag-system-boundary-test.jianpu': source },
+        active: 'part-label-range-system-boundary-test.jianpu',
+        userFiles: { 'part-label-range-system-boundary-test.jianpu': source },
         bin: {},
         fileIds: {
-          'part-label-drag-system-boundary-test.jianpu':
-            'part-label-drag-system-boundary-test-id-001',
+          'part-label-range-system-boundary-test.jianpu':
+            'part-label-range-system-boundary-test-id-001',
         },
       }),
     )
@@ -84,7 +84,7 @@ Given('the part-label system-boundary fixture is loaded', async ({ page }) => {
 })
 
 When(
-  "I drag straight down from system 0's Melody label to system 1's Melody label",
+  "I click-and-click select straight down from system 0's Melody label to system 1's Melody label",
   async ({ page }) => {
     const system0Melody = partLabel(page, 0, 0)
     const system1Melody = partLabel(page, 0, 1)
@@ -100,9 +100,9 @@ When(
     }
 
     // Click-and-click straight down from system 0's Melody label to system
-    // 1's Melody label — a vertical sweep, same gesture the "drag from one
-    // part label to another" test uses within a single system, but this one
-    // crosses a system boundary.
+    // 1's Melody label — a vertical sweep, same gesture the "click-and-click
+    // select from one part label to another" test uses within a single
+    // system, but this one crosses a system boundary.
     await clickAndClickSelect(
       page,
       startBox.x + startBox.width / 2,
@@ -114,63 +114,63 @@ When(
 )
 
 Then(
-  '{int} drag-selected notes belong to part index {int}, as seen in part label drag system boundary',
+  '{int} range-selected notes belong to part index {int}, as seen in part label click system boundary',
   async ({ page }, count: number, partIndex: number) => {
     // Melody has 2 notes per system (4 total across both systems) — both
     // systems' Melody notes are selected now that `PartLabel ↔ PartLabel` is
     // system-agnostic (see the feature file's header comment). Harmony's
     // system-0 row sits between the two Melody labels on screen, but the
     // range is derived from each label's own `sourcePartIndex`, not a pixel
-    // sweep, so Harmony is never picked up by this drag.
+    // sweep, so Harmony is never picked up by this range-select.
     await expect(
       page.locator(
-        `[data-tag="note"][data-note-drag-selected][data-part-index="${partIndex}"]`,
+        `[data-tag="note"][data-note-range-selected][data-part-index="${partIndex}"]`,
       ),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  '{int} notes are drag-selected in total, as seen in part label drag system boundary',
+  '{int} notes are range-selected in total, as seen in part label click system boundary',
   async ({ page }, count: number) => {
     await expect(
-      page.locator('[data-tag="note"][data-note-drag-selected]'),
+      page.locator('[data-tag="note"][data-note-range-selected]'),
     ).toHaveCount(count)
   },
 )
 
 Then(
-  "system 0's Melody label's click-target rect is marked drag-active, as seen in part label drag system boundary",
+  "system 0's Melody label's click-target rect is marked range-active, as seen in part label click system boundary",
   async ({ page }) => {
     await expect(
       partLabel(page, 0, 0).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "system 0's Harmony label's click-target rect is not marked drag-active, as seen in part label drag system boundary",
+  "system 0's Harmony label's click-target rect is not marked range-active, as seen in part label click system boundary",
   async ({ page }) => {
     // Harmony was never swept — see the feature file's header comment.
     await expect(
       partLabel(page, 1, 0).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).not.toHaveAttribute('data-part-label-drag-active', '')
+    ).not.toHaveAttribute('data-part-label-range-active', '')
   },
 )
 
 Then(
-  "system 1's Melody label's click-target rect is marked drag-active, as seen in part label drag system boundary",
+  "system 1's Melody label's click-target rect is marked range-active, as seen in part label click system boundary",
   async ({ page }) => {
-    // The drag's own `current` endpoint — now included since the range
-    // spans both systems' Melody notes.
+    // The range-select's own `current` endpoint — now included since the
+    // range spans both systems' Melody notes.
     await expect(
       partLabel(page, 0, 1).locator(
         'rect[data-variant="part-label-click-target-rect"]',
       ),
-    ).toHaveAttribute('data-part-label-drag-active', '')
+    ).toHaveAttribute('data-part-label-range-active', '')
   },
 )

@@ -84,7 +84,7 @@ pub struct MeasureRangeAudioOptions<'a> {
     /// window (plus a short release tail, sample-accurately faded at the
     /// cut points — see [`crate::wav::TrimWindow`]) instead of playing the
     /// range's full boundary measures — what the web app's "play
-    /// selection" needs to play only the drag-selected notes' actual time
+    /// selection" needs to play only the range-selected notes' actual time
     /// span. The boundary measures are still synthesized in full either
     /// way, since that's needed for correct tempo/key context and to leave
     /// room for the trimmed clip's own release tail.
@@ -178,7 +178,7 @@ pub fn measure_start_times_from_source(
 /// part's notes are hidden) agree with the rendered SVG's `data-note-id`.
 /// `enabled_tracks` separately mutes playback down to a further, possibly
 /// narrower subset of those visible parts for this one call only (e.g. the
-/// web app's note drag-select playback) without affecting `source_part_index`
+/// web app's note range-select playback) without affecting `source_part_index`
 /// or block structure — see [`crate::midi::note_timings_seconds`].
 #[cfg(feature = "midi")]
 pub fn note_timings_from_source(

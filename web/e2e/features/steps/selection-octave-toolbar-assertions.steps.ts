@@ -29,10 +29,10 @@ Then(
  * `selectedNoteCells`, see `Preview.tsx`'s `applyPersistedNoteHighlights`).
  *
  * Deliberately scoped to the `[data-tag="note"]` group that encloses the
- * *click-target* rect, not every `[data-tag="note"][data-note-drag-selected]`
+ * *click-target* rect, not every `[data-tag="note"][data-note-range-selected]`
  * element: each note also has a second, sibling `[data-tag="note"]` group for
  * its (pointer-events: none) playback-cursor rect (see
- * `applyPersistedNoteHighlights`'s doc comment in `previewDragHighlights.ts`),
+ * `applyPersistedNoteHighlights`'s doc comment in `previewRangeHighlights.ts`),
  * and `applyPersistedHighlights` only ever visits/clears the click-target
  * one — the playback-cursor sibling can be left carrying a stale flag from
  * an earlier selection indefinitely. That's harmless in the real app (the
@@ -44,7 +44,7 @@ async function highlightedNoteCellKeys(page: import('@playwright/test').Page) {
   return page.evaluate(() =>
     Array.from(
       document.querySelectorAll(
-        '[data-tag="note"][data-note-drag-selected] rect[data-variant="note-click-target-rect"]',
+        '[data-tag="note"][data-note-range-selected] rect[data-variant="note-click-target-rect"]',
       ),
     )
       .map((rect) => rect.closest('[data-tag="note"]') as HTMLElement)

@@ -73,7 +73,7 @@ fn same_part_note_lyric_range_uses_note_id_not_measure_index() {
     // with note_id 1 (both part 0), but sits outside the anchor/current
     // note_id range [0, 1]. If the cross-part arm's measure-range rule ever
     // fired for a same-part pair — the exact regression this row's own
-    // `note-lyric-cross-drag-select.feature` caught, since a jianpu measure
+    // `note-lyric-cross-range-select.feature` caught, since a jianpu measure
     // routinely holds several notes — it would wrongly include note_id 5
     // (and any verse-0 lyric on it) via its measure match; the guard on the
     // arm above ensures it never does.
@@ -127,8 +127,8 @@ fn cross_part_note_lyric_range() {
 #[test]
 fn cross_part_note_lyric_range_excludes_other_verses() {
     // A verse-1 syllable sitting inside the swept measure/part range is
-    // still excluded — the drag only ever swept the `Lyric` endpoint's own
-    // verse-0 row, not every verse.
+    // still excluded — the selection only ever covered the `Lyric` endpoint's
+    // own verse-0 row, not every verse.
     let (mut note_spans, mut lyric_spans) = fixture();
     note_spans.push(note_span(1, 4, 1));
     lyric_spans.push(lyric_span(1, 4, 1, 1));

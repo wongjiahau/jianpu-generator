@@ -1,5 +1,5 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
@@ -68,7 +68,7 @@ Given('the rest-click test fixture is loaded', async ({ page }) => {
   // `primeMeasureSpans`), so measureSpans/noteSpans are settled before
   // hit-testing. Also wait for the resulting highlight re-render to finish
   // swapping the SVG DOM, otherwise a bounding box captured mid-swap can be
-  // stale by the time the drag below runs.
+  // stale by the time the click-and-click gesture below runs.
   await focusEditor(page)
   await page.keyboard.press('Control+g')
   await page.keyboard.type('9')
@@ -82,7 +82,7 @@ Given('the rest-click test fixture is loaded', async ({ page }) => {
 })
 
 When(
-  "I drag just past the note-drag arm threshold inside the rest's own click target",
+  "I click-and-click just past the note-range-select arm threshold inside the rest's own click target",
   async ({ page }) => {
     const noteRects = page.locator(
       'rect[data-variant="note-click-target-rect"]',
@@ -113,10 +113,10 @@ When(
 )
 
 Then(
-  '{int} note is drag-selected, as seen in rest click selects source token',
+  '{int} note is range-selected, as seen in rest click selects source token',
   async ({ page }, count: number) => {
     const highlightedNotes = page.locator(
-      '[data-tag="note"][data-note-drag-selected]',
+      '[data-tag="note"][data-note-range-selected]',
     )
     await expect(highlightedNotes).toHaveCount(count)
   },

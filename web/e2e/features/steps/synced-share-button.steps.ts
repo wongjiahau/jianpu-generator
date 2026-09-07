@@ -40,12 +40,12 @@ Given('the file store is seeded with the synced score', async ({ page }) => {
 })
 
 Given(
-  'the file store is seeded with a multi-measure synced drag score',
+  'the file store is seeded with a multi-measure synced range-select score',
   async ({ page }) => {
-    const dragFilename = 'synced-drag-test.jianpu'
-    const dragSource = [
+    const rangeFilename = 'synced-range-test.jianpu'
+    const rangeSource = [
       '# metadata',
-      'title = "Synced Drag Score"',
+      'title = "Synced Range-Select Score"',
       'max_measures_per_system = 48',
       '',
       '# parts',
@@ -58,7 +58,7 @@ Given(
       '',
       '[M] 1 - - -',
     ].join('\n')
-    await seedFileStore(page, dragFilename, dragSource, 'synced-drag-test-id')
+    await seedFileStore(page, rangeFilename, rangeSource, 'synced-range-test-id')
   },
 )
 

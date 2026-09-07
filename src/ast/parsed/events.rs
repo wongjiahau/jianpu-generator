@@ -183,7 +183,7 @@ pub struct Syllable {
     /// True if `-` follows this syllable in the lyrics section.
     pub held: bool,
     /// Source byte range of this syllable's own token, absolute within the
-    /// whole document — lets the SVG preview map a clicked/dragged lyric
+    /// whole document — lets the SVG preview map a clicked lyric
     /// syllable back to its source text, mirroring how `ParsedNote::event_span`
     /// does the same for notes (see `note_spans.rs`).
     pub span: Span,

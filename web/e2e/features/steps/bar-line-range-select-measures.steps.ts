@@ -1,19 +1,20 @@
 import { expect } from '@playwright/test'
-import { clickAndClickSelect, stableBoundingBox } from '../../dragSelectHelpers'
+import { clickAndClickSelect, stableBoundingBox } from '../../rangeSelectHelpers'
 import { focusEditor } from '../../fileSwitcherHelpers'
 import { Given, Then, When } from './fixtures'
 
 /**
  * The visible bar line (measure divider) between two measures should be a
- * reliable, hoverable drag handle for measure-range selection: a drag
- * starting exactly on the divider pixel between measure 0 and measure 1 must
- * select whole measures, not fall into a per-note marquee drag (see
- * `Tag::BarLine`/`AbsoluteContent::BarLineClickTarget`, consumed by
- * `PreviewSvgRenderer.tsx`'s `groupAttrsForTag`). Grabbing the divider
- * itself always starts this gesture, with or without Cmd/Ctrl held — a plain
- * drag elsewhere (off the divider) resolves to note/chord/syllable
- * granularity instead, and needs Cmd/Ctrl to reach whole-measure selection
- * (see `previewMouseDownHandler.ts`'s `onMouseDown`).
+ * reliable, hoverable click target for measure-range selection: a
+ * click-and-click range starting exactly on the divider pixel between
+ * measure 0 and measure 1 must select whole measures, not fall into a
+ * per-note marquee (see `Tag::BarLine`/`AbsoluteContent::BarLineClickTarget`,
+ * consumed by `PreviewSvgRenderer.tsx`'s `groupAttrsForTag`). Grabbing the
+ * divider itself always starts this gesture, with or without Cmd/Ctrl held —
+ * a plain click-and-click elsewhere (off the divider) resolves to
+ * note/chord/syllable granularity instead, and needs Cmd/Ctrl to reach
+ * whole-measure selection (see `previewMouseDownHandler.ts`'s
+ * `onMouseDown`).
  *
  * Same fixture as `measure-click-selects-notes.spec.ts`:
  * Measure 0 : [M] 1 2 3 4   — 4 notes
@@ -22,7 +23,7 @@ import { Given, Then, When } from './fixtures'
  */
 const barLineTestSource = [
   '# metadata',
-  'title = "bar line drag test"',
+  'title = "bar line range test"',
   'max_measures_per_system = 48',
   '',
   '# parts',
@@ -41,10 +42,10 @@ async function loadBarLineTestFixture(page: import('@playwright/test').Page) {
     localStorage.setItem(
       'jianpu:files:v1',
       JSON.stringify({
-        active: 'bar-line-drag-test.jianpu',
-        userFiles: { 'bar-line-drag-test.jianpu': source },
+        active: 'bar-line-range-test.jianpu',
+        userFiles: { 'bar-line-range-test.jianpu': source },
         bin: {},
-        fileIds: { 'bar-line-drag-test.jianpu': 'bar-line-drag-test-id-001' },
+        fileIds: { 'bar-line-range-test.jianpu': 'bar-line-range-test-id-001' },
       }),
     )
   }, barLineTestSource)
@@ -66,7 +67,7 @@ async function primeMeasureSpans(page: import('@playwright/test').Page) {
   ).toBeVisible({ timeout: 5_000 })
 }
 
-Given('the bar-line-drag test fixture is loaded', async ({ page }) => {
+Given('the bar-line-range-select test fixture is loaded', async ({ page }) => {
   await loadBarLineTestFixture(page)
   await page.goto('/')
 
@@ -95,7 +96,7 @@ When(
   },
 )
 
-Then('the bar-line drag handle shows a col-resize cursor', async ({ page }) => {
+Then('the bar-line click-target shows a col-resize cursor', async ({ page }) => {
   const handle = page
     .locator('rect[data-variant="bar-line-click-target-rect"]')
     .first()
@@ -103,7 +104,7 @@ Then('the bar-line drag handle shows a col-resize cursor', async ({ page }) => {
 })
 
 When(
-  "I Cmd\\/Ctrl-drag from the bar line before measure 1 into measure 2's interior",
+  "I Cmd\\/Ctrl-click-and-click from the bar line before measure 1 into measure 2's interior",
   async ({ page }) => {
     await page.waitForSelector('[data-tag="measure"][data-measure-index="2"]', {
       timeout: 10_000,
@@ -139,7 +140,7 @@ When(
 )
 
 When(
-  "I plain-drag from the bar line before measure 1 into measure 2's interior",
+  "I plain click-and-click from the bar line before measure 1 into measure 2's interior",
   async ({ page }) => {
     await page.waitForSelector('[data-tag="measure"][data-measure-index="2"]', {
       timeout: 10_000,
@@ -173,12 +174,12 @@ When(
 )
 
 Then(
-  '{int} notes are drag-selected, as seen in bar line drag selects measures',
+  '{int} notes are range-selected, as seen in bar line click selects measures',
   async ({ page }, count: number) => {
     // Measures 1-2 have 2 + 2 = 4 notes in total — the full measure range, not
     // a partial note marquee.
     const highlightedNotes = page.locator(
-      '[data-tag="note"][data-note-drag-selected]',
+      '[data-tag="note"][data-note-range-selected]',
     )
     await expect(highlightedNotes).toHaveCount(count)
   },

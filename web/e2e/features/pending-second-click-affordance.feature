@@ -29,7 +29,7 @@ Feature: Pending-second-click affordance for click-and-click range selection
   Scenario: Committing the second click reverts to the committed color and hides the banner
     When I click-and-click select the first note in measure 0 then the first note in measure 2
     Then the pending-second-click banner is hidden
-    And the drag-selected notes are highlighted in the committed-selection color
+    And the range-selected notes are highlighted in the committed-selection color
 
   Scenario: Cancelling the gesture on empty space hides the banner and reverts the anchor's color
     When I click the first note in measure 0
