@@ -1,155 +1,14 @@
 import * as Tooltip from '@radix-ui/react-tooltip'
-import { AlignLeft } from 'lucide-react'
-import type { RefObject } from 'react'
+import { AlignLeft, ChevronDown, ChevronUp } from 'lucide-react'
 import { useEffect, useState } from 'react'
 import { MOBILE_BREAKPOINT_QUERY, useMediaQuery } from '../hooks/useMediaQuery'
-import type { NoteTimingOut, SvgDocumentOut } from '../jianpuWasm'
-import type {
-  Diagnostic,
-  DiagnosticViewZone,
-  EditorHandle,
-  LyricSpan,
-  MeasureSpan,
-  NoteSpan,
-  PartDeclaration,
-  PartInfo,
-  PartMode,
-  SoundfontValue,
-} from '../types'
-import type {
-  MetadataFieldKey,
-  ParsedMetadataFields,
-} from '../utils/metadataSource'
+import type { EditorSelection } from '../types'
+import type { AppWorkspaceProps } from './AppWorkspace.types'
 import { EditMetadataModal } from './EditMetadataModal'
 import { Editor } from './Editor'
 import { EditorToolbarButton } from './EditorToolbarButton'
 import { EditPartsModal } from './EditPartsModal'
-import type { LyricCell, NoteCell } from './Preview'
 import { Preview } from './Preview'
-
-interface MeasureRange {
-  start: number
-  end: number
-  /** Which measure the preview should scroll to for this selection, when
-   * it differs from `start` — see `Preview`'s matching prop doc comment. */
-  revealMeasureIndex: number
-  /** The exact disjoint measure ranges to highlight in the SVG preview —
-   * see `Preview`'s matching prop doc comment. */
-  highlightRanges?: { start: number; end: number }[]
-}
-
-interface AppWorkspaceProps {
-  editorCollapsed: boolean
-  setEditorCollapsed: (updater: (collapsed: boolean) => boolean) => void
-  /** True while viewing a `#share=` or `#synced=` read-only preview — hides
-   * the `Editor` entirely and the pane-divider toggle, since there is
-   * nothing to edit or expand back into. */
-  hideEditor: boolean
-  editorRef: RefObject<EditorHandle | null>
-  fileId: string
-  source: string
-  handleSourceChange: (value: string) => void
-  /** "Format" toolbar action: drops redundant `# score` lines and
-   * normalizes whitespace. */
-  handleFormatScore: () => void
-  readOnly: boolean
-  diagnostics: Diagnostic[]
-  diagnosticViewZones: DiagnosticViewZone[]
-  measureSpans: MeasureSpan[]
-  setSelectedLineRange: (
-    range: { firstLine: number; lastLine: number } | null,
-  ) => void
-  notifySelection: (
-    startLine: number,
-    endLine: number,
-    isEmpty: boolean,
-    revealLine?: number,
-    measureRanges?: { start: number; end: number }[],
-  ) => void
-  setEditPartsOpen: (open: boolean) => void
-  setEditMetadataOpen: (open: boolean) => void
-  forceSave: () => void
-  measureAudioPlaying: boolean
-  stopMeasurePlayback: () => void
-  selectedMeasureRange: MeasureRange | null
-  measureAudioGenerating: boolean
-  soundfontReady: boolean
-  playSelectedMeasures: () => void
-  /** True while a note drag-select (see `useNoteSelection`) is active; when
-   * set, the editor's Cmd/Ctrl+Enter shortcut plays the selected notes
-   * instead of the measure(s) under the cursor. */
-  notePlaybackSelectionActive: boolean
-  playNoteSelection: () => void
-  editPartsOpen: boolean
-  partDeclarations: PartDeclaration[]
-  parts: PartInfo[]
-  handlePartDeclarationChange: (
-    abbreviation: string,
-    mode: PartMode,
-    followTarget: string | null,
-    soundfont: SoundfontValue | null,
-    volume: number | null,
-    octaveOffset: number | null,
-  ) => void
-  handleShiftPartOctave: (abbreviation: string, delta: number) => void
-  previewInstrument: (programNumber: number) => void
-  previewPercussion: (key: number) => void
-  stopPreviewInstrument: () => void
-  previewAudioPlaying: boolean
-  editMetadataOpen: boolean
-  parsedMetadata: ParsedMetadataFields
-  handleMetadataFieldChange: (
-    key: MetadataFieldKey,
-    value: string | null,
-  ) => void
-  documents: SvgDocumentOut[]
-  highlightedDocuments: SvgDocumentOut[]
-  rendering: boolean
-  handleSectionJump: (label: string) => void
-  handleNoteRangeSelect: (selectedCells: NoteCell[]) => void
-  /** Keeps the preview's note highlight in sync with the editor's own
-   * current selection (see `useNoteSelection`'s
-   * `handleEditorSelectionChange`), the reverse direction of
-   * `handleNoteRangeSelect`. */
-  handleEditorSelectionChange: (startByte: number, endByte: number) => void
-  selectedNoteCells: NoteCell[]
-  /** Per-note/rest `(source_part_index, note_id) → measure_index` mapping,
-   * used to resolve a measure click/drag into every note cell it contains
-   * (see `Preview.tsx`'s `noteCellsInMeasureRange`) without relying on
-   * pixel geometry. */
-  noteSpans: NoteSpan[]
-  /** Fired on mouseup after a lyric-syllable drag-select (see
-   * `useLyricSelection`). Independent of `handleNoteRangeSelect` — a lyric
-   * drag never selects/highlights notes and vice versa. */
-  handleLyricRangeSelect: (selectedCells: LyricCell[]) => void
-  /** Keeps the preview's lyric highlight in sync with the editor's own
-   * current selection, the reverse direction of `handleLyricRangeSelect`
-   * (mirrors `handleEditorSelectionChange`, kept fully separate). */
-  handleLyricEditorSelectionChange: (startByte: number, endByte: number) => void
-  selectedLyricCells: LyricCell[]
-  /** Per-lyric-syllable `(source_part_index, note_id, verse) → measure_index`
-   * mapping, used to resolve a measure click/drag into every lyric cell it
-   * contains alongside `noteSpans` (see `Preview.tsx`'s
-   * `lyricCellsInMeasureRange`). */
-  lyricSpans: LyricSpan[]
-  /** Fired for a measure/bar-line click or drag with both the note cells and
-   * lyric cells it resolved — see `Preview.tsx`'s `onMeasureRangeSelect`. */
-  handleMeasureRangeSelect: (
-    noteCells: NoteCell[],
-    lyricCells: LyricCell[],
-  ) => void
-  audioGenerating: boolean
-  wavUrl: string | null
-  wavFilename: string
-  mp3Exporting: boolean
-  mp3Url: string | null
-  mp3Filename: string
-  onRequestAudioDownload: (url: string, filename: string) => void
-  noteTimings: NoteTimingOut[]
-  measureAudioNoteTimings: NoteTimingOut[]
-  measureAudioElement: HTMLAudioElement | null
-  noPartsSelected: boolean
-}
 
 export function AppWorkspace({
   editorCollapsed,
@@ -160,6 +19,7 @@ export function AppWorkspace({
   source,
   handleSourceChange,
   handleFormatScore,
+  handleShiftSelectionOctave,
   readOnly,
   diagnostics,
   diagnosticViewZones,
@@ -215,6 +75,17 @@ export function AppWorkspace({
   noPartsSelected,
 }: AppWorkspaceProps) {
   const [editorPaneEl, setEditorPaneEl] = useState<HTMLDivElement | null>(null)
+  // The editor's current selection, in byte offsets — `null` for a plain
+  // caret (nothing to shift), tracked purely to enable/disable the "Octave
+  // up"/"Octave down" toolbar buttons and supply their byte ranges on click.
+  // A disjoint list, not one min/max range: a Monaco multicursor selection
+  // (e.g. clicking a part label, which selects that part's notes across
+  // every measure in its system) is generally disjoint, so collapsing it to
+  // a single span would sweep in unrelated notes/parts sitting between the
+  // disjoint pieces.
+  const [selectionByteRanges, setSelectionByteRanges] = useState<
+    EditorSelection[] | null
+  >(null)
   const isMobile = useMediaQuery(MOBILE_BREAKPOINT_QUERY)
   // Below the mobile breakpoint only one pane is visible at a time, so
   // showing the editor must collapse the preview instead of sitting beside it.
@@ -263,6 +134,24 @@ export function AppWorkspace({
                       icon={<AlignLeft size={14} aria-hidden="true" />}
                       onClick={handleFormatScore}
                     />
+                    <EditorToolbarButton
+                      label="Octave up"
+                      icon={<ChevronUp size={14} aria-hidden="true" />}
+                      disabled={selectionByteRanges === null}
+                      onClick={() => {
+                        if (selectionByteRanges === null) return
+                        handleShiftSelectionOctave(selectionByteRanges, 1)
+                      }}
+                    />
+                    <EditorToolbarButton
+                      label="Octave down"
+                      icon={<ChevronDown size={14} aria-hidden="true" />}
+                      disabled={selectionByteRanges === null}
+                      onClick={() => {
+                        if (selectionByteRanges === null) return
+                        handleShiftSelectionOctave(selectionByteRanges, -1)
+                      }}
+                    />
                   </Tooltip.Provider>
                 }
                 readOnly={readOnly}
@@ -273,9 +162,16 @@ export function AppWorkspace({
                   setSelectedLineRange(null)
                   notifySelection(firstLine, lastLine, isEmpty)
                 }}
-                onSelectionOffsetChange={(startOffset, endOffset) => {
-                  handleEditorSelectionChange(startOffset, endOffset)
-                  handleLyricEditorSelectionChange(startOffset, endOffset)
+                onSelectionOffsetChange={(ranges, isEmpty) => {
+                  // Every disjoint range is passed through, not just the
+                  // primary one — a multicursor selection (e.g. a clicked
+                  // part label's per-measure ranges, or the "shift
+                  // selection octave" toolbar action's remapped ranges)
+                  // must keep every range's notes/lyrics highlighted, not
+                  // just whichever one Monaco calls the anchor.
+                  handleEditorSelectionChange(ranges)
+                  handleLyricEditorSelectionChange(ranges)
+                  setSelectionByteRanges(isEmpty ? null : ranges)
                 }}
                 onEditPartsClick={() => setEditPartsOpen(true)}
                 onEditMetadataClick={() => setEditMetadataOpen(true)}

@@ -24,6 +24,7 @@ import {
   render_with_highlight_range as renderWithHighlightRange,
   set_layout_fonts,
   shift_part_octave,
+  shift_range_octave,
   update_part_declaration,
 } from '../jianpuWasm'
 import type { PartDeclaration } from '../types'
@@ -196,6 +197,17 @@ self.onmessage = async (event: MessageEvent<WorkerRequest>) => {
       type: 'partOctaveShifted',
       id: msg.id,
       source: shift_part_octave(msg.source, msg.abbreviation, msg.delta),
+    } satisfies WorkerResponse)
+    return
+  }
+
+  if (msg.type === 'shiftRangeOctave') {
+    const result = shift_range_octave(msg.source, msg.ranges, msg.delta)
+    postMessage({
+      type: 'rangeOctaveShifted',
+      id: msg.id,
+      source: result.source,
+      ranges: result.ranges,
     } satisfies WorkerResponse)
     return
   }

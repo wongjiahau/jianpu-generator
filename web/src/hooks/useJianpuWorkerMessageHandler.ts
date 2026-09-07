@@ -13,7 +13,10 @@ import type {
 } from '../types'
 import type { WorkerResponse } from '../worker/jianpu.worker'
 import { handleExportMessage } from './useJianpuWorkerExportMessages'
-import type { TextRequestTracker } from './useJianpuWorkerTypes'
+import type {
+  RangeOctaveShiftRequestTracker,
+  TextRequestTracker,
+} from './useJianpuWorkerTypes'
 
 export interface WorkerMessageHandlerDeps {
   audioAvailableRef: RefObject<boolean>
@@ -34,6 +37,7 @@ export interface WorkerMessageHandlerDeps {
     Map<number, (source: string) => void>
   >
   shiftPartOctaveTracker: TextRequestTracker
+  shiftRangeOctaveTracker: RangeOctaveShiftRequestTracker
   latestPdfIdRef: RefObject<number>
   setPdfExporting: (value: boolean) => void
   activeFileRef: RefObject<string>
@@ -140,6 +144,16 @@ export function createWorkerMessageHandler(deps: WorkerMessageHandlerDeps) {
         msg.source,
       )
       deps.shiftPartOctaveTracker.pendingRequestsRef.current.delete(msg.id)
+      return
+    }
+
+    if (msg.type === 'rangeOctaveShifted') {
+      if (msg.id !== deps.shiftRangeOctaveTracker.latestIdRef.current) return
+      deps.shiftRangeOctaveTracker.pendingRequestsRef.current.get(msg.id)?.({
+        source: msg.source,
+        ranges: msg.ranges,
+      })
+      deps.shiftRangeOctaveTracker.pendingRequestsRef.current.delete(msg.id)
       return
     }
 

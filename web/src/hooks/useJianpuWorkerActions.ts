@@ -8,6 +8,7 @@ import { useJianpuWorkerLifecycle } from './useJianpuWorkerLifecycle'
 import { useJianpuWorkerPartDeclaration } from './useJianpuWorkerPartDeclaration'
 import { useJianpuWorkerRenderRequests } from './useJianpuWorkerRenderRequests'
 import { useJianpuWorkerShiftOctave } from './useJianpuWorkerShiftOctave'
+import { useJianpuWorkerShiftRangeOctave } from './useJianpuWorkerShiftRangeOctave'
 import type { useJianpuWorkerState } from './useJianpuWorkerState'
 import { useMeasureAudioPlayback } from './useMeasureAudioPlayback'
 
@@ -119,6 +120,7 @@ export function useJianpuWorkerActions({
     latestFormatScoreIdRef: state.latestFormatScoreIdRef,
     pendingFormatScoreRequestsRef: state.pendingFormatScoreRequestsRef,
     shiftPartOctaveTracker: state.shiftPartOctaveTracker,
+    shiftRangeOctaveTracker: state.shiftRangeOctaveTracker,
     latestPdfIdRef: state.latestPdfIdRef,
     setPdfExporting: state.setPdfExporting,
     activeFileRef: state.activeFileRef,
@@ -265,6 +267,12 @@ export function useJianpuWorkerActions({
     shiftPartOctaveTracker: state.shiftPartOctaveTracker,
   })
 
+  const { shiftRangeOctave } = useJianpuWorkerShiftRangeOctave({
+    workerRef: state.workerRef,
+    sourceRef: state.sourceRef,
+    shiftRangeOctaveTracker: state.shiftRangeOctaveTracker,
+  })
+
   const { importFromFile } = useJianpuWorkerImport({
     workerRef: state.workerRef,
     importRequestIdRef: state.importRequestIdRef,
@@ -293,6 +301,7 @@ export function useJianpuWorkerActions({
     updatePartDeclaration,
     formatScore,
     shiftPartOctave,
+    shiftRangeOctave,
     importFromFile,
     previewInstrument,
     previewPercussion,

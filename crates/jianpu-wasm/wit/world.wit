@@ -688,6 +688,35 @@ world jianpu-wasm {
     // `update-part-declaration` above.
     export shift-part-octave: func(source: string, abbreviation: string, delta: s32) -> string;
 
+    // One `[start-byte, end-byte)` span of the editor's selection. A Monaco
+    // multicursor selection (e.g. clicking a part label, which selects that
+    // part's notes across every measure in its system) surfaces as several
+    // disjoint `byte-range`s rather than one contiguous span — see
+    // `shift-range-octave` below.
+    record byte-range {
+        start-byte: u32,
+        end-byte: u32,
+    }
+
+    // `shift-range-octave`'s return value: the rewritten source, plus the
+    // *new* (post-edit) byte range of every note that got shifted, in
+    // source order — see `source_edit::ShiftRangeOctaveResult`'s doc
+    // comment for why the caller (the editor toolbar's "shift selection"
+    // action) needs these instead of just re-applying its own pre-edit
+    // ranges to restore the selection afterward.
+    record shift-range-octave-response {
+        source: string,
+        ranges: list<byte-range>,
+    }
+
+    // The "shift selected range" editor toolbar action — same shape as
+    // `shift-part-octave` above, but scoped to a list of byte ranges instead
+    // of a part (see `source_edit::shift_range_octave`). Takes a *list* of
+    // ranges, not one pair, because a multicursor selection is generally
+    // disjoint — collapsing it to a single min/max span would sweep in
+    // unrelated notes/parts sitting between the disjoint pieces.
+    export shift-range-octave: func(source: string, ranges: list<byte-range>, delta: s32) -> shift-range-octave-response;
+
     export format-score: func(source: string) -> string;
 
     // ==================== types_export.rs (wav/pdf/midi/mp3) ====================

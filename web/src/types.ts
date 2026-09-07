@@ -25,7 +25,7 @@ export type {
 // Format: "N: Instrument Name" e.g. "48: String Ensemble 1"
 export type SoundfontValue = string
 
-interface EditorSelection {
+export interface EditorSelection {
   start: number
   end: number
 }
@@ -40,6 +40,21 @@ export interface EditorHandle {
    * offset, matching `setSelection`'s convention. Reveals the first range.
    */
   setSelections: (ranges: Array<{ start: number; end: number }>) => void
+  /**
+   * Replace the entire model content with `newSource` and select `ranges`
+   * (byte offsets into `newSource`) — both synchronously, in the same call,
+   * so no other effect can observe the new text with a stale selection in
+   * between. Used by the "shift selection octave" toolbar action: unlike
+   * `onChange` + a later `setSelections` call, this closes the race where
+   * `Editor.tsx`'s own generic post-edit selection restore (see its
+   * `savedSelectionsRef` effect pair) would otherwise re-apply the
+   * *pre-edit* selection's stale line/column positions over top of the
+   * correct one (see `HANDOFF-octave-toolbar-part-label-selection-bug.md`).
+   */
+  replaceContentWithSelections: (
+    newSource: string,
+    ranges: Array<{ start: number; end: number }>,
+  ) => void
   /** Select a range of lines by 1-indexed line numbers and reveal the start. */
   setSelectionByLines: (startLine: number, endLine: number) => void
   /**

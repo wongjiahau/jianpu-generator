@@ -3,6 +3,7 @@ import type { NoteTimingOut, SvgDocumentOut } from '../jianpuWasm'
 import type {
   Diagnostic,
   DiagnosticViewZone,
+  EditorSelection,
   LyricSpan,
   MeasureSpan,
   NoteSpan,
@@ -21,6 +22,21 @@ export interface TextRequestTracker {
   requestIdRef: RefObject<number>
   latestIdRef: RefObject<number>
   pendingRequestsRef: RefObject<Map<number, (source: string) => void>>
+}
+
+/** Same tracking scheme as `TextRequestTracker`, but for
+ * "shift selection octave" round trips, which resolve with the rewritten
+ * source *and* the shifted notes' own byte ranges in that new source (see
+ * `source_edit::shift_range_octave`) rather than just a plain string — the
+ * caller needs both to restore the editor selection synchronously alongside
+ * the new source, closing the race described in
+ * `HANDOFF-octave-toolbar-part-label-selection-bug.md`. */
+export interface RangeOctaveShiftRequestTracker {
+  requestIdRef: RefObject<number>
+  latestIdRef: RefObject<number>
+  pendingRequestsRef: RefObject<
+    Map<number, (result: { source: string; ranges: EditorSelection[] }) => void>
+  >
 }
 
 /** One export's bytes, staged behind the rename-before-download modal until
@@ -185,6 +201,24 @@ export interface JianpuWorkerState {
    * part or unknown abbreviation resolves with the source unchanged.
    */
   shiftPartOctave: (abbreviation: string, delta: number) => Promise<string>
+  /**
+   * Rewrites the `'`/`,` octave marker on every note whose span overlaps
+   * any of `ranges` by `delta` octaves (see
+   * `source_edit::shift_range_octave`) — the editor toolbar's "shift
+   * selection" octave-up/down action, scoped to the current selection
+   * rather than a whole part. `ranges` is a disjoint set, not one min/max
+   * span, so a multicursor selection (e.g. a clicked part label's notes
+   * spanning every measure in its system) shifts every one of its pieces
+   * without also sweeping in unrelated notes/parts sitting between them.
+   * Resolves with the updated source and the shifted notes' own byte ranges
+   * in that new source (see `source_edit::shift_range_octave`), so the
+   * editor selection can be restored synchronously alongside the new
+   * source instead of racing an async re-derivation.
+   */
+  shiftRangeOctave: (
+    ranges: EditorSelection[],
+    delta: number,
+  ) => Promise<{ source: string; ranges: EditorSelection[] }>
   /**
    * Recovers the `.jianpu` source embedded in a previously exported SVG/PDF
    * file (see `source_embed::extract_embedded_source`). Rejects if the file

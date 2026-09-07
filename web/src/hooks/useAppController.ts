@@ -157,6 +157,7 @@ export function useAppController() {
     updatePartDeclaration,
     formatScore,
     shiftPartOctave,
+    shiftRangeOctave,
     importFromFile,
   } = useJianpuWorker(
     source,
@@ -234,6 +235,7 @@ export function useAppController() {
     selectedLyricCells,
     handleMeasureRangeSelect,
     handlePlayNoteSelection,
+    handleShiftSelectionOctave,
   } = useAppSelectionAndNavigation(
     sectionRanges,
     editorRef,
@@ -246,6 +248,8 @@ export function useAppController() {
     enabledTracks,
     lyricSpans,
     playNoteSelection,
+    shiftRangeOctave,
+    handleSourceChange,
   )
 
   const noPartsSelected = computeNoPartsSelected(
@@ -355,6 +359,7 @@ export function useAppController() {
     handleSourceChange,
     handleSelect,
     handleFormatScore,
+    handleShiftSelectionOctave,
     importingFile,
     handleImportFile,
     editPartsOpen,

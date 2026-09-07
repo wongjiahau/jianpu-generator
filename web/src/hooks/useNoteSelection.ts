@@ -127,6 +127,10 @@ export function useNoteSelection(
     handleEditorSelectionChange,
     selectedNoteRangePlaybackInfo,
     selectedNoteCells: lastSelectedCells,
+    // Exposed alongside `selectedNoteCells` for `handleShiftSelectionOctave`
+    // (see `useAppSelectionAndNavigation.ts`), which needs both to re-apply
+    // the same selection silently after an octave shift.
+    selectedNoteRuns: lastRuns,
     applyNoteSelectionSilently,
     clearNoteSelection,
   }

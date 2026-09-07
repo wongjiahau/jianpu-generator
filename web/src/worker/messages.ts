@@ -2,6 +2,7 @@ import type { NoteTimingOut, SvgDocumentOut } from '../jianpuWasm'
 import type {
   Diagnostic,
   DiagnosticViewZone,
+  EditorSelection,
   LyricSpan,
   MeasureSpan,
   NoteSpan,
@@ -183,6 +184,19 @@ export type WorkerRequest =
       delta: number
       id: number
     }
+  | {
+      type: 'shiftRangeOctave'
+      source: string
+      // A disjoint set of ranges, not one min/max span — a multicursor
+      // selection (e.g. clicking a part label, which selects that part's
+      // notes across every measure in its system) is generally disjoint;
+      // collapsing it to one span would sweep in unrelated notes/parts
+      // sitting between the disjoint pieces (see
+      // `source_edit::shift_range_octave`'s doc comment).
+      ranges: EditorSelection[]
+      delta: number
+      id: number
+    }
 
 export type WorkerResponse =
   | {
@@ -275,3 +289,15 @@ export type WorkerResponse =
   | { type: 'importErr'; id: number }
   | { type: 'scoreFormatted'; id: number; source: string }
   | { type: 'partOctaveShifted'; id: number; source: string }
+  | {
+      type: 'rangeOctaveShifted'
+      id: number
+      source: string
+      /** The shifted note spans' own byte ranges in the *new* `source`,
+       * synchronously computed by `source_edit::shift_range_octave` — lets
+       * the caller restore the editor selection in the same tick it applies
+       * the new source, closing a race where an async re-derivation could
+       * lose to a second click landing first (see
+       * `HANDOFF-octave-toolbar-part-label-selection-bug.md`). */
+      ranges: { start: number; end: number }[]
+    }

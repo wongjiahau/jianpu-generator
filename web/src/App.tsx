@@ -118,6 +118,7 @@ export default function App() {
     handleSourceChange,
     handleSelect,
     handleFormatScore,
+    handleShiftSelectionOctave,
     importingFile,
     handleImportFile,
     editPartsOpen,
@@ -293,6 +294,7 @@ export default function App() {
         source={source}
         handleSourceChange={handleSourceChange}
         handleFormatScore={handleFormatScore}
+        handleShiftSelectionOctave={handleShiftSelectionOctave}
         readOnly={readOnly}
         diagnostics={diagnostics}
         diagnosticViewZones={diagnosticViewZones}

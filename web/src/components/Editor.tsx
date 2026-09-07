@@ -18,6 +18,7 @@ import type {
   Diagnostic,
   DiagnosticViewZone,
   EditorHandle,
+  EditorSelection,
   MeasureSpan,
 } from '../types'
 import { stringIndexToByteOffset } from '../utils/byteSpan'
@@ -51,13 +52,17 @@ export interface EditorProps {
     endLine: number,
     isEmpty: boolean,
   ) => void
-  /** Same selection as `onSelectionChange`, but as UTF-16 code-unit offsets
-   * via `model.getOffsetAt` — used by callers whose measure mapping is
-   * byte-offset-based rather than line-based (see `useNoteSelection`'s
-   * `handleEditorSelectionChange`). */
+  /** Same selection as `onSelectionChange`, but as UTF-8 byte offsets — one
+   * entry per selection in Monaco's current (possibly multicursor)
+   * selection set, via `ed.getSelections()`/`stringIndexToByteOffset` — used
+   * by callers whose measure mapping is byte-offset-based rather than
+   * line-based (see `useNoteSelection`'s `handleEditorSelectionChange`) and
+   * by the "shift selection octave" toolbar action, which needs every
+   * disjoint piece of a multicursor selection (e.g. one produced by
+   * clicking a part label), not just the primary one. `isEmpty` is true
+   * only when every selection in the set is empty. */
   onSelectionOffsetChange?: (
-    startOffset: number,
-    endOffset: number,
+    ranges: EditorSelection[],
     isEmpty: boolean,
   ) => void
   onCursorLineChange?: (line: number) => void
@@ -258,15 +263,24 @@ export const Editor = forwardRef<EditorHandle, EditorProps>(function Editor(
       )
       if (onSelectionOffsetChangeRef.current) {
         const text = model.getValue()
-        const startOffset = stringIndexToByteOffset(
-          text,
-          model.getOffsetAt(selection.getStartPosition()),
-        )
-        const endOffset = stringIndexToByteOffset(
-          text,
-          model.getOffsetAt(selection.getEndPosition()),
-        )
-        onSelectionOffsetChangeRef.current(startOffset, endOffset, isEmpty)
+        // A multicursor selection (e.g. one produced by clicking a part
+        // label, which selects that part's notes across every measure in
+        // its system) surfaces as several disjoint selections here, not
+        // one — getSelections()[0] is the primary/anchor selection,
+        // matching `selection` above.
+        const selections = ed.getSelections() ?? [selection]
+        const ranges: EditorSelection[] = selections.map((sel) => ({
+          start: stringIndexToByteOffset(
+            text,
+            model.getOffsetAt(sel.getStartPosition()),
+          ),
+          end: stringIndexToByteOffset(
+            text,
+            model.getOffsetAt(sel.getEndPosition()),
+          ),
+        }))
+        const allEmpty = selections.every((sel) => sel.isEmpty())
+        onSelectionOffsetChangeRef.current(ranges, allEmpty)
       }
       onCursorLineChangeRef.current?.(selection.startLineNumber)
     }

@@ -77,6 +77,45 @@ export function createEditorImperativeHandle(
       ed.revealRangeInCenter(selections[0])
       ed.focus()
     },
+    replaceContentWithSelections(
+      newSource: string,
+      ranges: Array<{ start: number; end: number }>,
+    ) {
+      const ed = editorRef.current
+      const model = ed?.getModel()
+      const monacoApi = monacoRef.current
+      if (!ed || !model || !monacoApi) return
+
+      // Step 1: apply the new text first — the byte→line/column mapping
+      // `buildMonacoSelections` needs below only works once the model
+      // already reflects `newSource`. Deliberately no `endCursorState` here;
+      // see the doc comment on `EditorHandle.replaceContentWithSelections`.
+      ed.executeEdits('replaceContentWithSelections', [
+        {
+          range: model.getFullModelRange(),
+          text: newSource,
+          forceMoveMarkers: true,
+        },
+      ])
+
+      if (ranges.length === 0) return
+
+      // Step 2: now that the model's layout matches `newSource`, resolve
+      // the byte ranges to positions and select them — synchronously, in
+      // the same call stack as step 1, so nothing else can observe the new
+      // text with a stale selection in between.
+      const selections = buildMonacoSelections(
+        ranges.map((range) => ({
+          startByte: range.start,
+          endByte: range.end,
+        })),
+        newSource,
+        monacoApi,
+        model,
+      )
+      ed.setSelections(selections)
+      ed.revealRangeInCenter(selections[0])
+    },
     setSelectionByLines(startLine: number, endLine: number) {
       const ed = editorRef.current
       if (!ed) return

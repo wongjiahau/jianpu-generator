@@ -1,5 +1,5 @@
 mod octave_shift;
-pub use octave_shift::shift_part_octave;
+pub use octave_shift::{shift_part_octave, shift_range_octave, ByteRange, ShiftRangeOctaveResult};
 
 use crate::parser::parts_parser::SourcePartMode;
 

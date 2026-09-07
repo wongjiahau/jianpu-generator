@@ -7,6 +7,7 @@ interface EditorToolbarButtonProps {
   label: string
   icon: ReactNode
   onClick: () => void
+  disabled?: boolean
 }
 
 /** A single icon button in the editor's `toolbar` slot (see `Editor`'s
@@ -15,6 +16,7 @@ export function EditorToolbarButton({
   label,
   icon,
   onClick,
+  disabled = false,
 }: EditorToolbarButtonProps) {
   return (
     <Tooltip.Root>
@@ -23,6 +25,7 @@ export function EditorToolbarButton({
           type="button"
           className="editor-toolbar-button"
           onClick={onClick}
+          disabled={disabled}
           aria-label={label}
         >
           {icon}

@@ -22,6 +22,17 @@
   border-color: transparent;
 }
 
+.editor-toolbar-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.editor-toolbar-button:disabled:hover {
+  background: var(--surface);
+  color: var(--muted);
+  border-color: var(--border);
+}
+
 /* Radix tooltip bubble */
 .editor-toolbar-tooltip-content {
   background: var(--editor-bg, #fff);

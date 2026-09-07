@@ -67,6 +67,32 @@ pub(super) fn shift_part_octave(source: String, abbreviation: String, delta: i32
     jianpu_generator::source_edit::shift_part_octave(&source, &abbreviation, delta as i8)
 }
 
+pub(super) fn shift_range_octave(
+    source: String,
+    ranges: Vec<ByteRange>,
+    delta: i32,
+) -> ShiftRangeOctaveResponse {
+    let ranges: Vec<jianpu_generator::source_edit::ByteRange> = ranges
+        .into_iter()
+        .map(|range| jianpu_generator::source_edit::ByteRange {
+            start_byte: range.start_byte,
+            end_byte: range.end_byte,
+        })
+        .collect();
+    let result = jianpu_generator::source_edit::shift_range_octave(&source, &ranges, delta as i8);
+    ShiftRangeOctaveResponse {
+        source: result.source,
+        ranges: result
+            .ranges
+            .into_iter()
+            .map(|range| ByteRange {
+                start_byte: range.start_byte,
+                end_byte: range.end_byte,
+            })
+            .collect(),
+    }
+}
+
 pub(super) fn format_score(source: String) -> String {
     jianpu_generator::format_source::format_score(&source)
 }

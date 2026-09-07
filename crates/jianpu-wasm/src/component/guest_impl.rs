@@ -300,6 +300,14 @@ impl Guest for Component {
         shift_part_octave(source, abbreviation, delta)
     }
 
+    fn shift_range_octave(
+        source: String,
+        ranges: Vec<ByteRange>,
+        delta: i32,
+    ) -> ShiftRangeOctaveResponse {
+        shift_range_octave(source, ranges, delta)
+    }
+
     fn format_score(source: String) -> String {
         format_score(source)
     }

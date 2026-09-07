@@ -306,6 +306,25 @@ export function shift_part_octave(
   return root().shiftPartOctave(source, abbreviation, delta)
 }
 
+export function shift_range_octave(
+  source: string,
+  ranges: Array<{ start: number; end: number }>,
+  delta: number,
+): { source: string; ranges: Array<{ start: number; end: number }> } {
+  const resp = root().shiftRangeOctave(
+    source,
+    ranges.map((range) => ({ startByte: range.start, endByte: range.end })),
+    delta,
+  )
+  return {
+    source: resp.source,
+    ranges: resp.ranges.map((range) => ({
+      start: range.startByte,
+      end: range.endByte,
+    })),
+  }
+}
+
 export function format_score(source: string): string {
   return root().formatScore(source)
 }
