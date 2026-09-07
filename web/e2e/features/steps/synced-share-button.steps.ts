@@ -117,7 +117,7 @@ When(
 )
 
 Then('a sync-link-copied toast is shown', async ({ page }) => {
-  await expect(page.getByTestId('sync-link-copied-toast')).toBeVisible()
+  await expect(page.getByTestId('synced-share-link-copied-toast')).toBeVisible()
   state.syncedShareLink = await page.evaluate(async () => {
     return navigator.clipboard.readText()
   })
@@ -185,13 +185,15 @@ When('the owner clicks the sync button again', async ({ page }) => {
 Then(
   'the copy-sync-link and stop-sync buttons are visible',
   async ({ page }) => {
-    await expect(page.getByTestId('copy-sync-link-button')).toBeVisible()
+    await expect(
+      page.getByTestId('copy-synced-share-link-button'),
+    ).toBeVisible()
     await expect(page.getByTestId('stop-sync-button')).toBeVisible()
   },
 )
 
 When('the owner clicks the copy-sync-link button', async ({ page }) => {
-  await page.getByTestId('copy-sync-link-button').click()
+  await page.getByTestId('copy-synced-share-link-button').click()
 })
 
 Then('the copied link is unchanged from before', async ({ page }) => {
